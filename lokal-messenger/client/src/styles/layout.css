@@ -1,0 +1,25 @@
+/* Fayl: client/src/styles/layout.css
+   Maqsad: Ikki-panelli asosiy tartib (yon panel + suhbat oynasi) belgilanadi. */
+
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 320px;
+  min-width: 240px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-chat);
+}

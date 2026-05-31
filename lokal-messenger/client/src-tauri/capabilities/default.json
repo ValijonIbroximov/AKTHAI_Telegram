@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Asosiy oyna uchun standart ruxsatlar to'plami",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

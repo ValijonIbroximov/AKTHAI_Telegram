@@ -1,0 +1,12 @@
+# Kompilyatsiya natijalari
+/lokal-server
+/server
+*.exe
+
+# Haqiqiy konfiguratsiya (maxfiy ma'lumotlar) repozitoriyaga qo'shilmaydi
+config.yaml
+
+# Maxfiy kalitlar va sertifikatlar
+*.key
+*.crt
+*.pem

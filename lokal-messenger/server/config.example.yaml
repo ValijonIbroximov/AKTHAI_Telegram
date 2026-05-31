@@ -1,0 +1,37 @@
+# Fayl: server/config.example.yaml
+# Maqsad: Server konfiguratsiyasi namunasi. Ishlatishdan oldin shu fayl
+#         "config.yaml" nomi bilan nusxalanadi va maxfiy qiymatlar to'ldiriladi.
+#         Buyruq: cp config.example.yaml config.yaml
+
+server:
+  bind_address: "0.0.0.0:8443"
+  tls:
+    enabled: true
+    cert_file: "/etc/lokal-msg/server.crt"
+    key_file: "/etc/lokal-msg/server.key"
+
+database:
+  # Yopiq tarmoqdagi PostgreSQL manzili. STRONG o'rniga haqiqiy parol yoziladi.
+  dsn: "postgres://msg:STRONG@127.0.0.1:5432/lokal_messenger?sslmode=disable"
+  max_open_conns: 20
+  max_idle_conns: 5
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+
+auth:
+  jwt_secret_file: "/etc/lokal-msg/jwt.key" # 32+ baytli tasodifiy fayl
+  access_ttl_minutes: 720 # 12 soat
+  argon2:
+    memory_kb: 65536
+    iterations: 3
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+
+limits:
+  max_message_size_bytes: 65536 # 64 KB shifrlangan xabar
+  max_file_size_bytes: 52428800 # 50 MB
+  rate_login_per_5min: 5

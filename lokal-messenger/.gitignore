@@ -1,0 +1,9 @@
+# Maxfiy konfiguratsiya va kalitlar (deploy)
+deploy/config.yaml
+deploy/tls/*.key
+deploy/tls/*.crt
+deploy/tls/*.pem
+
+# OT fayllari
+.DS_Store
+Thumbs.db

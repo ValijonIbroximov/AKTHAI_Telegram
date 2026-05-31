@@ -1,0 +1,37 @@
+# Fayl: deploy/config.example.yaml
+# Maqsad: docker-compose orqali ishga tushirilganda server foydalanadigan
+#         konfiguratsiya namunasi. Ishlatishdan oldin "config.yaml" nomi bilan
+#         nusxalanadi va maxfiy qiymatlar to'ldiriladi.
+
+server:
+  bind_address: "0.0.0.0:8443"
+  tls:
+    enabled: true
+    cert_file: "/etc/lokal-msg/server.crt"
+    key_file: "/etc/lokal-msg/server.key"
+
+database:
+  # Konteyner tarmog'ida xizmat nomi "postgres" orqali ulanadi
+  dsn: "postgres://msg:STRONG@postgres:5432/lokal_messenger?sslmode=disable"
+  max_open_conns: 20
+  max_idle_conns: 5
+
+redis:
+  addr: "redis:6379"
+  password: ""
+  db: 0
+
+auth:
+  jwt_secret_file: "/etc/lokal-msg/jwt.key"
+  access_ttl_minutes: 720
+  argon2:
+    memory_kb: 65536
+    iterations: 3
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+
+limits:
+  max_message_size_bytes: 65536
+  max_file_size_bytes: 52428800
+  rate_login_per_5min: 5

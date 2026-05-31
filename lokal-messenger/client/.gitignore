@@ -1,0 +1,16 @@
+# Tugunlar va qurilish natijalari
+node_modules/
+dist/
+.vite/
+
+# Rust qurilish natijalari
+src-tauri/target/
+src-tauri/gen/
+
+# Muhit fayllari
+.env
+.env.local
+
+# OT fayllari
+.DS_Store
+Thumbs.db
