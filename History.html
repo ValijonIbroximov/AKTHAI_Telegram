@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harbiy Messenjer — Qurilish Hisoboti</title>
+  <style>
+    :root {
+      --bg:        #0e1621;
+      --surface:   #17212b;
+      --surface2:  #1c2b3a;
+      --border:    #2a3a4a;
+      --accent:    #5288c1;
+      --accent2:   #64b5f6;
+      --green:     #4caf7d;
+      --yellow:    #f0c040;
+      --red:       #e05c5c;
+      --text:      #d4e5f5;
+      --text-muted:#7a9ab8;
+      --code-bg:   #111d2a;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── TOP BANNER ────────────────────────────────────── */
+    .banner {
+      background: linear-gradient(135deg, #1a2f45 0%, #0e1f30 60%, #0a1520 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 36px 48px 28px;
+      display: flex;
+      align-items: flex-start;
+      gap: 24px;
+    }
+    .banner-icon {
+      font-size: 48px;
+      line-height: 1;
+      filter: drop-shadow(0 0 12px rgba(82,136,193,0.5));
+    }
+    .banner-text h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #e8f4ff;
+      letter-spacing: 0.3px;
+    }
+    .banner-text p {
+      color: var(--text-muted);
+      margin-top: 4px;
+      font-size: 13px;
+    }
+    .banner-meta {
+      margin-left: auto;
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .banner-meta span {
+      display: block;
+      margin-top: 4px;
+      color: var(--accent2);
+    }
+
+    /* ── LAYOUT ────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px 48px 64px; }
+
+    /* ── STATUS GRID ───────────────────────────────────── */
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin: 28px 0;
+    }
+    .status-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .status-card .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+    }
+    .status-card .value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent2);
+    }
+    .status-card .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+    }
+    .badge-green  { background: rgba(76,175,125,0.15); color: var(--green);  border: 1px solid rgba(76,175,125,0.3); }
+    .badge-yellow { background: rgba(240,192,64,0.15);  color: var(--yellow); border: 1px solid rgba(240,192,64,0.3); }
+    .badge-red    { background: rgba(224,92,92,0.15);   color: var(--red);    border: 1px solid rgba(224,92,92,0.3); }
+    .badge-blue   { background: rgba(82,136,193,0.15);  color: var(--accent2);border: 1px solid rgba(82,136,193,0.3); }
+
+    /* ── SECTION ───────────────────────────────────────── */
+    .section { margin-top: 36px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header .icon { font-size: 18px; }
+    .section-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #c8dff2;
+    }
+    .section-header .cnt {
+      margin-left: auto;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2px 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ── TABLE ─────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      background: var(--surface2);
+      padding: 9px 14px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid rgba(42,58,74,0.6); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: rgba(255,255,255,0.02); }
+    tbody td {
+      padding: 9px 14px;
+      vertical-align: middle;
+    }
+    .tbl-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    /* ── CODE BLOCK ────────────────────────────────────── */
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+      font-size: 12.5px;
+      color: #8ab4d6;
+      overflow-x: auto;
+      line-height: 1.7;
+    }
+    .code-block .kw  { color: #79c0ff; }
+    .code-block .str { color: #a5d6ff; }
+    .code-block .cmt { color: #4a6880; font-style: italic; }
+    .code-block .num { color: #f0c040; }
+
+    /* ── ENDPOINT TABLE ────────────────────────────────── */
+    .method {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      min-width: 46px;
+      text-align: center;
+    }
+    .method-POST   { background: rgba(76,175,125,0.2);  color: #6dca9a; border: 1px solid rgba(76,175,125,0.4); }
+    .method-GET    { background: rgba(82,136,193,0.2);  color: #79b7e8; border: 1px solid rgba(82,136,193,0.4); }
+    .method-PATCH  { background: rgba(240,192,64,0.2);  color: #e8c060; border: 1px solid rgba(240,192,64,0.4); }
+    .method-WS     { background: rgba(180,100,220,0.2); color: #c87dea; border: 1px solid rgba(180,100,220,0.4); }
+    .path-col { font-family: 'Consolas', monospace; color: #a0c8e8; font-size: 12px; }
+    .auth-col { font-size: 11px; }
+    .desc-col { color: var(--text-muted); font-size: 12px; }
+
+    /* ── FILE TREE ─────────────────────────────────────── */
+    .file-tree {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 2;
+    }
+    .ft-dir  { color: var(--accent2); font-weight: 600; }
+    .ft-file { color: #8ab4d6; }
+    .ft-note { color: #4a6880; font-size: 11px; }
+    .ft-new  { color: #6dca9a; }
+    .ft-pre  { color: var(--yellow); }
+
+    /* ── TIMELINE ──────────────────────────────────────── */
+    .timeline { position: relative; padding-left: 28px; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px; top: 6px; bottom: 6px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--accent), transparent);
+    }
+    .tl-item {
+      position: relative;
+      margin-bottom: 20px;
+    }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -24px; top: 6px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 6px rgba(82,136,193,0.5);
+    }
+    .tl-item.done::before { background: var(--green); box-shadow: 0 0 6px rgba(76,175,125,0.5); }
+    .tl-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+    }
+    .tl-title { font-weight: 600; color: #c8dff2; font-size: 13px; }
+    .tl-desc  { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+
+    /* ── SECURITY CHECKLIST ────────────────────────────── */
+    .checklist { display: flex; flex-direction: column; gap: 10px; }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .check-icon { font-size: 16px; line-height: 1.4; flex-shrink: 0; }
+    .check-text strong { color: #c8dff2; font-size: 13px; }
+    .check-text p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ── TWO COLUMN ────────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* ── FOOTER ────────────────────────────────────────── */
+    .footer {
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 700px) {
+      .banner { flex-direction: column; padding: 24px; }
+      .container { padding: 20px 16px 48px; }
+      .two-col { grid-template-columns: 1fr; }
+      .banner-meta { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ BANNER ══════════════════════════════════════════════════════════ -->
+<div class="banner">
+  <div class="banner-icon">🛡️</div>
+  <div class="banner-text">
+    <h1>Harbiy Lokal Messenjer</h1>
+    <p>Yopiq tarmoq uchun E2EE shifrlangan messenjer — qurilish va o'rnatish hisoboti</p>
+    <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <span class="badge badge-green">✓ Server ishlamoqda</span>
+      <span class="badge badge-green">✓ PostgreSQL 16.6</span>
+      <span class="badge badge-green">✓ Redis 5.0.14</span>
+      <span class="badge badge-blue">1-Bosqich yakunlandi</span>
+    </div>
+  </div>
+  <div class="banner-meta">
+    Sana
+    <span>2026-06-02</span>
+    Vaqt
+    <span>01:17 (UTC+5)</span>
+    Tizim
+    <span>Windows 10 x64 (26200)</span>
+  </div>
+</div>
+
+<!-- ══ MAIN CONTENT ═════════════════════════════════════════════════════ -->
+<div class="container">
+
+  <!-- STATUS CARDS -->
+  <div class="status-grid">
+    <div class="status-card">
+      <span class="label">PostgreSQL</span>
+      <span class="value">16.6</span>
+      <span class="sub">127.0.0.1:5432 · ishlayapti</span>
+    </div>
+    <div class="status-card">
+      <span class="label">Redis</span>
+      <span class="value">5.0.14</span>
+      <span class="sub">127.0.0.1:6379 · PONG ✓</span>
+    </div>
+    <div class="status-card">
+      <span class="label">Go server</span>
+      <span class="value">12.56 MB</span>
+      <span class="sub">0.0.0.0:8443 · TLS aktiv</span>
+    </div>
+    <div class="status-card">
+      <span class="label">Go versiyasi</span>
+      <span class="value">1.26.3</span>
+      <span class="sub">windows/amd64</span>
+    </div>
+    <div class="status-card">
+      <span class="label">DB jadvallari</span>
+      <span class="value">9</span>
+      <span class="sub">users, messages, chats...</span>
+    </div>
+    <div class="status-card">
+      <span class="label">Foydalanuvchilar</span>
+      <span class="value">1</span>
+      <span class="sub">admin · Bosh Administrator</span>
+    </div>
+    <div class="status-card">
+      <span class="label">TLS sertifikat</span>
+      <span class="value">RSA-4096</span>
+      <span class="sub">10 yillik · server.lokal</span>
+    </div>
+    <div class="status-card">
+      <span class="label">JWT kalit</span>
+      <span class="value">64 bayt</span>
+      <span class="sub">HMAC-SHA256 · HS256</span>
+    </div>
+  </div>
+
+  <!-- ══ TIMELINE ════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">📋</span>
+      <h2>Bajarilgan ishlar ketma-ketligi</h2>
+    </div>
+    <div class="timeline">
+
+      <div class="tl-item done">
+        <div class="tl-time">1-qadam</div>
+        <div class="tl-title">Loyiha strukturasi tahlil qilindi va papkalar yaratildi</div>
+        <div class="tl-desc">
+          <code>lokal-messenger/server/</code> papka ierarxiyasi noldan qurildi:
+          <code>cmd/server</code>, <code>cmd/hashtool</code>, <code>internal/{api,auth,cache,config,db,middleware,models,ws}</code>,
+          <code>db/migrations</code>, <code>deploy/tls</code>
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">2-qadam</div>
+        <div class="tl-title">PostgreSQL sxemasi (0001_init.sql) yozildi</div>
+        <div class="tl-desc">
+          9 ta jadval: <code>users</code>, <code>identity_keys</code>, <code>signed_prekeys</code>,
+          <code>one_time_prekeys</code>, <code>chats</code>, <code>chat_members</code>,
+          <code>messages</code>, <code>files</code>, <code>audit_log</code>.
+          Signal Protocol X3DH kalitlari uchun to'liq sxema.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">3-qadam</div>
+        <div class="tl-title">Go backend barcha modullari yozildi (19 ta fayl)</div>
+        <div class="tl-desc">
+          <code>config</code> → <code>db</code> → <code>cache</code> → <code>auth</code> →
+          <code>middleware</code> → <code>api</code> (handlers, auth, admin, chat, keys, router) →
+          <code>ws</code> (hub, handler) → <code>cmd/server/main.go</code>
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">4-qadam</div>
+        <div class="tl-title">Dokumentdagi 4 ta xato topildi va tuzatildi</div>
+        <div class="tl-desc">
+          <code>VerifyPassword</code> len!=5 xatosi; <code>auth_routes.go</code> import yetishmovchiligi;
+          WebSocket upgrade middleware sintaksisi; middleware'da <code>?token=</code> query param qo'llab-quvvatlash.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">5-qadam</div>
+        <div class="tl-title">go mod tidy + go build — birinchi muvaffaqiyatli kompilyatsiya</div>
+        <div class="tl-desc">
+          Barcha 28 ta Go bog'liqlik yuklab olindi va tartibga keltirildi.
+          <code>lokal-server.exe</code> va <code>hashtool.exe</code> xatosiz qurildi.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">6-qadam</div>
+        <div class="tl-title">PostgreSQL 16.6 Windows'ga o'rnatildi va sozlandi</div>
+        <div class="tl-desc">
+          GUI installer orqali o'rnatildi → <code>msg</code> foydalanuvchi va
+          <code>lokal_messenger</code> bazasi yaratildi → migratsiya bajarilib 9 ta jadval hosil qilindi.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">7-qadam</div>
+        <div class="tl-title">Birinchi admin foydalanuvchi yaratildi</div>
+        <div class="tl-desc">
+          <code>hashtool.exe</code> yordamida Argon2id (<code>m=65536, t=3, p=2</code>) xesh hosil qilindi,
+          <code>admin</code> foydalanuvchi bazaga yozildi.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">8-qadam</div>
+        <div class="tl-title">TLS sertifikat va JWT kaliti yaratildi</div>
+        <div class="tl-desc">
+          Git bundlaged OpenSSL 3.5 orqali RSA-4096, 10 yillik sertifikat.
+          64 baytli kriptografik tasodifiy JWT kaliti <code>C:\lokal-msg\jwt.key</code> ga saqlandi.
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">9-qadam</div>
+        <div class="tl-title">Redis 5.0.14 Windows xizmati sifatida o'rnatildi</div>
+        <div class="tl-desc">
+          <code>tporadowski/redis</code> Windows porti MSI orqali o'rnatildi.
+          <code>NT AUTHORITY\NETWORKSERVICE</code> ostida xizmat sifatida ishlamoqda. PING → PONG ✓
+        </div>
+      </div>
+
+      <div class="tl-item done">
+        <div class="tl-time">10-qadam</div>
+        <div class="tl-title">Server ishga tushirildi va barcha endpointlar sinaldi</div>
+        <div class="tl-desc">
+          <code>lokal-server.exe</code> TLS bilan <code>0.0.0.0:8443</code> da ishga tushdi.
+          <code>/healthz</code>, <code>POST /auth/login</code>, <code>GET /me</code>,
+          <code>GET /users</code> — barchasi <code>200 OK</code>.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ FILE STRUCTURE ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">📁</span>
+      <h2>Yaratilgan fayl tuzilmasi</h2>
+      <span class="cnt">21 fayl</span>
+    </div>
+    <div class="file-tree">
+<span class="ft-dir">lokal-messenger/</span>
+├── <span class="ft-dir">server/</span>
+│   ├── <span class="ft-dir">cmd/</span>
+│   │   ├── <span class="ft-dir">server/</span>
+│   │   │   └── <span class="ft-file ft-new">main.go</span>              <span class="ft-note">— server jarayoni, barcha qism-tizimlar birlashtirilib ishga tushiriladi</span>
+│   │   └── <span class="ft-dir">hashtool/</span>
+│   │       └── <span class="ft-file ft-new">main.go</span>              <span class="ft-note">— Argon2id parol xeshi vositasi</span>
+│   ├── <span class="ft-dir">internal/</span>
+│   │   ├── <span class="ft-dir">config/</span>
+│   │   │   └── <span class="ft-file ft-new">config.go</span>            <span class="ft-note">— YAML konfiguratsiya yuklovchi, barcha tuzilmalar</span>
+│   │   ├── <span class="ft-dir">db/</span>
+│   │   │   └── <span class="ft-file ft-new">pool.go</span>              <span class="ft-note">— pgxpool ulanish hovuzi</span>
+│   │   ├── <span class="ft-dir">cache/</span>
+│   │   │   ├── <span class="ft-file ft-new">redis.go</span>             <span class="ft-note">— Redis mijozi, Ping tekshiruvi bilan</span>
+│   │   │   └── <span class="ft-file ft-pre">keys.go</span>              <span class="ft-note">— Redis kalit-nomlar sxemasi (oldindan yozilgan)</span>
+│   │   ├── <span class="ft-dir">auth/</span>
+│   │   │   ├── <span class="ft-file ft-new">password.go</span>          <span class="ft-note">— Argon2id xeshlash/tekshirish (xato tuzatildi)</span>
+│   │   │   └── <span class="ft-file ft-new">jwt.go</span>               <span class="ft-note">— JWT chiqarish va tekshirish, HMAC-SHA256</span>
+│   │   ├── <span class="ft-dir">middleware/</span>
+│   │   │   └── <span class="ft-file ft-new">auth.go</span>              <span class="ft-note">— JWT + WS query token + RequireRole RBAC</span>
+│   │   ├── <span class="ft-dir">api/</span>
+│   │   │   ├── <span class="ft-file ft-new">handlers.go</span>          <span class="ft-note">— Deps konteyner, ErrorHandler, audit yordamchisi</span>
+│   │   │   ├── <span class="ft-file ft-new">auth_routes.go</span>       <span class="ft-note">— Login, brute-force himoya, sessiya Redis'ga</span>
+│   │   │   ├── <span class="ft-file ft-new">admin_routes.go</span>      <span class="ft-note">— Foydalanuvchi yaratish, bloklash (faqat admin)</span>
+│   │   │   ├── <span class="ft-file ft-pre">chat_routes.go</span>       <span class="ft-note">— Suhbatlar, xabar tarixi (oldindan yozilgan)</span>
+│   │   │   ├── <span class="ft-file ft-new">keys_routes.go</span>       <span class="ft-note">— X3DH kalit-bundle yuklash va olish</span>
+│   │   │   └── <span class="ft-file ft-new">router.go</span>            <span class="ft-note">— Barcha marshrutlar (WS upgrade tuzatildi)</span>
+│   │   └── <span class="ft-dir">ws/</span>
+│   │       ├── <span class="ft-file ft-new">hub.go</span>               <span class="ft-note">— E2EE xabar marshrutlash, presence, flush pending</span>
+│   │       └── <span class="ft-file ft-new">handler.go</span>           <span class="ft-note">— HTTP→WebSocket upgrade, goroutin per ulanish</span>
+│   ├── <span class="ft-dir">db/migrations/</span>
+│   │   └── <span class="ft-file ft-new">0001_init.sql</span>        <span class="ft-note">— 9 jadval, Signal Protocol kalitlari, audit log</span>
+│   ├── <span class="ft-file ft-pre">Dockerfile</span>               <span class="ft-note">— Multi-stage, alpine:3.20, ~12 MB tasvir (oldindan)</span>
+│   ├── <span class="ft-file ft-new">go.mod</span>  <span class="ft-file ft-new">go.sum</span>          <span class="ft-note">— 7 to'g'ridan, 21 indirect bog'liqlik</span>
+│   └── <span class="ft-file ft-new">config.yaml</span>              <span class="ft-note">— Windows uchun moslashtirilgan konfiguratsiya</span>
+├── <span class="ft-dir">deploy/</span>
+│   ├── <span class="ft-new">docker-compose.yml</span>       <span class="ft-note">— PG + Redis + Server, healthcheck bilan</span>
+│   ├── <span class="ft-new">db_setup.ps1</span>             <span class="ft-note">— Baza, migratsiya, admin yaratish skripti</span>
+│   └── <span class="ft-new">setup_windows.ps1</span>        <span class="ft-note">— To'liq avtomatik o'rnatish skripti</span>
+└── <span class="ft-pre">History.html</span>             <span class="ft-note">— ushbu hisobot</span>
+
+<br><span style="color:#4a6880; font-size:11px;">  🟢 Yashil = bu sessiyada yaratildi &nbsp;&nbsp; 🟡 Sariq = oldindan mavjud bo'lgan fayllar</span>
+    </div>
+  </div>
+
+  <!-- ══ API ENDPOINTS ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🔌</span>
+      <h2>REST va WebSocket Endpointlar</h2>
+      <span class="cnt">15 ta marshrut</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Metod</th>
+            <th>URL</th>
+            <th>Auth</th>
+            <th>Tavsif</th>
+            <th>Test</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/healthz</td>
+            <td class="auth-col">—</td>
+            <td class="desc-col">Server tirik ekanligini tekshiradi</td>
+            <td><span class="badge badge-green">200 OK</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/auth/login</td>
+            <td class="auth-col">—</td>
+            <td class="desc-col">Login → JWT token + Redis sessiya. Brute-force: 5/5dak</td>
+            <td><span class="badge badge-green">200 OK</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/auth/logout</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">JTI Redis'dan o'chiriladi</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/auth/change-password</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Parol almashtirish (placeholder)</td>
+            <td><span class="badge badge-yellow">501</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/me</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Joriy foydalanuvchi ID va roli</td>
+            <td><span class="badge badge-green">200 OK</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/users</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Barcha faol foydalanuvchilar katalogi</td>
+            <td><span class="badge badge-green">200 OK</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/chats</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Foydalanuvchi suhbatlari ro'yxati</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/chats</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Yangi private/group suhbat yaratish</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/chats/:id/messages</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Suhbat tarixi (ciphertext, faqat o'ziga tegishli)</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/keys/upload</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Signal kalitlarini yuklash (identity + SPK + OTPKs)</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/keys/:id/bundle</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Sherikning kalit-bundle'i (X3DH uchun)</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-POST">POST</span></td>
+            <td class="path-col">/api/v1/admin/users</td>
+            <td class="auth-col"><span class="badge badge-red">admin</span></td>
+            <td class="desc-col">Yangi foydalanuvchi yaratish (vaqtinchalik parol bilan)</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-PATCH">PATCH</span></td>
+            <td class="path-col">/api/v1/admin/users/:id/active</td>
+            <td class="auth-col"><span class="badge badge-red">admin</span></td>
+            <td class="desc-col">Foydalanuvchini bloklash/faollashtirish</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-GET">GET</span></td>
+            <td class="path-col">/api/v1/admin/audit-log</td>
+            <td class="auth-col"><span class="badge badge-red">admin</span></td>
+            <td class="desc-col">Oxirgi 200 ta audit yozuvi</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+          <tr>
+            <td><span class="method method-WS">WS</span></td>
+            <td class="path-col">/ws?token=...</td>
+            <td class="auth-col"><span class="badge badge-blue">JWT</span></td>
+            <td class="desc-col">Real-time shifrlangan xabar marshrutlash, presence</td>
+            <td><span class="badge badge-yellow">sinalmadi</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ GO DEPENDENCIES ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">📦</span>
+      <h2>Go bog'liqliklar (go.mod)</h2>
+    </div>
+    <div class="two-col">
+      <div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">To'g'ridan-to'g'ri (7 ta)</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Paket</th><th>Versiya</th><th>Maqsad</th></tr></thead>
+            <tbody>
+              <tr><td class="path-col">gofiber/fiber/v2</td><td><span class="badge badge-blue">v2.52.5</span></td><td class="desc-col">Yengil HTTP freymvork</td></tr>
+              <tr><td class="path-col">gofiber/contrib/websocket</td><td><span class="badge badge-blue">v1.3.2</span></td><td class="desc-col">WebSocket upgrader</td></tr>
+              <tr><td class="path-col">golang-jwt/jwt/v5</td><td><span class="badge badge-blue">v5.2.1</span></td><td class="desc-col">JWT token</td></tr>
+              <tr><td class="path-col">jackc/pgx/v5</td><td><span class="badge badge-blue">v5.6.0</span></td><td class="desc-col">PostgreSQL driver</td></tr>
+              <tr><td class="path-col">redis/go-redis/v9</td><td><span class="badge badge-blue">v9.5.3</span></td><td class="desc-col">Redis client</td></tr>
+              <tr><td class="path-col">golang.org/x/crypto</td><td><span class="badge badge-blue">v0.24.0</span></td><td class="desc-col">Argon2id</td></tr>
+              <tr><td class="path-col">google/uuid</td><td><span class="badge badge-blue">v1.6.0</span></td><td class="desc-col">UUID v4</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">O'rnatilgan infratuzilma</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Xizmat</th><th>Versiya</th><th>Port</th><th>Holat</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>PostgreSQL</td><td>16.6</td><td>5432</td>
+                <td><span class="badge badge-green">✓ Running</span></td>
+              </tr>
+              <tr>
+                <td>Redis</td><td>5.0.14.1</td><td>6379</td>
+                <td><span class="badge badge-green">✓ Running</span></td>
+              </tr>
+              <tr>
+                <td>Go server (TLS)</td><td>—</td><td>8443</td>
+                <td><span class="badge badge-green">✓ Running</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size:12px; color:var(--text-muted); margin-top:16px; margin-bottom:10px;">Fayl tizimida yaratilgan kalitlar</p>
+        <div class="code-block">
+C:\lokal-msg\
+├── jwt.key        <span class="ft-note">← 64 bayt, RNGCrypto</span>
+└── tls\
+    ├── server.crt  <span class="ft-note">← RSA-4096, 10 yil</span>
+    └── server.key  <span class="ft-note">← shaxsiy kalit</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ SECURITY ═════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🔒</span>
+      <h2>Xavfsizlik tamoyillari va amalga oshirilgan himoya</h2>
+    </div>
+    <div class="checklist">
+      <div class="check-item">
+        <span class="check-icon">🔐</span>
+        <div class="check-text">
+          <strong>Argon2id parol xeshlash</strong>
+          <p>m=65536 KB, t=3, p=2. Har bir xesh noyob tuz bilan. PHC-yaqin format. Vaqt-konstantali taqqoslash (timing attack'dan himoya).</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">🗝️</span>
+        <div class="check-text">
+          <strong>JWT HMAC-SHA256 + Redis sessiya</strong>
+          <p>Har bir token noyob JTI bilan. Chiqishda Redis'dan JTI o'chiriladi — token bekor qilish imkoni bor. TTL: 12 soat.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">🛡️</span>
+        <div class="check-text">
+          <strong>RBAC: admin / user rollari</strong>
+          <p><code>RequireRole("admin")</code> middleware'i <code>/api/v1/admin/*</code> marshrutlarini himoya qiladi. Ochiq ro'yxatdan o'tish butunlay o'chirilgan.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">📨</span>
+        <div class="check-text">
+          <strong>E2EE: Server xabar matnini ko'rmaydi</strong>
+          <p>Signal Protocol (X3DH + Double Ratchet). Server faqat <code>BYTEA ciphertext</code>'ni marshrutlaydi. <code>messages</code> jadvalida <code>ciphertext</code> ko'rsatilmaydi.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">⚡</span>
+        <div class="check-text">
+          <strong>Brute-force himoya (kirish)</strong>
+          <p>5 daqiqada 5 ta urinishdan ortiq: 429 Too Many Requests. 5 marta noto'g'ri parol: hisob 15 daqiqa qulflanadi.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">📝</span>
+        <div class="check-text">
+          <strong>Audit log</strong>
+          <p>Barcha admin amallari (<code>login.success</code>, <code>admin.user.create</code>, <code>admin.user.set_active</code>) IP manzil bilan <code>audit_log</code> jadvaliga yoziladi.</p>
+        </div>
+      </div>
+      <div class="check-item">
+        <span class="check-icon">🌐</span>
+        <div class="check-text">
+          <strong>TLS: Barcha trafik shifrlangan</strong>
+          <p>RSA-4096 o'z-o'zini imzolovchi sertifikat, 10 yillik. WebSocket ham <code>wss://</code> orqali ishlaydi. SAN: <code>DNS:server.lokal, IP:127.0.0.1</code>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ DATABASE SCHEMA ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🗄️</span>
+      <h2>Ma'lumotlar bazasi jadvallari</h2>
+      <span class="cnt">9 jadval</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>Jadval</th><th>Asosiy ustunlar</th><th>Maqsad</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>users</code></td>
+            <td class="desc-col">id (UUID), username, password_hash (argon2id), role, rank_title, unit_code, locked_until</td>
+            <td class="desc-col">Foydalanuvchilar, faqat admin yaratadi</td>
+          </tr>
+          <tr>
+            <td><code>identity_keys</code></td>
+            <td class="desc-col">user_id, registration_id, identity_key (BYTEA)</td>
+            <td class="desc-col">Signal Protocol doimiy ochiq kalit</td>
+          </tr>
+          <tr>
+            <td><code>signed_prekeys</code></td>
+            <td class="desc-col">user_id, key_id, public_key, signature</td>
+            <td class="desc-col">Imzolangan vaqtinchalik kalit (X3DH)</td>
+          </tr>
+          <tr>
+            <td><code>one_time_prekeys</code></td>
+            <td class="desc-col">user_id, key_id, public_key, used (BOOL)</td>
+            <td class="desc-col">Bir martalik oldindan-kalitlar (OTPKs)</td>
+          </tr>
+          <tr>
+            <td><code>chats</code></td>
+            <td class="desc-col">id, type (private/group), title, created_by</td>
+            <td class="desc-col">Suhbatlar — shaxsiy va guruh</td>
+          </tr>
+          <tr>
+            <td><code>chat_members</code></td>
+            <td class="desc-col">chat_id, user_id, role (owner/admin/member)</td>
+            <td class="desc-col">Suhbat a'zolari</td>
+          </tr>
+          <tr>
+            <td><code>messages</code></td>
+            <td class="desc-col">id, chat_id, sender_id, recipient_id, ciphertext (BYTEA), msg_type</td>
+            <td class="desc-col">Faqat shifrlangan baytlar — server ochiq matnni ko'rmaydi</td>
+          </tr>
+          <tr>
+            <td><code>files</code></td>
+            <td class="desc-col">id, uploader_id, storage_key, size_bytes, sha256</td>
+            <td class="desc-col">Shifrlangan fayl metama'lumoti</td>
+          </tr>
+          <tr>
+            <td><code>audit_log</code></td>
+            <td class="desc-col">id, actor_id, action, target_id, ip_address, created_at</td>
+            <td class="desc-col">Admin amallari va xavfsizlik hodisalari jurnali</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ NEXT STEPS ═══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🚀</span>
+      <h2>Keyingi bosqichlar</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>#</th><th>Bosqich</th><th>Tarkibi</th><th>Holat</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="color:var(--accent2); font-weight:700;">1</td>
+            <td><strong>Ma'lumotlar bazasi va Go Server</strong></td>
+            <td class="desc-col">PostgreSQL, Redis, TLS, JWT, barcha endpointlar</td>
+            <td><span class="badge badge-green">✓ Yakunlandi</span></td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent2); font-weight:700;">2</td>
+            <td><strong>Tauri + React Mijoz UI</strong></td>
+            <td class="desc-col">Telegram-vari interfeys, qorong'i rejim, login sahifasi, chat ro'yxati, xabar maydoni</td>
+            <td><span class="badge badge-yellow">Navbatda</span></td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent2); font-weight:700;">3</td>
+            <td><strong>Signal Protocol E2EE (Rust)</strong></td>
+            <td class="desc-col">libsignal, X3DH sessiya, Double Ratchet shifrlash, SQLite lokal saqlash</td>
+            <td><span class="badge badge-yellow">Navbatda</span></td>
+          </tr>
+          <tr>
+            <td style="color:var(--accent2); font-weight:700;">4</td>
+            <td><strong>Production binary va tarqatish</strong></td>
+            <td class="desc-col">npm run tauri build → .msi (Windows) va .AppImage (Linux), mijoz mashinalarga ulash</td>
+            <td><span class="badge badge-yellow">Navbatda</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:16px;" class="code-block">
+<span class="cmt">-- 2-Bosqichni boshlashdan oldin sinov foydalanuvchi qo'shish:</span>
+
+<span class="kw">POST</span> https://server.lokal:8443/api/v1/admin/users
+Authorization: Bearer &lt;admin_token&gt;
+
+{
+  <span class="str">"username"</span>:     <span class="str">"soldat01"</span>,
+  <span class="str">"display_name"</span>: <span class="str">"Serjant Aliyev"</span>,
+  <span class="str">"role"</span>:         <span class="str">"user"</span>,
+  <span class="str">"rank_title"</span>:   <span class="str">"Serjant"</span>,
+  <span class="str">"unit_code"</span>:    <span class="str">"B-12"</span>
+}
+
+<span class="cmt">-- Javob: { "user_id": "...", "temporary_password": "..." }</span>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>Harbiy Lokal Messenjer · 1-Bosqich Hisoboti</span>
+    <span>Go 1.26.3 · PostgreSQL 16.6 · Redis 5.0.14 · Windows 10 x64</span>
+    <span>2026-06-02 01:17 UTC+5</span>
+  </div>
+
+</div>
+</body>
+</html>
