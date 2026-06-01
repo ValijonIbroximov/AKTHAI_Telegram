@@ -48,13 +48,5 @@
     }
   },
 
-  "plugins": {
-    "log": {
-      "level": "warn",
-      "targets": [
-        { "kind": "stdout" },
-        { "kind": "folder", "path": "./logs" }
-      ]
-    }
-  }
+  "plugins": {}
 }

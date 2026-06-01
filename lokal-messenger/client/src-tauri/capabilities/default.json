@@ -1,6 +1,10 @@
 {
   "identifier": "default",
-  "description": "Asosiy oyna uchun standart ruxsatlar to'plami",
+  "description": "Harbiy Messenjer — asosiy oyna uchun ruxsatlar",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "log:default"
+  ]
 }
