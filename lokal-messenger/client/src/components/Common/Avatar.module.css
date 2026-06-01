@@ -1,21 +1,19 @@
 .root {
-  border-radius: 50%;
+  border-radius: var(--r-xs);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 500;
-  color: rgba(255,255,255,0.92);
+  font-weight: 700;
+  color: rgba(200, 230, 255, 0.9);
   flex-shrink: 0;
   position: relative;
+  font-family: var(--font-mono);
   letter-spacing: 0.5px;
 }
-
 .dot {
   position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 11px;
-  height: 11px;
+  bottom: -1px; right: -1px;
+  width: 9px; height: 9px;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--bg-1);
+  border: 1.5px solid var(--bg-panel);
 }

@@ -1,22 +1,35 @@
-/* Kirish sahifasi CSS moduli — Telegram Night uslubi */
+/* ─── Kirish sahifasi — Dark Navy / Cyan ─────────────────────── */
 
 .root {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--bg-0);
+  background: var(--bg-base);
   position: relative;
   overflow: hidden;
 }
 
-/* Orqadagi nuqtali tarmog'i */
-.bg {
+/* Orqa fon: diagonal grid + glow */
+.root::before {
+  content: '';
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(circle at 20% 30%, rgba(82,136,193,0.08) 0%, transparent 50%),
-    radial-gradient(circle at 80% 70%, rgba(82,136,193,0.05) 0%, transparent 50%);
+    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+.root::after {
+  content: '';
+  position: absolute;
+  bottom: -20%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60vw;
+  height: 40vh;
+  background: radial-gradient(ellipse at center, rgba(0,212,255,0.06) 0%, transparent 70%);
   pointer-events: none;
 }
 
@@ -24,131 +37,239 @@
 .card {
   position: relative;
   z-index: 1;
-  width: 360px;
-  background: var(--bg-1);
-  border: 1px solid rgba(82,136,193,0.12);
-  border-radius: 16px;
-  padding: 40px 36px 32px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.45);
-  animation: fadeIn 0.25s ease;
+  width: 340px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-md);
+  padding: 36px 32px 28px;
+  animation: fadeUp 0.3s ease;
+  box-shadow:
+    0 0 0 1px rgba(0,212,255,0.04),
+    0 24px 60px rgba(0,0,0,0.55),
+    0 0 40px rgba(0,212,255,0.04);
+}
+/* Yuqori chiziq — cyan aksent */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+
+/* Status indikator (tepada) */
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 24px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: glowPulse 2s infinite;
+  flex-shrink: 0;
 }
 
 /* Logo */
 .logo {
   display: flex;
-  justify-content: center;
-  margin-bottom: 18px;
-}
-.logo svg {
-  width: 64px;
-  height: 64px;
-  filter: drop-shadow(0 0 16px rgba(82,136,193,0.35));
-}
-
-/* Sarlavhalar */
-.title {
-  text-align: center;
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-1);
-  margin-bottom: 6px;
-}
-.subtitle {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-3);
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   margin-bottom: 28px;
+}
+.logoIcon {
+  width: 52px;
+  height: 52px;
+  border: 1.5px solid var(--border-med);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+}
+.logoIcon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--cyan-glow-s) 0%, transparent 60%);
+}
+.logoIcon svg {
+  width: 28px;
+  height: 28px;
+  color: var(--cyan);
+  position: relative;
+  z-index: 1;
+}
+.logoTitle {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text-1);
+}
+.logoSub {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
 }
 
 /* Forma */
-.form { display: flex; flex-direction: column; gap: 14px; }
+.form { display: flex; flex-direction: column; gap: 12px; }
 
-.field { display: flex; flex-direction: column; gap: 5px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
 
 .label {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
   color: var(--text-2);
-  letter-spacing: 0.3px;
 }
 
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.inputIcon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-3);
+  display: flex;
+  pointer-events: none;
+  transition: color var(--t-fast);
+}
 .input {
-  background: var(--bg-0);
-  border: 1px solid rgba(82,136,193,0.2);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 14px;
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-xs);
+  padding: 9px 12px 9px 34px;
+  font-size: 13px;
   color: var(--text-1);
-  transition: border-color 0.15s;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
   user-select: text;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
 }
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(82,136,193,0.12);
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px var(--cyan-glow-s), inset 0 0 20px rgba(0,212,255,0.03);
 }
-.input::placeholder { color: var(--text-3); }
-.input:disabled { opacity: 0.5; cursor: not-allowed; }
+.input:focus + .inputIcon,
+.inputWrap:focus-within .inputIcon {
+  color: var(--cyan);
+}
+.input::placeholder { color: var(--text-3); letter-spacing: 0; }
+.input:disabled     { opacity: 0.4; cursor: not-allowed; }
+
+/* Xato banner */
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(255, 59, 59, 0.08);
+  border: 1px solid rgba(255, 59, 59, 0.2);
+  border-left: 2px solid var(--danger);
+  border-radius: var(--r-xs);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #ff8080;
+  animation: fadeUp 0.15s ease;
+}
+.error span:first-child { font-size: 14px; margin-top: 1px; flex-shrink: 0; }
+.error span:nth-child(2) { flex: 1; line-height: 1.4; }
+.errorClose {
+  color: rgba(255,128,128,0.5);
+  font-size: 14px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.errorClose:hover { color: #ff8080; }
 
 /* Yuborish tugmasi */
-.submitBtn {
-  margin-top: 6px;
-  padding: 11px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  transition: background 0.15s, transform 0.1s;
+.btn {
+  margin-top: 4px;
+  padding: 10px;
+  background: linear-gradient(135deg, var(--cyan-dark) 0%, rgba(0,180,220,0.25) 100%);
+  border: 1px solid var(--border-med);
+  border-radius: var(--r-xs);
+  color: var(--cyan);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 44px;
+  transition: background var(--t-fast), box-shadow var(--t-fast), transform 0.1s;
+  position: relative;
+  overflow: hidden;
 }
-.submitBtn:hover:not(:disabled) { background: var(--accent-h); }
-.submitBtn:active:not(:disabled) { transform: scale(0.98); }
-.submitBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(0,212,255,0.08) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity var(--t-fast);
+}
+.btn:hover:not(:disabled)::after { opacity: 1; }
+.btn:hover:not(:disabled) {
+  box-shadow: 0 0 16px var(--cyan-glow-s);
+  border-color: var(--cyan);
+}
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* Spinner */
 .spinner {
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
+  width: 14px; height: 14px;
+  border: 1.5px solid rgba(0,212,255,0.25);
+  border-top-color: var(--cyan);
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  animation: spin 0.6s linear infinite;
 }
 
-/* Xato banner */
-.errorBanner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(224,92,92,0.12);
-  border: 1px solid rgba(224,92,92,0.25);
-  border-radius: 7px;
-  padding: 9px 12px;
-  font-size: 13px;
-  color: #e07e7e;
-  animation: fadeIn 0.2s ease;
-}
-.errorBanner > span:first-child { font-size: 15px; flex-shrink: 0; }
-.errorBanner > span:nth-child(2) { flex: 1; }
-.errorClose {
-  font-size: 14px;
-  color: rgba(224,92,92,0.6);
-  padding: 2px;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.errorClose:hover { color: #e07e7e; }
-
-/* Oxirgi izoh */
+/* Pastki izoh */
 .hint {
-  margin-top: 20px;
+  margin-top: 16px;
   text-align: center;
-  font-size: 11.5px;
+  font-size: 10px;
   color: var(--text-3);
-  line-height: 1.5;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  line-height: 1.6;
+}
+.hintHighlight {
+  color: var(--cyan-dim);
+}
+
+/* Versiya tag */
+.versionTag {
+  margin-top: 10px;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  opacity: 0.6;
 }

@@ -1,42 +1,43 @@
-// Yagona xabar "pufagi" — o'zining va kiruvchining uslublari farqli.
+// Yagona xabar pufakchasi.
 import type { Message } from "@/types";
-import styles from "./MessageBubble.module.css";
+import s from "./MessageBubble.module.css";
 
-// Xabar vaqtini HH:mm formatida qaytaradi
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("uz-UZ", {
-    hour:   "2-digit",
-    minute: "2-digit",
-  });
+function fmtTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
 }
 
-// Xabar holati uchun belgichalar
-function StatusIcon({ status }: { status: Message["status"] }) {
-  if (status === "sending")   return <span className={styles.statusSending}>•••</span>;
-  if (status === "sent")      return <span className={styles.statusSent} title="Yuborildi">✓</span>;
-  if (status === "delivered") return <span className={styles.statusDelivered} title="Yetkazildi">✓✓</span>;
-  if (status === "read")      return <span className={styles.statusRead} title="O'qildi">✓✓</span>;
+function Status({ status }: { status: Message["status"] }) {
+  if (status === "sending")   return <span className={s.stSending} title="Yuborilmoqda">···</span>;
+  if (status === "sent")      return <span className={s.stSent}     title="Yuborildi">✓</span>;
+  if (status === "delivered") return <span className={s.stDelivery} title="Yetkazildi">✓✓</span>;
+  if (status === "read")      return <span className={s.stRead}     title="O'qildi">✓✓</span>;
   return null;
 }
 
-interface MessageBubbleProps {
-  message: Message;
-  isOwn:   boolean;
-}
+interface Props { message: Message; isOwn: boolean; }
 
-export default function MessageBubble({ message, isOwn }: MessageBubbleProps) {
-  const text = message.plaintext ?? "[shifr ochilmadi 🔒]";
+export default function MessageBubble({ message, isOwn }: Props) {
+  const failed = message.plaintext === null && message.msg_type === "text";
 
   return (
-    <div className={`${styles.wrap} ${isOwn ? styles.own : styles.incoming}`}>
-      <div className={`${styles.bubble} ${isOwn ? styles.bubbleOwn : styles.bubbleIn}`}>
-        {/* Xabar matni */}
-        <p className={styles.text + " selectable"}>{text}</p>
+    <div className={`${s.wrap} ${isOwn ? s.own : s.incoming}`}>
+      <div className={`${s.bubble} ${isOwn ? s.bubbleOwn : s.bubbleIn}`}>
 
-        {/* Vaqt va holat */}
-        <div className={styles.meta}>
-          <span className={styles.time}>{formatTime(message.created_at)}</span>
-          {isOwn && <StatusIcon status={message.status} />}
+        {failed ? (
+          <p className={s.textEncrypted}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0110 0v4"/>
+            </svg>
+            [shifr ochilmadi]
+          </p>
+        ) : (
+          <p className={`${s.text} selectable`}>{message.plaintext ?? ""}</p>
+        )}
+
+        <div className={s.meta}>
+          <span className={s.time}>{fmtTime(message.created_at)}</span>
+          {isOwn && <Status status={message.status} />}
         </div>
       </div>
     </div>

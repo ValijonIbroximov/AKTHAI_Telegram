@@ -1,43 +1,30 @@
-// Foydalanuvchi avatari — Telegram uslubida ranglar bilan bosh harf ko'rsatiladi.
+// Harbiy uslub avatari — to'rtburchak, rang + harf.
 import { useMemo } from "react";
-import styles from "./Avatar.module.css";
+import s from "./Avatar.module.css";
 
-const COLORS = [
-  "#c03d33", "#4fad2d", "#d09306", "#168acd",
-  "#8544d6", "#cd4073", "#2996ad", "#ce671b",
-];
-
-function colorFor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash << 5) - hash + name.charCodeAt(i);
-    hash |= 0;
-  }
-  return COLORS[Math.abs(hash) % COLORS.length];
+const COLORS = ["#1a6b8a","#1a6b4a","#6b4a1a","#6b1a4a","#4a1a6b","#1a4a6b","#6b6b1a"];
+function colorFor(name: string) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return COLORS[Math.abs(h) % COLORS.length];
 }
 
-interface AvatarProps {
-  name:     string;
-  size?:    number;
-  online?:  boolean;
-}
+interface AvatarProps { name: string; size?: number; online?: boolean; }
 
-export default function Avatar({ name, size = 42, online }: AvatarProps) {
-  const color  = useMemo(() => colorFor(name), [name]);
-  const letter = name.charAt(0).toUpperCase();
-
+export default function Avatar({ name, size = 38, online }: AvatarProps) {
+  const bg = useMemo(() => colorFor(name), [name]);
   return (
     <div
-      className={styles.root}
-      style={{ width: size, height: size, background: color, fontSize: size * 0.4 }}
+      className={s.root}
+      style={{ width: size, height: size, background: bg, fontSize: size * 0.38 }}
       aria-label={name}
     >
-      {letter}
+      {name.charAt(0).toUpperCase()}
       {online !== undefined && (
         <span
-          className={styles.dot}
-          style={{ background: online ? "var(--green)" : "transparent", border: online ? "none" : "2px solid var(--text-3)" }}
-          aria-label={online ? "Online" : "Offline"}
+          className={s.dot}
+          style={{ background: online ? "var(--success)" : "transparent",
+                   borderColor: online ? "var(--bg-panel)" : "var(--text-3)" }}
         />
       )}
     </div>

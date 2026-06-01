@@ -1,117 +1,125 @@
-/* Chap panel uslublari */
+/* ─── Chap panel — suhbatlar ro'yxati ────────────────────────── */
 
 .root {
   display: flex;
   flex-direction: column;
-  width: 260px;
+  width: 252px;
   min-width: 200px;
-  max-width: 320px;
+  max-width: 300px;
   height: 100%;
-  background: var(--bg-1);
+  background: var(--bg-panel);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative;
 }
 
-/* Sarlavha */
+/* Yuqori sarlavha */
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  height: 52px;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
+  height: 48px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
 }
 .headerTitle {
   flex: 1;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-1);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-2);
 }
-.menuBtn, .editBtn {
-  width: 32px; height: 32px;
-  border-radius: 50%;
+.iconBtn {
+  width: 28px; height: 28px;
+  border-radius: var(--r-xs);
   display: flex; align-items: center; justify-content: center;
   color: var(--text-3);
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast);
+  flex-shrink: 0;
 }
-.menuBtn:hover, .editBtn:hover {
-  background: var(--bg-2);
-  color: var(--text-1);
+.iconBtn:hover {
+  background: var(--bg-hover);
+  color: var(--cyan);
 }
 
-/* Qidiruv */
-.searchWrap {
+/* Qidiruv maydoni */
+.searchBox {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.searchInner {
   position: relative;
-  margin: 8px 10px;
+  display: flex;
+  align-items: center;
 }
 .searchIcon {
   position: absolute;
-  left: 10px; top: 50%;
-  transform: translateY(-50%);
+  left: 9px;
   color: var(--text-3);
   pointer-events: none;
+  display: flex;
 }
 .searchInput {
   width: 100%;
-  background: var(--bg-0);
-  border: 1px solid transparent;
-  border-radius: 20px;
-  padding: 7px 12px 7px 30px;
-  font-size: 13px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  padding: 6px 10px 6px 28px;
+  font-size: 12px;
   color: var(--text-1);
-  transition: border-color 0.15s;
+  transition: border-color var(--t-fast);
   user-select: text;
 }
-.searchInput:focus {
-  border-color: rgba(82,136,193,0.3);
-}
+.searchInput:focus   { border-color: var(--border-soft); }
 .searchInput::placeholder { color: var(--text-3); }
 
-/* Ro'yxat */
+/* Suhbatlar ro'yxati */
 .list {
   flex: 1;
   overflow-y: auto;
+  padding: 4px 0;
 }
-
 .empty {
-  text-align: center;
   padding: 40px 16px;
-  font-size: 13px;
+  text-align: center;
+  font-size: 11px;
   color: var(--text-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
 }
 
 /* Pastki profil paneli */
 .footer {
-  border-top: 1px solid rgba(255,255,255,0.04);
-  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  padding: 8px 10px;
   display: flex;
   align-items: center;
-  gap: 10px;
-}
-.footerUser {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  min-width: 0;
-}
-.footerAvatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: var(--accent);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
+  gap: 8px;
   flex-shrink: 0;
 }
+.footerAvatar {
+  width: 30px; height: 30px;
+  border-radius: var(--r-xs);
+  background: var(--bg-active);
+  border: 1px solid var(--border-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cyan);
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+}
 .footerInfo {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
 }
 .footerName {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-1);
   overflow: hidden;
@@ -119,15 +127,20 @@
   white-space: nowrap;
 }
 .footerRole {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-3);
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
 }
 .logoutBtn {
-  width: 30px; height: 30px;
-  border-radius: 50%;
+  width: 26px; height: 26px;
+  border-radius: var(--r-xs);
   display: flex; align-items: center; justify-content: center;
   color: var(--text-3);
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast);
   flex-shrink: 0;
 }
-.logoutBtn:hover { background: rgba(224,92,92,0.12); color: var(--red); }
+.logoutBtn:hover {
+  background: rgba(255, 59, 59, 0.1);
+  color: var(--danger);
+}

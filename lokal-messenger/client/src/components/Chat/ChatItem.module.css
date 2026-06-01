@@ -1,56 +1,64 @@
+/* ─── Suhbat qatori elementi ─────────────────────────────────── */
+
 .root {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: 9px;
+  padding: 7px 10px;
   cursor: pointer;
-  border-radius: 0;
-  transition: background 0.12s;
-  min-height: 64px;
+  transition: background var(--t-fast);
+  border-left: 2px solid transparent;
+  min-height: 58px;
+  position: relative;
 }
-.root:hover   { background: var(--bg-2); }
-.root.active  { background: var(--bg-3); }
+.root:hover  { background: var(--bg-hover); }
+.root.active {
+  background: var(--bg-active);
+  border-left-color: var(--cyan);
+}
+.root:focus-visible { outline: none; background: var(--bg-hover); }
 
-.body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+/* Avatar to'rtburchak (harbiy uslub) */
+.avatar {
+  width: 38px; height: 38px;
+  border-radius: var(--r-xs);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-inv);
+  flex-shrink: 0;
+  position: relative;
+  font-family: var(--font-mono);
+}
+.root.active .avatar {
+  box-shadow: 0 0 8px rgba(0,212,255,0.3);
 }
 
-.top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px;
-}
+/* Matn qismi */
+.body  { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.top   { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.bot   { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 
 .title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
 }
+.root.active .title { color: var(--cyan); }
 
 .time {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-3);
+  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
-.bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
 .preview {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -59,16 +67,14 @@
 }
 
 .badge {
-  min-width: 20px;
-  height: 20px;
+  min-width: 18px; height: 18px;
   padding: 0 5px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 11px;
+  background: var(--cyan);
+  color: var(--bg-base);
+  font-size: 10px;
   font-weight: 700;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
+  font-family: var(--font-mono);
 }
