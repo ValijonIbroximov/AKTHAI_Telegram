@@ -1,33 +1,60 @@
 {
-  "productName": "LokalMessenger",
-  "version": "1.0.0",
-  "identifier": "uz.mil.lokal.messenger",
-  "build": {
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173"
-  },
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Harbiy Messenjer",
+  "version":     "0.1.0",
+  "identifier":  "uz.mil.lokal-messenger",
+
   "app": {
     "windows": [
       {
-        "label": "main",
-        "title": "Lokal Messenger",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 760,
-        "minHeight": 500,
-        "decorations": true,
-        "resizable": true
+        "title":           "Harbiy Messenjer",
+        "width":           960,
+        "height":          640,
+        "minWidth":        720,
+        "minHeight":       480,
+        "resizable":       true,
+        "decorations":     false,
+        "transparent":     false,
+        "center":          true,
+        "url":             "index.html"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://server.lokal:8443 https://server.lokal:8443"
+      "csp": "default-src 'self'; connect-src 'self' https://server.lokal:8443 wss://server.lokal:8443; script-src 'self'"
     }
   },
+
+  "build": {
+    "beforeDevCommand":   "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl":             "http://localhost:1420",
+    "frontendDist":       "../dist"
+  },
+
   "bundle": {
-    "active": true,
-    "targets": ["msi", "deb", "appimage"],
-    "icon": ["icons/icon.png"]
+    "active":  true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  },
+
+  "plugins": {
+    "log": {
+      "level": "warn",
+      "targets": [
+        { "kind": "stdout" },
+        { "kind": "folder", "path": "./logs" }
+      ]
+    }
   }
 }

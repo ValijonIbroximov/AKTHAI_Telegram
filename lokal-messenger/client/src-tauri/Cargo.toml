@@ -1,44 +1,80 @@
-# Fayl: client/src-tauri/Cargo.toml
-# Maqsad: Tauri mijozining Rust qaramliklari e'lon qilinadi.
-# Eslatma: libsignal API'si versiyaga sezgir. Quyidagi "tag" qiymati qurish
-#          paytida o'rnatilgan kutubxona versiyasiga moslab tekshiriladi.
 [package]
-name = "lokal-messenger-client"
-version = "1.0.0"
+name    = "lokal-messenger"
+version = "0.1.0"
 edition = "2021"
-description = "Yopiq tarmoq uchun E2EE messenjer (Tauri mijozi)"
 
-[build-dependencies]
-tauri-build = { version = "2.0", features = [] }
+[lib]
+name         = "lokal_messenger_lib"
+crate-type   = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "lokal-messenger"
+path = "src/main.rs"
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# ── Tauri ──────────────────────────────────────────────────────────────────
+tauri            = { version = "2", features = [] }
+tauri-plugin-shell = "2"
 
-# Signal Protocol implementatsiyasi (X3DH + Double Ratchet)
-libsignal-protocol = { git = "https://github.com/signalapp/libsignal", tag = "v0.50.0" }
+# ── Async runtime ──────────────────────────────────────────────────────────
+tokio   = { version = "1", features = ["full"] }
 
-# Mahalliy saqlov (identity, prekey, session yozuvlari)
-rusqlite = { version = "0.31", features = ["bundled"] }
+# ── Serializatsiya ─────────────────────────────────────────────────────────
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
 
-# Server bilan REST aloqasi (yopiq tarmoqda o'z-o'zini imzolagan TLS bilan)
+# ── HTTP mijoz (serverga so'rov yuborish) ─────────────────────────────────
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
-# Asinxron ish vaqti va yordamchi kutubxonalar
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
-async-trait = "0.1"
-# libsignal'ning mahalliy (Send bo'lmagan) asinxron chaqiruvlarini bloklab bajarish uchun
-futures = { version = "0.3", default-features = false, features = ["executor"] }
-rand = "0.8"
-base64 = "0.22"
-zeroize = "1.7"
-thiserror = "1"
+# ── WebSocket ─────────────────────────────────────────────────────────────
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util      = "0.3"
+
+# ── Signal Protocol kriptografik primitiv kutubxonalari ───────────────────
+# X25519 — Diffie-Hellman (X3DH kalit almashish uchun)
+x25519-dalek = { version = "2", features = ["static_secrets", "reusable_secrets"] }
+# Ed25519 — imzo (signed prekey uchun)
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# Curve25519 — Ed25519→X25519 konvertatsiyasi uchun
+curve25519-dalek = { version = "4", features = ["alloc"] }
+# AES-256-GCM — simmetrik shifrlash (Double Ratchet xabar shifrlash)
+aes-gcm = "0.10"
+# HKDF — kalit hosil qilish funksiyasi
+hkdf    = "0.12"
+# SHA-256 va HMAC — ratchet zanjiri uchun
+sha2    = "0.10"
+hmac    = "0.12"
+# Tasodifiy sonlar
+rand    = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+# Base64 kodlash/dekodlash
+base64  = "0.22"
+# Vaqt
+chrono  = { version = "0.4", features = ["serde"] }
+# UUID
+uuid    = { version = "1", features = ["v4", "serde"] }
+
+# ── Lokal saqlash: SQLite (Signal kalit-bundlelari va sessiyalar) ──────────
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# ── Xatolar ───────────────────────────────────────────────────────────────
+anyhow  = "1"
+thiserror = "2"
+
+# ── Loglash ───────────────────────────────────────────────────────────────
+log           = "0.4"
+tauri-plugin-log = "2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [profile.release]
-# Kuchsiz mashinalar uchun kichik va tez binar
-opt-level = "z"
-lto = true
+# Ishlab chiqarish rejimida CPU va RAM sarfi minimallashtiriladi
+opt-level   = "z"      # Hajm bo'yicha optimallashtirish
+lto         = true
 codegen-units = 1
-strip = true
-panic = "abort"
+panic       = "abort"
+strip       = true
+
+[profile.dev]
+opt-level = 1          # Debug rejimda ham ma'qul tezlik

@@ -1,0 +1,75 @@
+/* Telegram Desktop qorong'i mavzusiga mos global uslublar */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Asosiy rang palitrasi (Telegram Desktop Night) */
+  --bg-0:       #0e1621;   /* eng chuqur fon */
+  --bg-1:       #17212b;   /* panel foni */
+  --bg-2:       #1c2b3a;   /* hoverlangan element */
+  --bg-3:       #243344;   /* tanlangan element */
+  --border:     #0d1823;
+  --accent:     #5288c1;
+  --accent-h:   #6b9fd4;
+  --text-1:     #d4e5f5;   /* asosiy matn */
+  --text-2:     #8cacc6;   /* ikkinchi darajali matn */
+  --text-3:     #4f7499;   /* vaqt, placeholder */
+  --bubble-out: #2b5278;   /* o'zining xabari */
+  --bubble-in:  #182533;   /* kiruvchi xabar */
+  --green:      #4dbd74;
+  --red:        #e05c5c;
+  --yellow:     #f0c040;
+
+  /* Tipografiya */
+  --font-sans: -apple-system, 'Segoe UI', 'Inter', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: var(--font-sans);
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--text-1);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+/* Foydalanuvchi tanlanadigan matn uchun */
+.selectable { user-select: text; }
+
+/* Fokus hoshiyasi */
+:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 2px; }
+
+/* Tugma bazaviy uslubi */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+/* Input bazaviy uslubi */
+input, textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+/* Ikonkalar uchun yordamchi */
+.icon { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Kichik animatsiyalar */
+@keyframes fadeIn  { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes pulse   { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes spin    { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

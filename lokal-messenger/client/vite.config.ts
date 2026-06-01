@@ -1,20 +1,33 @@
-// Fayl: client/vite.config.ts
-// Maqsad: Vite qurilish vositasi React va Tauri mijozi uchun sozlanadi.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Tauri rivojlanish serveri uchun aniq port va host belgilanadi.
+// Tauri development server port va host sozlamalari.
+// HTTPS o'chirilgan — Tauri o'zi TLS boshqaradi.
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: {
-    port: 5173,
-    strictPort: true,
+    port:         1420,
+    strictPort:   true,
+    watch: {
+      // Tauri src-tauri papkasini kuzatmaslik (qo'shcha qayta yuklashdan saqlaydi)
+      ignored: ["**/src-tauri/**"],
+    },
   },
+  envPrefix: ["VITE_", "TAURI_"],
   build: {
-    // Kuchsiz mashinalar uchun maqsadli muhit zamonaviy WebView'ga moslanadi
-    target: "es2021",
-    minify: "esbuild",
-    sourcemap: false,
+    // Tauri Windows x64 uchun optimizatsiya
+    target:           "chrome120",
+    minify:           "esbuild",
+    sourcemap:        false,
+    rollupOptions: {
+      output: {
+        // Katta bo'laklarni bo'lish (lazy loading uchun)
+        manualChunks: {
+          vendor: ["react", "react-dom"],
+          state:  ["zustand"],
+        },
+      },
+    },
   },
 });

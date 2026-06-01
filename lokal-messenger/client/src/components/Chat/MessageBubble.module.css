@@ -1,0 +1,51 @@
+.wrap {
+  display: flex;
+  animation: fadeIn 0.15s ease;
+  margin-bottom: 1px;
+}
+.own      { justify-content: flex-end; }
+.incoming { justify-content: flex-start; }
+
+.bubble {
+  max-width: 65%;
+  min-width: 80px;
+  padding: 7px 10px 5px;
+  border-radius: 12px;
+  word-break: break-word;
+  position: relative;
+}
+
+.bubbleOwn {
+  background: var(--bubble-out);
+  border-bottom-right-radius: 3px;
+}
+.bubbleIn {
+  background: var(--bubble-in);
+  border-bottom-left-radius: 3px;
+}
+
+.text {
+  font-size: 14px;
+  color: var(--text-1);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.time {
+  font-size: 11px;
+  color: rgba(196,220,245,0.5);
+}
+
+/* Holat belgilari */
+.statusSending  { font-size: 10px; color: rgba(196,220,245,0.4); letter-spacing: -1px; }
+.statusSent     { font-size: 12px; color: rgba(196,220,245,0.5); }
+.statusDelivered{ font-size: 12px; color: rgba(196,220,245,0.7); }
+.statusRead     { font-size: 12px; color: #5bb8ff; }

@@ -1,5 +1,4 @@
-// Fayl: client/src-tauri/build.rs
-// Maqsad: Tauri qurilish bosqichida zarur kod generatsiyasi amalga oshiriladi.
+// Tauri build skripti — ilov resurslarini va ruxsatlarni tayyorlaydi.
 fn main() {
     tauri_build::build()
 }
