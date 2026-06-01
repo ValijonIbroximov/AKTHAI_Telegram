@@ -72,11 +72,12 @@ export interface WsDelivery {
   message_id: string;
 }
 
-// Login javob turi
+// Login javob turi (Go server: loginResponse struct bilan mos)
 export interface LoginResponse {
-  access_token: string;
-  user_id:      string;
-  role:         string;
+  token:               string;   // Go server "token" deb qaytaradi
+  user_id:             string;
+  role:                string;
+  must_change_password: boolean;
 }
 
 // Signal Protocol kalit-bundle (X3DH uchun)

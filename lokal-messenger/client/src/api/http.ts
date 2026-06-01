@@ -54,9 +54,12 @@ export const authApi = {
 };
 
 // ── Foydalanuvchilar ────────────────────────────────────────────────
+// Go server /me → { user_id, role } qaytaradi (id va username alohida yo'q)
+interface MeResponse { user_id: string; role: string }
+
 export const userApi = {
   me: (token: string) =>
-    request<Pick<User, "id" | "username" | "role">>("GET", "/me", token),
+    request<MeResponse>("GET", "/me", token),
 
   list: (token: string) =>
     request<User[]>("GET", "/users", token),

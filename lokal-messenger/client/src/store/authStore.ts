@@ -1,7 +1,7 @@
 // Autentifikatsiya holati: token, joriy foydalanuvchi, session boshqaruvi.
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { authApi, userApi } from "@/api/http";
+import { authApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
 
 interface AuthState {
@@ -29,27 +29,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (username, password) => {
     set({ loading: true, error: null });
     try {
+      // Login response'da user_id, role va token mavjud — alohida /me chaqiruvi shart emas
       const res = await authApi.login(username, password);
-      const me  = await userApi.me(res.access_token);
+      const jwt = res.token;
 
-      // Tokenni Tauri xavfsiz xotiraga (SecureStorage) saqlash
-      await invoke("store_token", { token: res.access_token });
+      // Tokenni Tauri xavfsiz xotiraga saqlash
+      await invoke("store_token", { token: jwt });
 
       // Signal Protocol kalitlari bazasi mavjud bo'lmasa, yangi yaratilib yuklanadi
       await invoke("init_signal_keys", {
-        token:  res.access_token,
-        userId: me.id,
+        token:  jwt,
+        userId: res.user_id,
       });
 
       set({
-        token:    res.access_token,
-        userId:   me.id,
-        username: me.username,
-        role:     me.role as "admin" | "user",
+        token:    jwt,
+        userId:   res.user_id,
+        username,              // foydalanuvchi kiritgan login ishlatiladi
+        role:     res.role as "admin" | "user",
         loading:  false,
       });
 
-      wsClient.connect(res.access_token);
+      wsClient.connect(jwt);
     } catch (err) {
       set({
         loading: false,
