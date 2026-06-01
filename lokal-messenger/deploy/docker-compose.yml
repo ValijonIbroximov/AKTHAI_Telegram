@@ -1,47 +1,62 @@
 # Fayl: deploy/docker-compose.yml
-# Maqsad: Server, PostgreSQL va Redis yagona ichki tarmoqda ishga tushiriladi.
+# Maqsad: Server, PostgreSQL va Redis bitta izolyatsiyalangan tarmoqda ishga tushiriladi.
+# Faqat 8443 porti tashqariga ochiladi — PostgreSQL va Redis internal qoladi.
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: always
     environment:
       POSTGRES_USER: msg
-      POSTGRES_PASSWORD: STRONG
+      POSTGRES_PASSWORD: STRONG_DB_PASSWORD
       POSTGRES_DB: lokal_messenger
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Migratsiya fayllari birinchi ishga tushishda avtomatik bajariladi
       - ../server/db/migrations:/docker-entrypoint-initdb.d:ro
     networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msg -d lokal_messenger"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     restart: always
-    # Xotira cheklangan, eng kam ishlatilgan kalitlar siqib chiqariladi
     command:
-      [
-        "redis-server",
-        "--save",
-        "60",
-        "1",
-        "--maxmemory",
-        "256mb",
-        "--maxmemory-policy",
-        "allkeys-lru",
-      ]
+      - redis-server
+      - --save
+      - "60"
+      - "1"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --bind
+      - 0.0.0.0
     networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   server:
-    build: ../server
+    build:
+      context: ../server
+      dockerfile: Dockerfile
     restart: always
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8443:8443"
     volumes:
-      # TLS sertifikatlari va JWT kaliti shu katalogdan o'qiladi
       - ./tls:/etc/lokal-msg:ro
-      # Server konfiguratsiyasi konteyner ichiga ulanadi
-      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - CONFIG_PATH=/app/config.yaml
     networks: [internal]
 
 volumes:

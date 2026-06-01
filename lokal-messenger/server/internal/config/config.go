@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config — butun server uchun yagona konfiguratsiya konteyneri.
+// Config — server konfiguratsiyasining ildiz strukturasi.
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
@@ -17,43 +17,42 @@ type Config struct {
 	Limits   LimitsConfig   `yaml:"limits"`
 }
 
-// ServerConfig — tinglash manzili va TLS sozlamalari.
+// ServerConfig — HTTP/TLS server manzili va sertifikat yo'llari.
 type ServerConfig struct {
 	BindAddress string    `yaml:"bind_address"`
 	TLS         TLSConfig `yaml:"tls"`
 }
 
-// TLSConfig — shifrlangan kanal uchun sertifikat yo'llari.
+// TLSConfig — TLS sertifikat va kalit fayllari yo'li.
 type TLSConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	CertFile string `yaml:"cert_file"`
 	KeyFile  string `yaml:"key_file"`
 }
 
-// DatabaseConfig — PostgreSQL ulanish satri va hovuz cheklovlari.
+// DatabaseConfig — PostgreSQL ulanish parametrlari.
 type DatabaseConfig struct {
 	DSN          string `yaml:"dsn"`
 	MaxOpenConns int    `yaml:"max_open_conns"`
 	MaxIdleConns int    `yaml:"max_idle_conns"`
 }
 
-// RedisConfig — Redis ulanish parametrlari.
+// RedisConfig — Redis server manzili va autentifikatsiya.
 type RedisConfig struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
 }
 
-// AuthConfig — autentifikatsiya va parol xeshlash parametrlari.
+// AuthConfig — JWT va parol xeshlash parametrlari.
 type AuthConfig struct {
 	JWTSecretFile    string       `yaml:"jwt_secret_file"`
 	AccessTTLMinutes int          `yaml:"access_ttl_minutes"`
 	Argon2           Argon2Params `yaml:"argon2"`
 }
 
-// Argon2Params — parol xeshlash kuchi sozlamalari.
-// Bu tip yagona joyda (config paketida) e'lon qilinadi va auth paketi
-// tomonidan import qilinadi (import sikli bo'lmasligi uchun).
+// Argon2Params — Argon2id algoritmining sozlamalari.
+// memory_kb qanchalik katta bo'lsa, xeshlash shunchalik xavfsiz (lekin sekin).
 type Argon2Params struct {
 	Memory      uint32 `yaml:"memory_kb"`
 	Iterations  uint32 `yaml:"iterations"`
@@ -62,14 +61,14 @@ type Argon2Params struct {
 	KeyLength   uint32 `yaml:"key_length"`
 }
 
-// LimitsConfig — xabar va fayl hajmlari hamda tezlik cheklovlari.
+// LimitsConfig — xabar va fayl o'lchamlari, kirish chastotasi chegaralari.
 type LimitsConfig struct {
 	MaxMessageSizeBytes int64 `yaml:"max_message_size_bytes"`
 	MaxFileSizeBytes    int64 `yaml:"max_file_size_bytes"`
 	RateLoginPer5Min    int   `yaml:"rate_login_per_5min"`
 }
 
-// Load — konfiguratsiya fayli diskdan o'qilib, struktura sifatida qaytariladi.
+// Load — berilgan yo'ldagi YAML fayli o'qilib, Config strukturasi qaytariladi.
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {

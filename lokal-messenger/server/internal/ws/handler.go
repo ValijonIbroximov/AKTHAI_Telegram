@@ -6,18 +6,14 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/gofiber/contrib/websocket"
+	fws "github.com/gofiber/contrib/websocket"
 )
 
-// ServeWS — WebSocket'ga ulangan har bir mijoz uchun ishlovchi gorutin qaytaradi.
-func ServeWS(hub *Hub) func(c *websocket.Conn) {
-	return func(c *websocket.Conn) {
-		// Foydalanuvchi identifikatori autentifikatsiya middleware'i tomonidan yozilgan
+// ServeWS — WebSocket'ga ulangan har bir mijoz uchun ishlovchi gorutin.
+// Har bir ulanish uchun alohida goroutin ishlatiladi — server xotirasi tejamkor saqlanadi.
+func ServeWS(hub *Hub) func(c *fws.Conn) {
+	return func(c *fws.Conn) {
 		userID, _ := c.Locals("user_id").(string)
-		if userID == "" {
-			_ = c.Close()
-			return
-		}
 
 		client := &Client{
 			UserID: userID,
@@ -26,7 +22,7 @@ func ServeWS(hub *Hub) func(c *websocket.Conn) {
 		hub.Register() <- client
 		defer func() { hub.Unregister() <- client }()
 
-		// Yozish gorutini — Send kanalidagi paketlar mijozga uzatiladi
+		// Yozish goroutini — Send kanalidagi paketlar mijozga uzatiladi
 		go func() {
 			ticker := time.NewTicker(30 * time.Second)
 			defer ticker.Stop()
@@ -34,17 +30,17 @@ func ServeWS(hub *Hub) func(c *websocket.Conn) {
 				select {
 				case msg, ok := <-client.Send:
 					if !ok {
-						_ = c.WriteMessage(websocket.CloseMessage, []byte{})
+						_ = c.WriteMessage(fws.CloseMessage, []byte{})
 						return
 					}
 					_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
+					if err := c.WriteMessage(fws.TextMessage, msg); err != nil {
 						return
 					}
 				case <-ticker.C:
-					// Aloqani tirik saqlash uchun davriy ping yuboriladi
+					// Ulanish tirik ekanligini tekshirish uchun ping yuboriladi
 					_ = c.SetWriteDeadline(time.Now().Add(10 * time.Second))
-					if err := c.WriteMessage(websocket.PingMessage, nil); err != nil {
+					if err := c.WriteMessage(fws.PingMessage, nil); err != nil {
 						return
 					}
 				}
@@ -53,9 +49,9 @@ func ServeWS(hub *Hub) func(c *websocket.Conn) {
 
 		// O'qish halqasi — kiruvchi paketlar Hub'ga yuboriladi
 		c.SetReadLimit(128 * 1024)
-		_ = c.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.SetReadDeadline(time.Now().Add(60 * time.Second))
 		c.SetPongHandler(func(string) error {
-			_ = c.SetReadDeadline(time.Now().Add(60 * time.Second))
+			c.SetReadDeadline(time.Now().Add(60 * time.Second))
 			return nil
 		})
 
@@ -68,7 +64,6 @@ func ServeWS(hub *Hub) func(c *websocket.Conn) {
 			if err := json.Unmarshal(raw, &env); err != nil {
 				continue
 			}
-			// Yuboruvchi har doim autentifikatsiyalangan foydalanuvchi bo'ladi (soxtalashtirishdan himoya)
 			env.From = userID
 			hub.Inbound() <- env
 		}

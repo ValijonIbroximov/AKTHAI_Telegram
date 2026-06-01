@@ -3,27 +3,30 @@
 package api
 
 import (
-	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	fws "github.com/gofiber/contrib/websocket"
+
 	"github.com/military/lokal-messenger/server/internal/middleware"
 	"github.com/military/lokal-messenger/server/internal/ws"
 )
 
-// RegisterRoutes — ilovaga barcha marshrutlar va middlewarelar biriktiriladi.
+// RegisterRoutes — barcha marshrutlar Fiber ilovasiga biriktiriladi.
 func RegisterRoutes(app *fiber.App, deps *Deps) {
 	h := &Handlers{deps: deps}
 
-	// Sog'liq tekshiruvi (autentifikatsiyasiz)
-	app.Get("/healthz", func(c *fiber.Ctx) error { return c.SendString("ok") })
+	// Sogʻliq tekshiruvi — load balancer uchun
+	app.Get("/healthz", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
 
-	// Ochiq marshrut — faqat login (ochiq ro'yxatdan o'tish yo'q)
+	// Ochiq marshrut — autentifikatsiyasiz
 	app.Post("/api/v1/auth/login", h.Login)
 
-	// Autentifikatsiya talab qilinadigan marshrutlar guruhi
+	// Autentifikatsiya talab qilinadigan REST marshrutlari
 	authMW := middleware.Authenticate(deps.JWT, deps.Cache)
 	v1 := app.Group("/api/v1", authMW)
 
-	// Foydalanuvchining o'zi bilan bog'liq amallar
+	// Joriy foydalanuvchi amallari
 	v1.Post("/auth/change-password", h.ChangePassword)
 	v1.Post("/auth/logout", h.Logout)
 	v1.Get("/me", h.Me)
@@ -33,7 +36,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	v1.Get("/keys/:id/bundle", h.FetchKeyBundle)
 	v1.Post("/keys/refill-otpks", h.RefillOneTimePreKeys)
 
-	// Suhbatlar va shifrlangan xabarlar tarixi
+	// Suhbatlar va xabarlar tarixi (shifrlangan)
 	v1.Get("/chats", h.ListChats)
 	v1.Post("/chats", h.CreateChat)
 	v1.Get("/chats/:id/messages", h.ChatHistory)
@@ -41,20 +44,22 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	// Foydalanuvchilar katalogi
 	v1.Get("/users", h.ListUsers)
 
-	// Faqat admin uchun marshrutlar
+	// Faqat admin uchun marshrutlar (RBAC: "admin" roli talab qilinadi)
 	admin := v1.Group("/admin", middleware.RequireRole("admin"))
 	admin.Post("/users", h.AdminCreateUser)
 	admin.Patch("/users/:id/active", h.AdminSetActive)
-	admin.Post("/users/:id/reset-password", h.AdminResetPassword)
 	admin.Get("/audit-log", h.AdminAuditLog)
 
-	// WebSocket marshruti — token so'rov parametri orqali tekshiriladi,
-	// so'ngra aloqa WebSocket darajasiga ko'tariladi.
-	app.Get("/ws",
-		middleware.AuthenticateWS(deps.JWT, deps.Cache),
-		websocket.New(ws.ServeWS(deps.Hub), websocket.Config{
-			ReadBufferSize:  4096,
-			WriteBufferSize: 4096,
-		}),
-	)
+	// WebSocket marshruti — upgrade tekshiruvi middleware sifatida
+	app.Use("/ws", authMW, func(c *fiber.Ctx) error {
+		if fws.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
+	app.Get("/ws", fws.New(ws.ServeWS(deps.Hub), fws.Config{
+		ReadBufferSize:  4096,
+		WriteBufferSize: 4096,
+	}))
 }

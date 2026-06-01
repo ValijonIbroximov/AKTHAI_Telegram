@@ -1,26 +1,24 @@
 -- Fayl: server/db/migrations/0001_init.sql
 -- Maqsad: Lokal messenjer uchun butun ma'lumotlar modeli yaratiladi.
--- Tamoyil: Server faqat shifrlangan baytlarni (ciphertext) saqlaydi; ochiq matn hech qachon ko'rilmaydi.
 
--- UUID va kriptografik funksiyalar uchun kengaytma yoqiladi
+-- UUID generatori uchun kengaytma yoqiladi
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
 -- Foydalanuvchilar jadvali
--- Faqat admin foydalanuvchi hisoblarini yarata oladi (ochiq ro'yxatdan o'tish yo'q).
--- Parol argon2id hash qilinib saqlanadi (ochiq matn emas).
+-- Faqat admin foydalanuvchi hisoblarini yarata oladi.
+-- Parol argon2id hash qilinib saqlanadi (clear text emas).
 -- ============================================================
 CREATE TABLE users (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username                VARCHAR(64) UNIQUE NOT NULL,
-    password_hash           TEXT NOT NULL,                  -- argon2id$...$...
+    password_hash           TEXT NOT NULL,
     display_name            VARCHAR(128) NOT NULL,
     role                    VARCHAR(16) NOT NULL DEFAULT 'user',
-                                                            -- 'admin' yoki 'user'
-    rank_title              VARCHAR(64),                    -- Harbiy unvon (ixtiyoriy)
-    unit_code               VARCHAR(64),                    -- Bo'linma kodi
+    rank_title              VARCHAR(64),
+    unit_code               VARCHAR(64),
     is_active               BOOLEAN NOT NULL DEFAULT TRUE,
-    must_change_password    BOOLEAN NOT NULL DEFAULT TRUE,  -- Birinchi kirishda majburiy almashtirish
+    must_change_password    BOOLEAN NOT NULL DEFAULT TRUE,
     failed_login_attempts   INTEGER NOT NULL DEFAULT 0,
     locked_until            TIMESTAMPTZ,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -28,7 +26,6 @@ CREATE TABLE users (
     CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))
 );
 
--- Faol foydalanuvchilar bo'yicha tezkor qidiruv indeksi tayyorlanadi
 CREATE INDEX idx_users_username ON users(username) WHERE is_active = TRUE;
 
 -- ============================================================
@@ -39,13 +36,13 @@ CREATE INDEX idx_users_username ON users(username) WHERE is_active = TRUE;
 CREATE TABLE identity_keys (
     user_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     registration_id    INTEGER NOT NULL,
-    identity_key       BYTEA NOT NULL,            -- Curve25519 public key (33 bayt)
+    identity_key       BYTEA NOT NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- ============================================================
 -- Imzolangan oldindan-kalit (Signed PreKey)
--- Vaqtinchalik, mijoz tomonidan davriy ravishda yangilanadi.
+-- Vaqtinchalik, mijoz tomonidan davriy yangilanadi.
 -- ============================================================
 CREATE TABLE signed_prekeys (
     id              BIGSERIAL PRIMARY KEY,
@@ -61,7 +58,7 @@ CREATE INDEX idx_signed_prekeys_user ON signed_prekeys(user_id, created_at DESC)
 
 -- ============================================================
 -- Bir martalik oldindan-kalitlar (One-Time PreKeys)
--- X3DH almashinuvi uchun ishlatilgach, used=TRUE qo'yiladi.
+-- X3DH almashish uchun foydalanilgach, used=TRUE qo'yiladi.
 -- ============================================================
 CREATE TABLE one_time_prekeys (
     id              BIGSERIAL PRIMARY KEY,
@@ -73,7 +70,6 @@ CREATE TABLE one_time_prekeys (
     UNIQUE (user_id, key_id)
 );
 
--- Ishlatilmagan bir martalik kalitlar bo'yicha qisman indeks tayyorlanadi
 CREATE INDEX idx_otpk_user_unused
     ON one_time_prekeys(user_id) WHERE used = FALSE;
 
@@ -82,8 +78,8 @@ CREATE INDEX idx_otpk_user_unused
 -- ============================================================
 CREATE TABLE chats (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    type            VARCHAR(16) NOT NULL,           -- 'private' yoki 'group'
-    title           VARCHAR(128),                   -- Guruhlar uchun nom
+    type            VARCHAR(16) NOT NULL,
+    title           VARCHAR(128),
     created_by      UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chats_type_check CHECK (type IN ('private', 'group'))
@@ -106,18 +102,15 @@ CREATE INDEX idx_chat_members_user ON chat_members(user_id);
 
 -- ============================================================
 -- Xabarlar — server faqat shifrlangan ciphertext'ni saqlaydi.
--- Ochiq matnni server hech qachon ko'rmaydi.
--- Signal Double Ratchet juftliklar bo'yicha ishlagani uchun har bir adresat
--- uchun alohida ciphertext yozuvi yaratiladi.
+-- Plain matnni server hech qachon ko'rmaydi.
 -- ============================================================
 CREATE TABLE messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id         UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    sender_id       UUID REFERENCES users(id) ON DELETE SET NULL,
+    sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
     recipient_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     ciphertext      BYTEA NOT NULL,
-    msg_type        SMALLINT NOT NULL,             -- 1=PreKeySignalMessage, 2=SignalMessage
-    client_msg_id   VARCHAR(64),                   -- Mijoz tomonida yaratilgan ID (deduplikatsiya uchun)
+    msg_type        SMALLINT NOT NULL,
     delivered_at    TIMESTAMPTZ,
     read_at         TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -131,14 +124,14 @@ CREATE INDEX idx_messages_undelivered
 
 -- ============================================================
 -- Shifrlangan fayl/medianing metama'lumoti.
--- Faylning o'zi diskda shifrlangan blob (opaque) sifatida saqlanadi.
+-- Faylning o'zi diskda shifrlangan blob sifatida saqlanadi.
 -- ============================================================
 CREATE TABLE files (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    uploader_id     UUID REFERENCES users(id) ON DELETE SET NULL,
-    storage_key     TEXT NOT NULL,           -- Diskdagi fayl manzili
+    uploader_id     UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    storage_key     TEXT NOT NULL,
     size_bytes      BIGINT NOT NULL,
-    sha256          BYTEA NOT NULL,          -- Yaxlitlik tekshiruvi uchun
+    sha256          BYTEA NOT NULL,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

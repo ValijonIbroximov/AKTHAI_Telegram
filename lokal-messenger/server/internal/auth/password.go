@@ -1,7 +1,6 @@
 // Fayl: server/internal/auth/password.go
-// Maqsad: Foydalanuvchi parollari Argon2id algoritmi bilan xeshlanadi va
-//
-//	vaqt-konstantali tarzda solishtiriladi.
+// Maqsad: Foydalanuvchi parollari Argon2id algoritmi bilan xeshlanadi.
+// config.Argon2Params ishlatiladi — ikki paketda dublikat ta'rif yo'q.
 package auth
 
 import (
@@ -12,16 +11,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/military/lokal-messenger/server/internal/config"
 	"golang.org/x/crypto/argon2"
+
+	"github.com/military/lokal-messenger/server/internal/config"
 )
 
-// ErrInvalidHash — saqlangan xesh formati noto'g'ri bo'lganda qaytariladi.
-var ErrInvalidHash = errors.New("xesh formati noto'g'ri")
-
-// HashPassword — yangi parol xeshlanadi va natija "argon2id$..." formatda qaytariladi.
+// HashPassword — parol Argon2id algoritmi bilan xeshlanadi.
+// Natija "argon2id$v=19$m=...,t=...,p=...$salt$hash" formatda qaytariladi.
 func HashPassword(password string, p config.Argon2Params) (string, error) {
-	// Tasodifiy tuz (salt) yaratiladi
 	salt := make([]byte, p.SaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("tuz yaratilmadi: %w", err)
@@ -31,7 +28,7 @@ func HashPassword(password string, p config.Argon2Params) (string, error) {
 	hash := argon2.IDKey([]byte(password), salt,
 		p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
 
-	// Natija standart, o'z-o'zini tavsiflovchi formatda kodlanadi
+	// PHC-ga yaqin formatda kodlanadi (5 qism, $ bilan ajratilgan)
 	encoded := fmt.Sprintf("argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, p.Memory, p.Iterations, p.Parallelism,
 		base64.RawStdEncoding.EncodeToString(salt),
@@ -39,24 +36,21 @@ func HashPassword(password string, p config.Argon2Params) (string, error) {
 	return encoded, nil
 }
 
-// VerifyPassword — kiritilgan parol saqlangan xesh bilan solishtiriladi.
-// Solishtirish vaqt-konstantali tarzda bajariladi (timing attack'dan himoya).
+// VerifyPassword — foydalanuvchi kiritgan parol xesh bilan solishtiriladi.
+// Vaqt-konstantali taqqoslash (timing attack'dan himoya) ishlatiladi.
 func VerifyPassword(password, encoded string) (bool, error) {
 	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[0] != "argon2id" {
-		return false, ErrInvalidHash
+	// Format: argon2id $ v=19 $ m=...,t=...,p=... $ salt $ hash  (5 qism)
+	if len(parts) != 5 || parts[0] != "argon2id" {
+		return false, errors.New("xesh formati noto'g'ri")
 	}
 
 	var version int
-	if _, err := fmt.Sscanf(parts[1], "v=%d", &version); err != nil {
-		return false, ErrInvalidHash
-	}
+	fmt.Sscanf(parts[1], "v=%d", &version)
 
 	var memory, iterations uint32
 	var parallelism uint8
-	if _, err := fmt.Sscanf(parts[2], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
-		return false, ErrInvalidHash
-	}
+	fmt.Sscanf(parts[2], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism)
 
 	salt, err := base64.RawStdEncoding.DecodeString(parts[3])
 	if err != nil {
@@ -67,10 +61,10 @@ func VerifyPassword(password, encoded string) (bool, error) {
 		return false, err
 	}
 
-	// Foydalanuvchi kiritgan parolning xeshi xuddi shu parametrlar bilan qayta hisoblanadi
+	// Foydalanuvchi kiritgan parolning xeshi qayta hisoblanadi
 	actual := argon2.IDKey([]byte(password), salt,
 		iterations, memory, parallelism, uint32(len(expected)))
 
-	// Ikki xesh vaqt-konstantali tarzda solishtiriladi
+	// Vaqt-konstantali solishtirish bajariladi
 	return subtle.ConstantTimeCompare(actual, expected) == 1, nil
 }

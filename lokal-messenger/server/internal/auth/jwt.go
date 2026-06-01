@@ -10,23 +10,25 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
 	"github.com/military/lokal-messenger/server/internal/config"
 )
 
-// JWTManager — tokenlarni imzolash va tekshirish uchun maxfiy kalitni saqlaydi.
+// JWTManager — token chiqarish va tekshirish uchun markaziy ob'ekt.
 type JWTManager struct {
 	secret    []byte
 	accessTTL time.Duration
 }
 
-// Claims — token ichidagi foydalanuvchi ma'lumotlari.
+// Claims — JWT ichidagi foydalanuvchiga oid ma'lumotlar.
 type Claims struct {
 	UserID string `json:"sub"`
 	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-// NewJWTManager — JWT manager kalit faylidan tayyorlanadi.
+// NewJWTManager — JWT kalit faylidan manager tayyorlanadi.
+// Kalit kamida 32 bayt bo'lishi shart.
 func NewJWTManager(cfg config.AuthConfig) (*JWTManager, error) {
 	secret, err := os.ReadFile(cfg.JWTSecretFile)
 	if err != nil {
@@ -41,7 +43,8 @@ func NewJWTManager(cfg config.AuthConfig) (*JWTManager, error) {
 	}, nil
 }
 
-// Issue — yangi token chiqariladi. Token satri va uning jti identifikatori qaytariladi.
+// Issue — userID va rol asosida yangi JWT token chiqariladi.
+// Token matni va unikal JTI identifikatori qaytariladi.
 func (m *JWTManager) Issue(userID, role string) (string, string, error) {
 	jti := uuid.NewString()
 	claims := Claims{
@@ -59,15 +62,16 @@ func (m *JWTManager) Issue(userID, role string) (string, string, error) {
 	return signed, jti, err
 }
 
-// Verify — token tekshiriladi va ichidagi Claim qaytariladi.
+// Verify — token tekshiriladi va Claims strukturasi qaytariladi.
+// HMAC-SHA256 imzosi va muddati tekshiriladi.
 func (m *JWTManager) Verify(tokenStr string) (*Claims, error) {
-	parsed, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-		// Faqat HS256 imzolash usuli qabul qilinadi (alg-confusion hujumidan himoya)
-		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, errors.New("kutilmagan imzolash usuli")
-		}
-		return m.secret, nil
-	})
+	parsed, err := jwt.ParseWithClaims(tokenStr, &Claims{},
+		func(t *jwt.Token) (interface{}, error) {
+			if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, errors.New("kutilmagan imzolash usuli")
+			}
+			return m.secret, nil
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -76,9 +80,4 @@ func (m *JWTManager) Verify(tokenStr string) (*Claims, error) {
 		return nil, errors.New("token noto'g'ri")
 	}
 	return claims, nil
-}
-
-// TTL — token amal qilish muddati qaytariladi (sessiyani Redis'da saqlash uchun).
-func (m *JWTManager) TTL() time.Duration {
-	return m.accessTTL
 }

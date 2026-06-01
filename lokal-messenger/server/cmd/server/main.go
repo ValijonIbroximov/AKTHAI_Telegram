@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+
 	"github.com/military/lokal-messenger/server/internal/api"
 	"github.com/military/lokal-messenger/server/internal/auth"
 	"github.com/military/lokal-messenger/server/internal/cache"
@@ -22,14 +24,11 @@ import (
 )
 
 func main() {
-	// Konfiguratsiya fayl yo'li argumentdan yoki standart qiymatdan olinadi
-	configPath := "config.yaml"
-	if len(os.Args) > 1 {
-		configPath = os.Args[1]
-	}
+	configPath := flag.String("config", "config.yaml", "Konfiguratsiya fayli yo'li")
+	flag.Parse()
 
 	// Konfiguratsiya fayldan o'qiladi
-	cfg, err := config.Load(configPath)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Konfiguratsiyani o'qib bo'lmadi: %v", err)
 	}
@@ -55,10 +54,8 @@ func main() {
 	}
 
 	// WebSocket Hub — bog'langan mijozlar uchun markaziy yetkazuvchi
-	hubCtx, hubCancel := context.WithCancel(context.Background())
-	defer hubCancel()
 	hub := ws.NewHub(pgPool, redisClient)
-	go hub.Run(hubCtx)
+	go hub.Run(context.Background())
 
 	// Fiber HTTP/WS freymvorki sozlanadi (kam xotira sarfi rejimida)
 	app := fiber.New(fiber.Config{
@@ -66,14 +63,15 @@ func main() {
 		DisableStartupMessage: true,
 		ReadTimeout:           30 * time.Second,
 		WriteTimeout:          30 * time.Second,
-		BodyLimit:             int(cfg.Limits.MaxMessageSizeBytes) * 2,
+		BodyLimit:             int(cfg.Limits.MaxMessageSizeBytes),
 		ErrorHandler:          api.ErrorHandler,
 	})
 
-	// Panic-recovery va so'rov jurnali middlewarelari ulanadi
+	// Logger va panic-recovery middleware'lari ulanadi
 	app.Use(recover.New())
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} ${method} ${path} (${ip}) ${latency}\n",
+		Output: os.Stdout,
 	}))
 
 	// REST va WebSocket marshrutlari ro'yxatdan o'tkaziladi
@@ -85,7 +83,7 @@ func main() {
 		Config: cfg,
 	})
 
-	// Server alohida gorutinda ishga tushiriladi (TLS yoqilgan bo'lsa shifrlangan kanalda)
+	// Server ishga tushiriladi (TLS yoqilgan bo'lsa shifrlangan kanalda)
 	go func() {
 		if cfg.Server.TLS.Enabled {
 			log.Printf("Server TLS bilan tinglanmoqda: %s", cfg.Server.BindAddress)
