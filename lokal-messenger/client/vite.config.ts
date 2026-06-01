@@ -13,8 +13,25 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
-    port:         1420,
-    strictPort:   true,
+    port:       1420,
+    strictPort: true,
+    // Dev rejimida barcha /api so'rovlari Go serverga yo'naltiriladi.
+    // secure: false — o'z-o'zini imzolagan TLS sertifikatni qabul qiladi.
+    proxy: {
+      // REST so'rovlari
+      "/api": {
+        target:       "https://server.lokal:8443",
+        changeOrigin: true,
+        secure:       false,
+      },
+      // WebSocket ulanishi (wss → ws orqali tunnel)
+      "/ws": {
+        target:   "https://server.lokal:8443",
+        changeOrigin: true,
+        secure:   false,
+        ws:       true,
+      },
+    },
     watch: {
       // Tauri src-tauri papkasini kuzatmaslik (qo'shcha qayta yuklashdan saqlaydi)
       ignored: ["**/src-tauri/**"],

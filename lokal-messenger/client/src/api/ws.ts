@@ -2,7 +2,11 @@
 // TLS aktiv bo'lgani uchun wss:// protokoli ishlatiladi.
 import type { WsEvent } from "@/types";
 
-const WS_URL = "wss://server.lokal:8443/ws";
+// Dev rejimida Vite proxy WS ulanishini ham yo'naltiradi (wss → ws).
+// Production build'da to'g'ridan-to'g'ri wss:// ishlatiladi.
+const WS_URL = import.meta.env.PROD
+  ? "wss://server.lokal:8443/ws"
+  : "ws://localhost:1420/ws";
 const PING_INTERVAL_MS  = 25_000;
 const RECONNECT_DELAY_MS = 3_000;
 const MAX_RECONNECTS     = 10;

@@ -2,7 +2,11 @@
 // Tauri WebView ichida ishlaydi — CORS cheklovlari amal qilmaydi.
 import type { LoginResponse, User, Chat, Message, KeyBundle } from "@/types";
 
-const BASE_URL = "https://server.lokal:8443/api/v1";
+// Dev rejimida Vite proxy ishlatiladi (TLS sertifikat muammosini hal qiladi).
+// Production build'da to'g'ridan-to'g'ri Go serverga murojaat qilinadi.
+const BASE_URL = import.meta.env.PROD
+  ? "https://server.lokal:8443/api/v1"
+  : "/api/v1";
 
 // So'rov sarlavhalari token bilan birga qaytariladi
 function headers(token?: string): Record<string, string> {
