@@ -1,0 +1,2 @@
+# Bu katalogga server.crt, server.key va jwt.key fayllari joylashtiriladi.
+# Maxfiy fayllar repozitoriyaga qo'shilmaydi (.gitignore tomonidan chiqarib tashlanadi).

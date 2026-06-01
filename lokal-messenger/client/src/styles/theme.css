@@ -1,0 +1,60 @@
+/* Fayl: client/src/styles/theme.css
+   Maqsad: Telegram Desktop'ga o'xshash ranglar va tipografiya belgilanadi. */
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f5f7;
+  --bg-chat: #e5dccd; /* Telegram'ga o'xshash bezakli fon */
+  --text-primary: #000000;
+  --text-secondary: #707579;
+  --accent: #3390ec;
+  --bubble-out: #effdde;
+  --bubble-in: #ffffff;
+  --border: #dadce0;
+  --hover: #f1f3f4;
+  --selected: #e1e9f7;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #212121;
+  --bg-secondary: #181818;
+  --bg-chat: #0e1621;
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --accent: #8774e1;
+  --bubble-out: #2b5278;
+  --bubble-in: #182533;
+  --border: #2a2a2a;
+  --hover: #2c2c2c;
+  --selected: #2b5278;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}

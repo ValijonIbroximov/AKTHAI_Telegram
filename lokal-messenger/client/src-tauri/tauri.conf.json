@@ -1,0 +1,33 @@
+{
+  "productName": "LokalMessenger",
+  "version": "1.0.0",
+  "identifier": "uz.mil.lokal.messenger",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Lokal Messenger",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 760,
+        "minHeight": 500,
+        "decorations": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://server.lokal:8443 https://server.lokal:8443"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "deb", "appimage"],
+    "icon": ["icons/icon.png"]
+  }
+}
