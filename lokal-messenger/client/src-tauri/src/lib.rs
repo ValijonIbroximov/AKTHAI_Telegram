@@ -56,6 +56,7 @@ pub fn run() {
             // Kalit almashish
             commands::keys::establish_session,
             commands::keys::establish_session_receiver,
+            commands::keys::has_session,
             // E2EE xabar
             commands::messages::encrypt_message,
             commands::messages::decrypt_message,

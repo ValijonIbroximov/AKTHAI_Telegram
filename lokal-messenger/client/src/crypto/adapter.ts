@@ -5,6 +5,7 @@ import {
   webEstablishSession,
   webEstablishSessionReceiver,
   webInitSignalKeys,
+  webHasSession,
   getWebIdentityPublicKeyB64,
   type WebEstablishResult,
 } from "./webCrypto";
@@ -87,6 +88,16 @@ export async function establishSessionReceiver(
     });
   }
   return webEstablishSessionReceiver(peerId, peerEkPkB64, senderIkX25519B64, spkKeyId, otpkKeyId);
+}
+
+// ── Sessiya mavjudligini tekshirish ───────────────────────────────────────────
+
+export async function hasSession(peerId: string): Promise<boolean> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<boolean>("has_session", { peerId });
+  }
+  return webHasSession(peerId);
 }
 
 // ── Signal kalitlarini ishga tushirish + yuklash ──────────────────────────────

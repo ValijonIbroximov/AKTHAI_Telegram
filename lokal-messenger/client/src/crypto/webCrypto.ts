@@ -174,6 +174,13 @@ async function getIdentity(): Promise<WebIdentity | null> {
   return idbGet<WebIdentity>("identity", "self");
 }
 
+// ── Sessiya mavjudligi ─────────────────────────────────────────────────────
+
+export async function webHasSession(peerId: string): Promise<boolean> {
+  const sess = await getSession(peerId);
+  return sess !== null;
+}
+
 // ── Kalit generatsiyasi va server yuklamasi ────────────────────────────────
 
 export async function webInitSignalKeys(token: string): Promise<void> {

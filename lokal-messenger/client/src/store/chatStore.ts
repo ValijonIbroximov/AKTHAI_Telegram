@@ -6,6 +6,7 @@ import {
   decryptMessage,
   establishSession,
   establishSessionReceiver,
+  hasSession,
 } from "@/crypto/adapter";
 import { chatApi, keysApi, userApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
@@ -110,19 +111,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectChat: async (chatId, token) => {
     set({ activeChatId: chatId });
 
-    const existing = get().messages[chatId];
-    if (existing?.length) return;
-
     const chat = get().chats.find((c) => c.id === chatId);
     const peerId = chat?.peer_user_id ?? null;
 
-    // Sessiya mavjud emas bo'lsa sender side sessiya o'rnatib key_exchange yuboramiz
+    // Sessiya yo'q bo'lsagina o'rnatamiz (mavjud sessiyani qayta yozmaslik uchun)
     if (peerId) {
-      const result = await tryEstablishSenderSession(peerId, token);
-      if (result) {
-        sendKeyExchangeWs(chatId, peerId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
+      const sessionExists = await hasSession(peerId).catch(() => false);
+      if (!sessionExists) {
+        console.log(`[X3DH] selectChat: sessiya yo'q, o'rnatilmoqda → ${peerId}`);
+        const result = await tryEstablishSenderSession(peerId, token);
+        if (result) {
+          sendKeyExchangeWs(chatId, peerId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
+        }
+      } else {
+        console.log(`[X3DH] selectChat: sessiya mavjud → ${peerId}`);
       }
     }
+
+    const existing = get().messages[chatId];
+    if (existing?.length) return;
 
     try {
       const rawMsgs = await chatApi.history(token, chatId);
@@ -162,10 +169,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         userResults:  [],
       }));
 
-      // X3DH sessiya o'rnatish + key_exchange WS
-      const result = await tryEstablishSenderSession(peer.id, token);
-      if (result) {
-        sendKeyExchangeWs(chatId, peer.id, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
+      // X3DH sessiya o'rnatish — faqat yo'q bo'lsa (yangi chat)
+      const sessionExists = await hasSession(peer.id).catch(() => false);
+      if (!sessionExists) {
+        const result = await tryEstablishSenderSession(peer.id, token);
+        if (result) {
+          sendKeyExchangeWs(chatId, peer.id, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
+        }
       }
     } catch (e) {
       console.error("[Chat] createChat xatoligi:", e);
@@ -173,7 +183,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   // Xabar yuborish: E2EE → WebSocket
-  sendMessage: async (chatId, recipientId, plaintext, _token) => {
+  sendMessage: async (chatId, recipientId, plaintext, token) => {
     const localId = `local_${Date.now()}`;
 
     const tempMsg: Message = {
@@ -190,6 +200,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({
       messages: { ...s.messages, [chatId]: [...(s.messages[chatId] ?? []), tempMsg] },
     }));
+
+    // ── X3DH avtomatik ta'minlash ──────────────────────────────────────────
+    // Har xabar yuborishdan oldin sessiyani tekshiramiz.
+    // Yo'q bo'lsa, X3DH o'rnatib key_exchange yuborib, keyin shifrlaymiz.
+    try {
+      const sessionExists = await hasSession(recipientId).catch(() => false);
+      if (!sessionExists) {
+        console.log(`[X3DH] sendMessage: sessiya yo'q (${recipientId}), X3DH boshlanmoqda…`);
+        const result = await tryEstablishSenderSession(recipientId, token);
+        if (!result) {
+          throw new Error("X3DH muvaffaqiyatsiz: peer kalit to'plamini ololmadi yoki sessiya o'rnatilmadi");
+        }
+        sendKeyExchangeWs(chatId, recipientId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
+        // Qabul qiluvchi key_exchange ni qayta ishlashi uchun qisqa kutish
+        await new Promise<void>((res) => setTimeout(res, 300));
+        console.log(`[X3DH] sendMessage: sessiya o'rnatildi → ${recipientId}`);
+      }
+    } catch (setupErr) {
+      console.error("[X3DH] Sessiya o'rnatishda xatolik:", setupErr);
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [chatId]: s.messages[chatId].map((m) =>
+            m.id === localId
+              ? { ...m, status: "sent" as const, plaintext: `⚠ Yuborilmadi: ${setupErr instanceof Error ? setupErr.message : String(setupErr)}` }
+              : m
+          ),
+        },
+      }));
+      return;
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     try {
       const ciphertext = await encryptMessage(chatId, recipientId, plaintext);

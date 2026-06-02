@@ -1,4 +1,4 @@
-// X3DH sessiyasini boshlash va qabul qilish buyruqlari.
+// X3DH sessiyasini boshlash, qabul qilish va tekshirish buyruqlari.
 // React frontend bu buyruqlarni birinchi xabar yuborishdan avval chaqiradi.
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use crate::{
         ratchet::generate_ratchet_keypair,
         signal::{from_b64, to_b64, x3dh_sender, x3dh_receiver},
         store::{
-            get_identity, get_signed_prekey, mark_one_time_prekey_used,
+            get_identity, get_signed_prekey, get_session, mark_one_time_prekey_used,
             save_session, SignalSession,
         },
     },
@@ -179,4 +179,13 @@ pub async fn establish_session_receiver(
     };
 
     save_session(&db, &session).map_err(|e| e.to_string())
+}
+
+/// Berilgan peer bilan sessiya mavjudligini tekshiradi.
+/// sendMessage dan oldin chaqiriladi — agar false bo'lsa, X3DH qayta ishlatiladi.
+#[tauri::command]
+pub async fn has_session(peer_id: String, state: State<'_, AppState>) -> Result<bool, String> {
+    get_session(&state.db, &peer_id)
+        .map(|s| s.is_some())
+        .map_err(|e| e.to_string())
 }
