@@ -5,6 +5,7 @@ package api
 
 import (
 	"encoding/base64"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -32,6 +33,7 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov noto'g'ri")
 	}
+	log.Printf("[KEYS] ↑ upload: user=%s  otpk_count=%d", userID, len(req.OneTimePreKeys))
 
 	identityKey, err := base64.StdEncoding.DecodeString(req.IdentityKeyB64)
 	if err != nil {
@@ -87,6 +89,7 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 	if err := tx.Commit(c.Context()); err != nil {
 		return err
 	}
+	log.Printf("[KEYS] ✅ upload: user=%s  saqlandi", userID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -95,6 +98,8 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 // Bu X3DH sessiya o'rnatish uchun zarur.
 func (h *Handlers) FetchKeyBundle(c *fiber.Ctx) error {
 	targetID := c.Params("id")
+	requesterID, _ := c.Locals("user_id").(string)
+	log.Printf("[KEYS] ↓ bundle so'raldi: requester=%s  target=%s", requesterID, targetID)
 
 	type signedPreKeyInfo struct {
 		KeyID     int    `json:"key_id"`
@@ -132,8 +137,10 @@ func (h *Handlers) FetchKeyBundle(c *fiber.Ctx) error {
 		 WHERE ik.user_id = $1::uuid
 	`, targetID).Scan(&b.RegistrationID, &ikRaw, &spkID, &spkRaw, &sigRaw)
 	if err != nil {
+		log.Printf("[KEYS] ❌ bundle topilmadi: target=%s  err=%v", targetID, err)
 		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi kalitlari topilmadi")
 	}
+	log.Printf("[KEYS] ✅ bundle topildi: target=%s  spk_id=%d", targetID, spkID)
 	b.IdentityKey = base64.StdEncoding.EncodeToString(ikRaw)
 	b.SignedPreKey = signedPreKeyInfo{
 		KeyID:     spkID,
@@ -161,6 +168,9 @@ func (h *Handlers) FetchKeyBundle(c *fiber.Ctx) error {
 			KeyID:     otpkID,
 			PublicKey: base64.StdEncoding.EncodeToString(otpkPub),
 		}
+		log.Printf("[KEYS] OTPK berildi: target=%s  otpk_id=%d", targetID, otpkID)
+	} else {
+		log.Printf("[KEYS] OTPK yo'q (hammasi ishlatilgan): target=%s", targetID)
 	}
 
 	return c.JSON(b)

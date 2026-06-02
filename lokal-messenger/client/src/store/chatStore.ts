@@ -50,18 +50,38 @@ async function tryDecrypt(
 }
 
 // Sherik kalit bundle'ini fetch qilib X3DH sessiya o'rnatish
-// Returns: EstablishResult yoki null (server'da kalit yo'q bo'lsa)
+// Returns: EstablishResult yoki null (xatolik bo'lsa)
 async function tryEstablishSenderSession(
   peerId: string,
   token:  string
 ) {
+  // 1. Bundle olish
+  let bundle;
   try {
-    const bundle = await keysApi.getBundle(token, peerId);
+    bundle = await keysApi.getBundle(token, peerId);
+    console.log(`[X3DH] Bundle olindi (${peerId}):`, {
+      identity_key:   bundle.identity_key?.slice(0, 12) + "…",
+      spk_key_id:     bundle.signed_prekey?.key_id,
+      has_otpk:       !!bundle.one_time_prekey,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("404")) {
+      console.error(`[X3DH] ❌ ${peerId} uchun kalit bundle server'da yo'q (HTTP 404).`
+        + ` Peer login qilganda kalitlarini yuklamagandir yoki server DB tozalangan.`);
+    } else {
+      console.error(`[X3DH] ❌ Bundle olishda xatolik (${peerId}):`, msg);
+    }
+    return null;
+  }
+
+  // 2. X3DH sessiya o'rnatish
+  try {
     const result = await establishSession(peerId, JSON.stringify(bundle));
-    console.log(`[X3DH] Sessiya o'rnatildi (sender): ${peerId}`, result);
+    console.log(`[X3DH] ✅ Sessiya o'rnatildi (sender): ${peerId}`);
     return result;
   } catch (e) {
-    console.warn(`[X3DH] establish_session muvaffaqiyatsiz (${peerId}):`, e);
+    console.error(`[X3DH] ❌ establish_session xatoligi (${peerId}):`, e);
     return null;
   }
 }

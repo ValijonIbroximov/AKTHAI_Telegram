@@ -182,62 +182,75 @@ export async function webHasSession(peerId: string): Promise<boolean> {
 }
 
 // ── Kalit generatsiyasi va server yuklamasi ────────────────────────────────
-
+//
+// Login har safar chaqiriladi. IDB'da eski kalit bo'lsa ham server'ga
+// qayta yuklanadi (UPSERT) — bu server DB reset yoki birinchi upload
+// muvaffaqiyatsiz bo'lgan holatlarni qamrab oladi.
+//
 export async function webInitSignalKeys(token: string): Promise<void> {
-  // Allaqachon generatsiya qilinganmi?
-  const existing = await getIdentity();
-  if (existing) {
-    console.log("[WebCrypto] Kalit allaqachon mavjud, yuklash o'tkazib yuborildi");
-    return;
+  // ── Identity Key: IDB'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ──────
+  let ikSk: Uint8Array, ikPk: Uint8Array;
+  const existingIdent = await getIdentity();
+  if (existingIdent) {
+    ikSk = fromb64(existingIdent.ikSkB64);
+    ikPk = fromb64(existingIdent.ikPkB64);
+    console.log("[WebCrypto] IDB Identity Key mavjud, serverga qayta yuklanmoqda…");
+  } else {
+    const ik = genX25519();
+    ikSk = ik.sk; ikPk = ik.pk;
+    await idbPut("identity", { id: "self", ikSkB64: b64(ikSk), ikPkB64: b64(ikPk) });
+    console.log("[WebCrypto] Yangi Identity Key yaratildi");
   }
 
-  // Identifikatsiya kalit juftligi (X25519)
-  const ik = genX25519();
-  await idbPut("identity", {
-    id:      "self",
-    ikSkB64: b64(ik.sk),
-    ikPkB64: b64(ik.pk),
-  } satisfies WebIdentity & { id: string });
+  // ── Signed PreKey: IDB'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ───
+  let spkSk: Uint8Array, spkPk: Uint8Array;
+  const existingSpk = await idbGet<{ id: string; skB64: string; pkB64: string }>("identity", "spk");
+  if (existingSpk) {
+    spkSk = fromb64(existingSpk.skB64);
+    spkPk = fromb64(existingSpk.pkB64);
+  } else {
+    const spk = genX25519();
+    spkSk = spk.sk; spkPk = spk.pk;
+    await idbPut("identity", { id: "spk", skB64: b64(spkSk), pkB64: b64(spkPk) });
+  }
+  // SPK private key kelgusida webEstablishSessionReceiver uchun kerak
+  void spkSk;
 
-  // Imzolangan prekey (X25519)
-  const spk = genX25519();
-  await idbPut("identity", { id: "spk", skB64: b64(spk.sk), pkB64: b64(spk.pk) });
-
-  // Bir martalik prekey'lar (5 ta)
+  // ── One-Time PreKeys: doim yangi key_id bilan yuklanadi ────────────────
+  // Timestamp asosida noyob offset — avvalgi (used=TRUE) kalit ID lari bilan
+  // to'qnashuv bo'lmasligi uchun. Server: ON CONFLICT (user_id, key_id) DO NOTHING.
+  const baseId = (Date.now() % 900_000) + 100_000; // 100000–999999
   const otpks: { key_id: number; public_key: string }[] = [];
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 0; i < 5; i++) {
+    const keyId = baseId + i;
     const k = genX25519();
-    await idbPut("identity", { id: `otpk_${i}`, skB64: b64(k.sk), pkB64: b64(k.pk) });
-    otpks.push({ key_id: i, public_key: b64(k.pk) });
+    // IDB'da key_id bo'yicha saqlanadi (webEstablishSessionReceiver qidirish uchun)
+    await idbPut("identity", { id: `otpk_${keyId}`, skB64: b64(k.sk), pkB64: b64(k.pk) });
+    otpks.push({ key_id: keyId, public_key: b64(k.pk) });
   }
 
-  // Server'ga yuklash — imzo sifatida 64 ta nol (Rust tomonida dummy sifatida qabul qilinadi)
+  // ── Server'ga yuklash (UPSERT) ─────────────────────────────────────────
   const dummySig = b64(new Uint8Array(64));
-
   const bundle = {
     registration_id: ((Math.random() * 16380) | 0) + 1,
-    identity_key:    b64(ik.pk),
-    signed_prekey: {
-      key_id:     1,
-      public_key: b64(spk.pk),
-      signature:  dummySig,
-    },
+    identity_key:    b64(ikPk),
+    signed_prekey:   { key_id: 1, public_key: b64(spkPk), signature: dummySig },
     one_time_prekeys: otpks,
   };
 
-  const resp = await fetch("/api/v1/keys/upload", {
+  const BASE = import.meta.env.PROD ? "https://server.lokal:8443/api/v1" : "/api/v1";
+  const resp = await fetch(`${BASE}/keys/upload`, {
     method:  "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization:  `Bearer ${token}`,
-    },
-    body: JSON.stringify(bundle),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body:    JSON.stringify(bundle),
   });
 
   if (resp.ok || resp.status === 204) {
-    console.log("[WebCrypto] Kalit bundle serverga yuklandi");
+    console.log(`[WebCrypto] ✅ Kalit bundle serverga yuklandi (${otpks.length} OTPKs, baseId=${baseId})`);
   } else {
-    console.error("[WebCrypto] Kalit yuklash xatoligi:", resp.status);
+    const errBody = await resp.text().catch(() => "");
+    console.error(`[WebCrypto] ❌ Kalit yuklash xatoligi: HTTP ${resp.status} — ${errBody}`);
+    throw new Error(`Kalit yuklash muvaffaqiyatsiz: ${resp.status}`);
   }
 }
 
@@ -322,19 +335,21 @@ export async function webEstablishSession(
 }
 
 // ── X3DH Sessiya o'rnatish (qabul qiluvchi tomoni) ────────────────────────
+// Signal spec: DH1=DH(SPK_B,IK_A) DH2=DH(IK_B,EK_A) DH3=DH(SPK_B,EK_A)
+//              DH4=DH(OTPK_B,EK_A)  ← agar sender OTPK ishlatgan bo'lsa
 
 export async function webEstablishSessionReceiver(
   peerId:            string,
   peerEkPkB64:       string,
   senderIkX25519B64: string,
   _spkKeyId:         number,
-  _otpkKeyId:        number
+  otpkKeyId:         number
 ): Promise<void> {
   const ident = await getIdentity();
-  if (!ident) throw new Error("Identifikatsiya kaliti yo'q");
+  if (!ident) throw new Error("Identifikatsiya kaliti yo'q — avval webInitSignalKeys chaqiring");
 
   const spkData = await idbGet<{ id: string; skB64: string; pkB64: string }>("identity", "spk");
-  if (!spkData) throw new Error("SPK kaliti yo'q");
+  if (!spkData) throw new Error("SPK kaliti yo'q IDB'da");
 
   const ourIkSk  = fromb64(ident.ikSkB64);
   const ourSpkSk = fromb64(spkData.skB64);
@@ -342,15 +357,29 @@ export async function webEstablishSessionReceiver(
   const senderIkPk = fromb64(senderIkX25519B64);
   const peerEkPk   = fromb64(peerEkPkB64);
 
-  // DH1=DH(SPK_B, IK_A), DH2=DH(IK_B, EK_A), DH3=DH(SPK_B, EK_A)
-  const dh1 = dhX25519(ourSpkSk, senderIkPk);
-  const dh2 = dhX25519(ourIkSk,  peerEkPk);
-  const dh3 = dhX25519(ourSpkSk, peerEkPk);
+  // Signal X3DH receiver DH zanjiri
+  const dh1 = dhX25519(ourSpkSk, senderIkPk);   // DH(SPK_B, IK_A)
+  const dh2 = dhX25519(ourIkSk,  peerEkPk);      // DH(IK_B, EK_A)
+  const dh3 = dhX25519(ourSpkSk, peerEkPk);      // DH(SPK_B, EK_A)
 
-  const sk = await x3dhKdf(dh1, dh2, dh3);
+  // DH4: agar sender OTPK ishlatgan bo'lsa, xuddi shu OTPK SK'si IDB'dan olinadi
+  let dh4: Uint8Array | undefined;
+  if (otpkKeyId > 0) {
+    const otpkData = await idbGet<{ id: string; skB64: string; pkB64: string }>(
+      "identity", `otpk_${otpkKeyId}`
+    );
+    if (otpkData) {
+      dh4 = dhX25519(fromb64(otpkData.skB64), peerEkPk);  // DH(OTPK_B, EK_A)
+      console.log(`[WebCrypto] OTPK_${otpkKeyId} ishlatildi (DH4 hisoblandi)`);
+    } else {
+      console.warn(`[WebCrypto] OTPK_${otpkKeyId} IDB'da topilmadi — DH4 o'tkazib yuborildi`);
+    }
+  }
+
+  const sk = await x3dhKdf(dh1, dh2, dh3, dh4);
   await saveSession(peerId, { sendCk: b64(sk), recvCk: b64(sk) });
 
-  console.log(`[WebCrypto] X3DH receiver sessiya o'rnatildi: ${peerId}`);
+  console.log(`[WebCrypto] ✅ X3DH receiver sessiya o'rnatildi: ${peerId}`);
 }
 
 // ── Xabar shifrlash ────────────────────────────────────────────────────────
