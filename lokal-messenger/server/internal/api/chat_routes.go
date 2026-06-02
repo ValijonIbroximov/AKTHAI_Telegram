@@ -205,7 +205,7 @@ func (h *Handlers) ChatHistory(c *fiber.Ctx) error {
 	}
 
 	rows, err := h.deps.DB.Query(c.Context(), `
-        SELECT id::text, sender_id::text, encode(ciphertext, 'base64'), msg_type,
+        SELECT id::text, sender_id::text, convert_from(ciphertext, 'UTF8'), msg_type,
                created_at, delivered_at IS NOT NULL, read_at IS NOT NULL
           FROM messages
          WHERE chat_id = $1::uuid AND recipient_id = $2::uuid

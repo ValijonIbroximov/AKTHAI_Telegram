@@ -179,10 +179,18 @@ pub fn ratchet_decrypt(db: &DbConn, peer_id: &str, payload_json: &str) -> Result
         .ok_or_else(|| anyhow::anyhow!("ciphertext maydoni yo'q"))?;
     let ciphertext = from_b64(cipher_b64)?;
 
-    let their_rk_pk = from_b64(&header.dh_ratchet_pk)?;
-    let aad         = serde_json::to_vec(&header)?;
+    let aad = serde_json::to_vec(&header)?;
+
+    // Brauzer (soddalashtirilgan) mijoz: bo'sh dh_ratchet_pk — faqat simmetrik zanjir
+    let simplified = header.dh_ratchet_pk.is_empty();
+    let their_rk_pk = if simplified {
+        Vec::new()
+    } else {
+        from_b64(&header.dh_ratchet_pk)?
+    };
 
     // Avval o'tkazib yuborilgan kalitlar ro'yxatini tekshiramiz
+    if !simplified {
     if let Some(skipped_key) = get_skipped_key(db, peer_id, &their_rk_pk, header.msg_num)? {
         let mk: [u8; 32] = skipped_key.try_into()
             .map_err(|_| anyhow::anyhow!("O'tkazib yuborilgan kalit o'lchami noto'g'ri"))?;
@@ -190,12 +198,14 @@ pub fn ratchet_decrypt(db: &DbConn, peer_id: &str, payload_json: &str) -> Result
         remove_skipped_key(db, peer_id, &their_rk_pk, header.msg_num)?;
         return Ok(pt);
     }
+    }
 
     let mut session = get_session(db, peer_id)?
         .ok_or_else(|| anyhow::anyhow!("Sessiya topilmadi: {peer_id}"))?;
 
-    // Yangi DH ratchet kaliti kelganligini aniqlash
-    let is_new_ratchet = session.recv_ratchet_pk.as_deref() != Some(&their_rk_pk);
+    // Yangi DH ratchet kaliti kelganligini aniqlash (brauzer soddalashtirilgan: o'tkazib yuboriladi)
+    let is_new_ratchet = !simplified
+        && session.recv_ratchet_pk.as_deref() != Some(their_rk_pk.as_slice());
 
     if is_new_ratchet {
         // Oldingi zanjirdagi o'tkazib yuborilgan xabarlar saqlanadi

@@ -7,6 +7,7 @@ import {
   establishSession,
   establishSessionReceiver,
   hasSession,
+  DECRYPT_ERROR_LABEL,
 } from "@/crypto/adapter";
 import { chatApi, keysApi, userApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
@@ -34,19 +35,68 @@ interface ChatState {
   clearUserResults: () => void;
 }
 
-// Xavfsiz decrypt — sessiya yo'q bo'lsa fallback
-async function tryDecrypt(
+/** Xabarni deshifrlab ochiq matn qaytaradi; xato bo'lsa DECRYPT_ERROR_LABEL */
+async function decryptPlaintext(
   chatId:     string,
   senderId:   string,
   ciphertext: string
 ): Promise<string> {
-  if (!ciphertext) return "";
+  if (!ciphertext?.trim()) return "";
   try {
     return await decryptMessage(chatId, senderId, ciphertext);
   } catch (e) {
-    console.warn(`[E2EE] decrypt xatoligi (${senderId}):`, e);
-    return "[Shifrlangan xabar]";
+    console.error(`[E2EE] decrypt xatoligi (${senderId}):`, e);
+    return DECRYPT_ERROR_LABEL;
   }
+}
+
+function isDecryptFailure(text: string | null): boolean {
+  return text === DECRYPT_ERROR_LABEL;
+}
+
+/** Xabardan chat ro'yxati preview matnini hosil qiladi */
+function previewFromMessage(msg: Message): string {
+  if (msg.plaintext?.startsWith("⚠ Yuborilmadi")) return msg.plaintext;
+  if (isDecryptFailure(msg.plaintext)) return DECRYPT_ERROR_LABEL;
+  return msg.plaintext ?? "";
+}
+
+/** Suhbatdagi deshifrlanmagan / xato xabarlarni qayta ochish */
+async function redDecryptChatMessages(
+  chatId: string,
+  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
+  get: () => ChatState
+): Promise<void> {
+  const msgs = get().messages[chatId];
+  if (!msgs?.length) return;
+
+  const updated = await Promise.all(
+    msgs.map(async (msg) => {
+      if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
+      if (msg.plaintext && !isDecryptFailure(msg.plaintext)) return msg;
+      return { ...msg, plaintext: await decryptPlaintext(chatId, msg.sender_id, msg.ciphertext) };
+    })
+  );
+
+  const last = updated[updated.length - 1];
+  set((s) => ({
+    messages: { ...s.messages, [chatId]: updated },
+    chats: last
+      ? s.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                last_message: {
+                  sender_id: last.sender_id,
+                  preview:     previewFromMessage(last),
+                  created_at:  last.created_at,
+                },
+                updated_at: last.created_at,
+              }
+            : c
+        )
+      : s.chats,
+  }));
 }
 
 // Sherik kalit bundle'ini fetch qilib X3DH sessiya o'rnatish
@@ -156,12 +206,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const decrypted = await Promise.all(
         rawMsgs.map(async (msg) => {
           if (msg.msg_type === "text" && msg.ciphertext) {
-            return { ...msg, plaintext: await tryDecrypt(chatId, msg.sender_id, msg.ciphertext) };
+            return { ...msg, plaintext: await decryptPlaintext(chatId, msg.sender_id, msg.ciphertext) };
           }
-          return { ...msg, plaintext: null };
+          return msg;
         })
       );
-      set((s) => ({ messages: { ...s.messages, [chatId]: decrypted } }));
+      const last = decrypted[decrypted.length - 1];
+      set((s) => ({
+        messages: { ...s.messages, [chatId]: decrypted },
+        chats: last?.plaintext
+          ? s.chats.map((c) =>
+              c.id === chatId
+                ? {
+                    ...c,
+                    last_message: {
+                      sender_id: last.sender_id,
+                      preview:     previewFromMessage(last),
+                      created_at:  last.created_at,
+                    },
+                    updated_at: last.created_at,
+                  }
+                : c
+            )
+          : s.chats,
+      }));
     } catch (e) {
       console.error("[Chat] history yuklanmadi:", e);
       set((s) => ({ messages: { ...s.messages, [chatId]: [] } }));
@@ -299,32 +367,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case "msg.recv": {
         const m = event.payload as WsMsgRecv;
         console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id}`);
-        tryDecrypt(m.chat_id, m.sender_id, m.ciphertext)
-          .then((plaintext) => {
-            const newMsg: Message = {
-              id:         m.msg_id,
-              chat_id:    m.chat_id,
-              sender_id:  m.sender_id,
-              ciphertext: m.ciphertext,
-              plaintext,
-              msg_type:   "text",
-              status:     "delivered",
-              created_at: new Date().toISOString(),
-            };
-            set((s) => ({
-              messages: {
-                ...s.messages,
-                [m.chat_id]: [...(s.messages[m.chat_id] ?? []), newMsg],
-              },
-              chats: s.chats.map((c) =>
-                c.id === m.chat_id
-                  ? { ...c, last_message: { sender_id: m.sender_id, preview: plaintext, created_at: newMsg.created_at }, unread_count: c.unread_count + 1 }
-                  : c
-              ),
-            }));
-            wsClient.send("msg.delivered", { msg_id: m.msg_id });
-          })
-          .catch((e) => console.error("[E2EE] handleWsEvent decrypt xatoligi:", e));
+
+        void (async () => {
+          const plaintext = await decryptPlaintext(m.chat_id, m.sender_id, m.ciphertext);
+          const newMsg: Message = {
+            id:         m.msg_id,
+            chat_id:    m.chat_id,
+            sender_id:  m.sender_id,
+            ciphertext: m.ciphertext,
+            plaintext,
+            msg_type:   "text",
+            status:     "delivered",
+            created_at: new Date().toISOString(),
+          };
+
+          const dup = get().messages[m.chat_id]?.some((x) => x.id === m.msg_id);
+          if (dup) return;
+
+          set((s) => ({
+            messages: {
+              ...s.messages,
+              [m.chat_id]: [...(s.messages[m.chat_id] ?? []), newMsg],
+            },
+            chats: s.chats.map((c) =>
+              c.id === m.chat_id
+                ? {
+                    ...c,
+                    last_message: {
+                      sender_id: m.sender_id,
+                      preview:     previewFromMessage(newMsg),
+                      created_at:  newMsg.created_at,
+                    },
+                    unread_count: c.id === get().activeChatId ? c.unread_count : c.unread_count + 1,
+                    updated_at:   newMsg.created_at,
+                  }
+                : c
+            ),
+          }));
+          wsClient.send("msg.delivered", { msg_id: m.msg_id });
+        })();
         break;
       }
 
@@ -357,23 +438,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ke.spk_key_id,
           ke.otpk_key_id
         )
-          .then(() => {
+          .then(async () => {
             console.log(`[X3DH] Qabul qiluvchi sessiya o'rnatildi: ${ke.sender_id}`);
 
-            // Agar bu suhbat xabarlari "[Shifrlangan xabar]" ko'rsatayotgan bo'lsa, qayta decrypt
-            const msgs = get().messages[ke.chat_id];
-            if (msgs?.length) {
-              Promise.all(
-                msgs.map(async (msg) => {
-                  if (msg.plaintext === "[Shifrlangan xabar]" && msg.ciphertext) {
-                    return { ...msg, plaintext: await tryDecrypt(ke.chat_id, msg.sender_id, msg.ciphertext) };
-                  }
-                  return msg;
-                })
-              ).then((updated) => {
-                set((s) => ({ messages: { ...s.messages, [ke.chat_id]: updated } }));
-              }).catch(() => {});
-            }
+            // Sessiya o'rnatilgach — oldingi deshifrlanmagan xabarlarni qayta ochish
+            await redDecryptChatMessages(ke.chat_id, set, get);
 
             // Ushbu suhbat uchun chat_id topib birinchi suhbatni chatlar ro'yxatiga qo'shamiz
             const existingChat = get().chats.find((c) => c.id === ke.chat_id);

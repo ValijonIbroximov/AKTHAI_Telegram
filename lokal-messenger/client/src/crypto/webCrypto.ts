@@ -382,6 +382,37 @@ export async function webEstablishSessionReceiver(
   console.log(`[WebCrypto] ✅ X3DH receiver sessiya o'rnatildi: ${peerId}`);
 }
 
+// Rust ratchet bilan bir xil header (AAD = serde JSON tartibida)
+interface DrHeader {
+  dh_ratchet_pk:  string;
+  msg_num:        number;
+  prev_chain_len: number;
+}
+
+function headerAad(h: DrHeader): Uint8Array {
+  // Rust: serde_json::to_vec(&header) — maydon tartibi muhim
+  return new TextEncoder().encode(
+    JSON.stringify({
+      dh_ratchet_pk:  h.dh_ratchet_pk,
+      msg_num:        h.msg_num,
+      prev_chain_len: h.prev_chain_len,
+    })
+  );
+}
+
+/** Server/WS dan kelgan ciphertext ni JSON payload ga normalizatsiya qiladi */
+export function normalizePayload(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith("{")) return t;
+  try {
+    const decoded = atob(t);
+    if (decoded.trim().startsWith("{")) return decoded;
+  } catch {
+    /* xom JSON */
+  }
+  return t;
+}
+
 // ── Xabar shifrlash ────────────────────────────────────────────────────────
 
 export async function webEncryptMessage(
@@ -394,16 +425,13 @@ export async function webEncryptMessage(
   const ck          = fromb64(sess.sendCk);
   const [mk, nextCk] = await kdfCk(ck);
 
+  const header: DrHeader = { dh_ratchet_pk: "", msg_num: 0, prev_chain_len: 0 };
   const pt  = new TextEncoder().encode(plaintext);
-  const aad = new TextEncoder().encode(peerId);
-  const ct  = await aesEncrypt(mk, pt, aad);
+  const ct  = await aesEncrypt(mk, pt, headerAad(header));
 
   await saveSession(peerId, { ...sess, sendCk: b64(nextCk) });
 
-  return JSON.stringify({
-    header:     { dh_ratchet_pk: "", msg_num: 0, prev_chain_len: 0 },
-    ciphertext: b64(ct),
-  });
+  return JSON.stringify({ header, ciphertext: b64(ct) });
 }
 
 // ── Xabar shifr ochish ─────────────────────────────────────────────────────
@@ -412,16 +440,28 @@ export async function webDecryptMessage(
   peerId:      string,
   payloadJson: string
 ): Promise<string> {
-  const { ciphertext } = JSON.parse(payloadJson) as { ciphertext: string };
+  const payload = normalizePayload(payloadJson);
+  const val = JSON.parse(payload) as {
+    header?:     DrHeader;
+    ciphertext?: string;
+  };
+
+  const header: DrHeader = val.header ?? {
+    dh_ratchet_pk:  "",
+    msg_num:        0,
+    prev_chain_len: 0,
+  };
+  const cipherB64 = val.ciphertext;
+  if (!cipherB64) throw new Error("ciphertext maydoni yo'q");
+
   const sess = await getSession(peerId);
   if (!sess) throw new Error(`Sessiya yo'q (${peerId}) — avval X3DH bajaring`);
 
   const ck          = fromb64(sess.recvCk);
   const [mk, nextCk] = await kdfCk(ck);
 
-  const aad = new TextEncoder().encode(peerId);
-  const ct  = fromb64(ciphertext);
-  const pt  = await aesDecrypt(mk, ct, aad);
+  const ct = fromb64(cipherB64);
+  const pt = await aesDecrypt(mk, ct, headerAad(header));
 
   await saveSession(peerId, { ...sess, recvCk: b64(nextCk) });
 

@@ -91,7 +91,7 @@ export const chatApi = {
       title:        c.title || "Nomsiz",
       peer_user_id: c.peer_user_id ?? null,
       last_message: c.last_time
-        ? { sender_id: "", preview: "[Shifrlangan xabar]", created_at: c.last_time }
+        ? { sender_id: "", preview: "", created_at: c.last_time }
         : null,
       unread_count: c.unread ?? 0,
       updated_at:   c.last_time ?? new Date().toISOString(),

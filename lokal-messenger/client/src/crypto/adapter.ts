@@ -7,8 +7,12 @@ import {
   webInitSignalKeys,
   webHasSession,
   getWebIdentityPublicKeyB64,
+  normalizePayload,
   type WebEstablishResult,
 } from "./webCrypto";
+
+/** UI da ko'rsatiladigan deshifrlash xatoligi (faqat haqiqiy xato bo'lganda) */
+export const DECRYPT_ERROR_LABEL = "⚠ Deshifrlashda xatolik";
 
 export const isTauri =
   typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined";
@@ -34,11 +38,12 @@ export async function decryptMessage(
   senderId:   string,
   ciphertext: string
 ): Promise<string> {
+  const payload = normalizePayload(ciphertext);
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<string>("decrypt_message", { chatId, senderId, ciphertext });
+    return invoke<string>("decrypt_message", { chatId, senderId, ciphertext: payload });
   }
-  return webDecryptMessage(senderId, ciphertext);
+  return webDecryptMessage(senderId, payload);
 }
 
 // ── X3DH Sessiya o'rnatish (yuboruvchi tomoni) ────────────────────────────────
