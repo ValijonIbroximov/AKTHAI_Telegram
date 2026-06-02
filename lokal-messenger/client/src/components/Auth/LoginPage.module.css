@@ -1,4 +1,4 @@
-/* ─── Kirish sahifasi — ikkala mavzuda ishlaydi ──────────────── */
+/* ─── Kirish sahifasi — strukturaviy vars ────────────────────── */
 
 .root {
   display: flex;
@@ -10,8 +10,6 @@
   position: relative;
   overflow: hidden;
 }
-
-/* Fon bezagi */
 .root::before {
   content: '';
   position: absolute;
@@ -25,11 +23,9 @@
 .root::after {
   content: '';
   position: absolute;
-  bottom: -10%;
-  left: 50%;
+  bottom: -10%; left: 50%;
   transform: translateX(-50%);
-  width: 50vw;
-  height: 30vh;
+  width: 50vw; height: 30vh;
   background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
   pointer-events: none;
 }
@@ -39,14 +35,14 @@
   position: relative;
   z-index: 1;
   width: 360px;
-  background: var(--bg-panel);
+  background: var(--panel-bg-real, var(--bg-panel));
+  backdrop-filter: var(--panel-backdrop);
+  -webkit-backdrop-filter: var(--panel-backdrop);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   padding: 40px 36px 32px;
   animation: fadeUp 0.28s ease;
-  box-shadow:
-    0 20px 60px rgba(0,0,0,0.45),
-    0 0 0 1px var(--accent-xs);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45), 0 0 0 1px var(--accent-xs);
 }
 .card::before {
   content: '';
@@ -58,49 +54,26 @@
 }
 
 /* ── Logo ── */
-.logo {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 32px;
-}
-
+.logo { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 32px; }
 .logoIcon {
-  width: 64px;
-  height: 64px;
+  width: 64px; height: 64px;
   background: linear-gradient(135deg, var(--accent-dark) 0%, var(--bg-surface) 100%);
   border: 1px solid var(--border-med);
   border-radius: var(--r-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 24px var(--accent-glow);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--btn-glow);
 }
-.logoIcon svg {
-  width: 32px;
-  height: 32px;
-  color: var(--accent);
-}
+.logoIcon svg { width: 32px; height: 32px; color: var(--accent); }
+.logoTitle { font-size: 18px; font-weight: 600; color: var(--text-1); letter-spacing: -0.3px; }
+.logoSub { font-size: 12px; color: var(--text-3); }
 
-.logoTitle {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-1);
-  letter-spacing: -0.3px;
-}
-.logoSub {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-/* ── Xato xabari ── */
+/* ── Xato ── */
 .error {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  background: rgba(248, 81, 73, 0.08);
-  border: 1px solid rgba(248, 81, 73, 0.20);
+  background: rgba(248,81,73,0.08);
+  border: 1px solid rgba(248,81,73,0.22);
   border-radius: var(--r-sm);
   padding: 10px 12px;
   margin-bottom: 16px;
@@ -111,44 +84,23 @@
 .errorClose {
   color: var(--text-3);
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
+  display: flex; align-items: center;
   transition: color var(--t-fast);
 }
 .errorClose:hover { color: var(--danger); }
 
 /* ── Forma ── */
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+.form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 13px; font-weight: 500; color: var(--text-2); }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-
-.inputWrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
+.inputWrap { position: relative; display: flex; align-items: center; }
 .inputIcon {
   position: absolute;
   left: 12px;
   color: var(--text-3);
   pointer-events: none;
   transition: color var(--t-fast);
-  flex-shrink: 0;
 }
 .inputWrap:focus-within .inputIcon { color: var(--accent); }
 
@@ -162,21 +114,21 @@
   color: var(--text-1);
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
   user-select: text;
+  font-family: var(--font-ui);
 }
 .input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-xs);
+  border-color: var(--input-border-focus);
+  box-shadow: var(--input-shadow-focus);
   outline: none;
 }
 .input::placeholder { color: var(--text-3); }
-.input:disabled { opacity: 0.45; cursor: not-allowed; }
+.input:disabled { opacity: 0.40; cursor: not-allowed; }
 
 .eyeBtn {
   position: absolute;
   right: 10px;
   color: var(--text-3);
-  display: flex;
-  align-items: center;
+  display: flex; align-items: center;
   padding: 4px;
   border-radius: var(--r-xs);
   transition: color var(--t-fast);
@@ -192,28 +144,20 @@
   color: #fff;
   font-size: 15px;
   font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   gap: 8px;
-  transition: background var(--t-fast), box-shadow var(--t-fast), transform 0.1s;
-  letter-spacing: -0.1px;
+  transition: box-shadow var(--t-med), transform 0.1s, filter var(--t-fast);
 }
 .btn:hover:not(:disabled) {
-  box-shadow: 0 4px 16px var(--accent-glow);
+  box-shadow: var(--btn-glow-send);
   filter: brightness(1.08);
 }
 .btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled {
-  opacity: 0.40;
-  cursor: not-allowed;
-}
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* Spinner */
 .spinner {
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: 18px; height: 18px;
   border: 2px solid rgba(255,255,255,0.3);
   border-top-color: #fff;
   border-radius: 50%;
@@ -221,11 +165,5 @@
 }
 
 /* ── Izoh ── */
-.hint {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-3);
-  line-height: 1.5;
-}
+.hint { margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-3); line-height: 1.5; }
 .hintAccent { color: var(--accent); font-weight: 500; }

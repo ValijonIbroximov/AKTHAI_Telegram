@@ -1,4 +1,4 @@
-/* ─── Xabar pufakchasi — Telegram Desktop ───────────────────── */
+/* ─── Xabar pufakchasi — radius strukturaviy vars ─────────── */
 
 .wrap {
   display: flex;
@@ -10,7 +10,7 @@
 
 .bubble {
   max-width: 65%;
-  min-width: 72px;
+  min-width: 80px;
   padding: 8px 10px 6px 12px;
   border-radius: var(--r-lg);
   word-break: break-word;
@@ -18,21 +18,17 @@
   line-height: 1;
 }
 
-/* Chiquvchi xabar */
 .bubbleOwn {
   background: var(--bubble-out);
   border: 1px solid var(--bubble-out-border);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: var(--r-xs);
 }
-
-/* Kiruvchi xabar */
 .bubbleIn {
   background: var(--bubble-in);
   border: 1px solid var(--bubble-in-border);
-  border-bottom-left-radius: 4px;
+  border-bottom-left-radius: var(--r-xs);
 }
 
-/* Matn */
 .text {
   font-size: 14px;
   color: var(--text-1);
@@ -40,19 +36,15 @@
   white-space: pre-wrap;
   margin-bottom: 4px;
 }
-
 .textFailed {
   font-size: 13px;
   color: var(--text-3);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: flex; align-items: center; gap: 6px;
   font-style: italic;
   margin-bottom: 4px;
 }
 .textFailed svg { color: var(--accent); opacity: 0.6; flex-shrink: 0; }
 
-/* Meta: vaqt + holat */
 .meta {
   display: flex;
   align-items: center;
@@ -60,29 +52,9 @@
   gap: 3px;
   float: right;
   margin-left: 8px;
-  margin-top: 0;
-  clear: none;
-  position: relative;
-  bottom: 0;
   line-height: 1;
 }
-
-.time {
-  font-size: 11px;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-
-.status {
-  display: flex;
-  align-items: center;
-  margin-left: 1px;
-}
-
-/* Tick belgilari */
-.tick {
-  color: var(--text-3);
-}
-.tickRead {
-  color: var(--accent);
-}
+.time { font-size: 11px; color: var(--text-3); white-space: nowrap; }
+.status { display: flex; align-items: center; margin-left: 1px; }
+.tick     { color: var(--text-3); }
+.tickRead { color: var(--accent); }

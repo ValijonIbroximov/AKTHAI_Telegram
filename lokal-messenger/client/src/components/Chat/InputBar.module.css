@@ -1,4 +1,4 @@
-/* ─── Xabar kiritish paneli — Telegram Desktop ──────────────── */
+/* ─── Xabar kiritish paneli — strukturaviy CSS vars ishlatadi ── */
 
 .root {
   display: flex;
@@ -6,51 +6,45 @@
   gap: 6px;
   padding: 8px 12px 10px;
   background: var(--bg-panel);
+  backdrop-filter: var(--panel-backdrop);
+  -webkit-backdrop-filter: var(--panel-backdrop);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-/* Yon tugmalar (fayl, stiker...) */
 .sideBtn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 40px; height: 40px;
+  border-radius: var(--r-full);
+  display: flex; align-items: center; justify-content: center;
   color: var(--text-2);
   flex-shrink: 0;
   margin-bottom: 2px;
   transition: color var(--t-fast), background var(--t-fast);
 }
-.sideBtn:hover:not(:disabled) {
-  color: var(--text-1);
-  background: var(--bg-hover);
-}
-.sideBtn:disabled { opacity: 0.3; cursor: default; }
+.sideBtn:hover:not(:disabled) { color: var(--text-1); background: var(--bg-hover); }
+.sideBtn:disabled { opacity: 0.25; cursor: default; }
 
-/* Matn input qobig'i */
 .inputWrap {
   flex: 1;
   min-width: 0;
   background: var(--bg-surface);
-  border-radius: 22px;
+  border-radius: var(--r-full);
   border: 1px solid var(--border);
-  padding: 0 12px;
+  padding: 0 14px;
   display: flex;
   align-items: center;
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
 .inputWrap:focus-within {
-  border-color: var(--border-med);
-  box-shadow: 0 0 0 2px var(--accent-xs);
+  border-color: var(--input-border-focus);
+  box-shadow: var(--input-shadow-focus);
 }
 
 .textarea {
   display: block;
   width: 100%;
   background: none;
-  padding: 9px 0;
+  padding: 10px 0;
   font-size: 14px;
   line-height: 1.45;
   color: var(--text-1);
@@ -60,30 +54,23 @@
   user-select: text;
   font-family: var(--font-ui);
 }
-.textarea::placeholder {
-  color: var(--text-3);
-  font-size: 14px;
-}
+.textarea::placeholder { color: var(--text-3); font-size: 14px; }
 
-/* Yuborish / mikrofon tugmasi */
+/* Yuborish / mikrofon */
 .sendBtn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 42px; height: 42px;
+  border-radius: var(--r-full);
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   margin-bottom: 2px;
-  transition: background var(--t-med), transform 0.1s, box-shadow var(--t-med);
+  transition: box-shadow var(--t-med), transform 0.1s, background var(--t-med);
 }
-
 .sendActive {
   background: var(--accent);
   color: #fff;
 }
 .sendActive:hover {
-  box-shadow: 0 2px 12px var(--accent-glow);
+  box-shadow: var(--btn-glow-send);
   transform: scale(1.04);
 }
 .sendActive:active { transform: scale(0.94); }

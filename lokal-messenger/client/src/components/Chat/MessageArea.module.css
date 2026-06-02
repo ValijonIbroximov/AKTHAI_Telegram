@@ -1,4 +1,4 @@
-/* ─── O'ng panel — Telegram Desktop uslubi ───────────────────── */
+/* ─── Xabarlar maydoni — strukturaviy CSS vars ──────────────── */
 
 .root {
   flex: 1;
@@ -8,27 +8,27 @@
   background: var(--bg-msg, var(--bg-base));
   min-width: 0;
   position: relative;
+  /* Chat fon naqshi (Gradient mavzu uchun) */
+  background-image: var(--chat-bg-pattern, none);
 }
 
 /* ── Sarlavha ── */
 .header {
   display: flex;
   align-items: center;
-  height: var(--header-height);
+  height: var(--header-height, 52px);
   padding: 0 12px 0 16px;
-  background: var(--bg-panel);
+  background: var(--panel-bg-real, var(--bg-panel));
+  backdrop-filter: var(--panel-backdrop);
+  -webkit-backdrop-filter: var(--panel-backdrop);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 10px;
+  position: relative;
+  z-index: 1;
 }
 
-.headerInfo {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
+.headerInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .headerName {
   font-size: 15px;
   font-weight: 500;
@@ -38,42 +38,34 @@
   white-space: nowrap;
   letter-spacing: -0.1px;
 }
-.headerStatus {
-  font-size: 13px;
-  color: var(--text-3);
-}
+.headerStatus { font-size: 13px; color: var(--text-3); }
 .headerStatus.online { color: var(--accent); }
 
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
+.headerActions { display: flex; align-items: center; gap: 2px; }
 .actionBtn {
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border-radius: var(--r-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   color: var(--text-2);
-  transition: background var(--t-fast), color var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
 }
 .actionBtn:hover:not(:disabled) {
   background: var(--bg-hover);
-  color: var(--text-1);
+  color: var(--accent);
+  box-shadow: var(--btn-glow);
 }
-.actionBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.actionBtn:disabled { opacity: 0.30; cursor: not-allowed; }
 
-/* ── Xabarlar maydoni ── */
+/* ── Xabarlar ── */
 .messages {
   flex: 1;
   overflow-y: auto;
   padding: 12px 0;
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 0;
 }
-
 .noMsgs {
   flex: 1;
   display: flex;
@@ -90,7 +82,7 @@
   border: 1px solid var(--border);
 }
 
-/* ── "Suhbat tanlanmagan" holat ── */
+/* ── "Suhbat yo'q" holat ── */
 .empty {
   flex: 1;
   display: flex;
@@ -100,23 +92,17 @@
   gap: 10px;
   padding: 32px;
   animation: fadeIn 0.25s ease;
+  position: relative;
+  z-index: 1;
 }
-.emptyIcon {
-  color: var(--text-3);
-  opacity: 0.4;
-  margin-bottom: 4px;
-}
-.emptyTitle {
-  font-size: 20px;
-  font-weight: 500;
-  color: var(--text-2);
-}
+.emptyIcon { color: var(--text-3); opacity: 0.35; margin-bottom: 4px; }
+.emptyTitle { font-size: 20px; font-weight: 500; color: var(--text-2); }
 .emptyDesc {
   font-size: 14px;
   color: var(--text-3);
   text-align: center;
   max-width: 280px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 .emptyE2ee {
   display: flex;
