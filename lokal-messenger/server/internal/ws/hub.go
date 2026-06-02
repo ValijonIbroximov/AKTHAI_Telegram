@@ -140,12 +140,14 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 	log.Printf("[WS] 📨 msg.send: from=%s → to=%s | chat=%s | ct_len=%d",
 		env.From, p.RecipientID, p.ChatID, len(p.CiphertextB64))
 
+	// Ciphertext JSON string sifatida keladi (Rust va browser ikkalasi ham JSON qaytaradi).
+	// decode('json','base64') ishlamaydi — to'g'ridan-to'g'ri bytea sifatida saqlaymiz.
 	var msgID string
 	err := h.db.QueryRow(ctx, `
 		INSERT INTO messages (chat_id, sender_id, recipient_id, ciphertext, msg_type)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, decode($4, 'base64'), $5)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
 		RETURNING id::text
-	`, p.ChatID, env.From, p.RecipientID, p.CiphertextB64, p.MsgType).Scan(&msgID)
+	`, p.ChatID, env.From, p.RecipientID, []byte(p.CiphertextB64), p.MsgType).Scan(&msgID)
 	if err != nil {
 		log.Printf("[WS] ✗ Xabar bazaga saqlanmadi: %v", err)
 		return
@@ -215,7 +217,7 @@ func (h *Hub) handleKeyExchange(ctx context.Context, env inboundEnvelope) {
 func (h *Hub) flushPending(ctx context.Context, c *Client) {
 	rows, err := h.db.Query(ctx, `
 		SELECT id::text, chat_id::text, sender_id::text,
-		       encode(ciphertext, 'base64'), msg_type
+		       ciphertext, msg_type
 		  FROM messages
 		 WHERE recipient_id = $1::uuid AND delivered_at IS NULL
 		 ORDER BY created_at ASC
@@ -228,16 +230,17 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 
 	count := 0
 	for rows.Next() {
-		var msgID, chatID, senderID, ct string
+		var msgID, chatID, senderID string
+		var ctBytes []byte
 		var mtype int
-		if err := rows.Scan(&msgID, &chatID, &senderID, &ct, &mtype); err != nil {
+		if err := rows.Scan(&msgID, &chatID, &senderID, &ctBytes, &mtype); err != nil {
 			continue
 		}
 		if h.sendTo(c.UserID, "msg.recv", map[string]any{
 			"msg_id":     msgID,
 			"chat_id":    chatID,
 			"sender_id":  senderID,
-			"ciphertext": ct,
+			"ciphertext": string(ctBytes),
 			"msg_type":   mtype,
 		}) {
 			_, _ = h.db.Exec(ctx,
