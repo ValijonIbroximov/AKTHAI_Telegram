@@ -45,9 +45,10 @@ export interface Message {
 
 // Server → Client
 export type WsEvent =
-  | { type: "msg.recv";   payload: WsMsgRecv }
-  | { type: "msg.ack";    payload: WsMsgAck }
-  | { type: "presence";   payload: WsPresence };
+  | { type: "msg.recv";     payload: WsMsgRecv }
+  | { type: "msg.ack";      payload: WsMsgAck }
+  | { type: "key_exchange"; payload: WsKeyExchange }
+  | { type: "presence";     payload: WsPresence };
 
 // Client → Server (wsClient.sendMsg orqali yuboriladi)
 export interface WsSendPayload {
@@ -69,6 +70,15 @@ export interface WsMsgRecv {
 export interface WsMsgAck {
   client_msg_id: string;
   server_msg_id: string;
+}
+
+export interface WsKeyExchange {
+  chat_id:          string;
+  sender_id:        string;
+  ek_pk:            string;   // Base64 X25519
+  sender_ik_x25519: string;   // Base64 X25519
+  spk_key_id:       number;
+  otpk_key_id:      number;
 }
 
 export interface WsPresence {

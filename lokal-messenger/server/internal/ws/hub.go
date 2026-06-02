@@ -67,8 +67,7 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.Unlock()
 			_ = h.rdb.SAdd(ctx, "presence:online_set", c.UserID).Err()
 			_ = h.rdb.Set(ctx, "presence:"+c.UserID, time.Now().Unix(), 90*time.Second).Err()
-			log.Printf("Mijoz ulandi: %s", c.UserID)
-			// Offline bo'lgan vaqtda yig'ilgan xabarlar uzatiladi
+			log.Printf("[WS] 🟢 Ulanish: userID=%s | jami=%d", c.UserID, h.clientCount())
 			go h.flushPending(ctx, c)
 
 		case c := <-h.unreg:
@@ -81,13 +80,12 @@ func (h *Hub) Run(ctx context.Context) {
 			h.mu.Unlock()
 			_ = h.rdb.SRem(ctx, "presence:online_set", c.UserID).Err()
 			_ = h.rdb.Del(ctx, "presence:"+c.UserID).Err()
-			log.Printf("Mijoz uzildi: %s", c.UserID)
+			log.Printf("[WS] 🔴 Uzilish: userID=%s | jami=%d", c.UserID, h.clientCount())
 
 		case env := <-h.inbound:
 			h.handleInbound(ctx, env)
 
 		case <-presenceTick.C:
-			// Barcha onlayn foydalanuvchilarning presence TTL'i yangilanadi
 			h.mu.RLock()
 			for uid := range h.clients {
 				_ = h.rdb.Set(ctx, "presence:"+uid, time.Now().Unix(), 90*time.Second).Err()
@@ -97,15 +95,28 @@ func (h *Hub) Run(ctx context.Context) {
 	}
 }
 
+func (h *Hub) clientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}
+
 // handleInbound — kiruvchi paket turi bo'yicha tegishli funksiyaga yo'naltiriladi.
 func (h *Hub) handleInbound(ctx context.Context, env inboundEnvelope) {
+	log.Printf("[WS] ← kiruvchi: from=%s type=%s", env.From, env.Type)
 	switch env.Type {
 	case "msg.send":
 		h.routeMessage(ctx, env)
+	case "key_exchange":
+		h.handleKeyExchange(ctx, env)
 	case "msg.delivered":
 		h.markDelivered(ctx, env)
 	case "msg.read":
 		h.markRead(ctx, env)
+	case "ping":
+		// Ping — e'tiborsiz
+	default:
+		log.Printf("[WS] ⚠ Noma'lum paket turi: %s (from=%s)", env.Type, env.From)
 	}
 }
 
@@ -119,12 +130,15 @@ type sendPayload struct {
 }
 
 // routeMessage — shifrlangan xabar bazaga yoziladi va adresatga uzatiladi.
-// Server ciphertext'ni hech qachon ochmaydi — faqat bayt sifatida marshrutlaydi.
 func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 	var p sendPayload
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
+		log.Printf("[WS] ✗ msg.send JSON parse xatoligi (from=%s): %v", env.From, err)
 		return
 	}
+
+	log.Printf("[WS] 📨 msg.send: from=%s → to=%s | chat=%s | ct_len=%d",
+		env.From, p.RecipientID, p.ChatID, len(p.CiphertextB64))
 
 	var msgID string
 	err := h.db.QueryRow(ctx, `
@@ -133,17 +147,18 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 		RETURNING id::text
 	`, p.ChatID, env.From, p.RecipientID, p.CiphertextB64, p.MsgType).Scan(&msgID)
 	if err != nil {
-		log.Printf("xabar saqlanmadi: %v", err)
+		log.Printf("[WS] ✗ Xabar bazaga saqlanmadi: %v", err)
 		return
 	}
+	log.Printf("[WS] ✓ Xabar bazaga saqlandi: msgID=%s", msgID)
 
-	// Yuboruvchiga yetkazib berish tasdiqnomasi qaytariladi
+	// Yuboruvchiga ACK
 	h.sendTo(env.From, "msg.ack", map[string]any{
 		"client_msg_id": p.ClientMsgID,
 		"server_msg_id": msgID,
 	})
 
-	// Adresat onlayn bo'lsa shifrlangan xabar darhol uzatiladi
+	// Adresatga yetkazish
 	delivered := h.sendTo(p.RecipientID, "msg.recv", map[string]any{
 		"msg_id":     msgID,
 		"chat_id":    p.ChatID,
@@ -151,13 +166,52 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 		"ciphertext": p.CiphertextB64,
 		"msg_type":   p.MsgType,
 	})
+
 	if delivered {
+		log.Printf("[WS] ✓ msg.recv yetkazildi: to=%s", p.RecipientID)
 		_, _ = h.db.Exec(ctx,
 			`UPDATE messages SET delivered_at = NOW() WHERE id = $1::uuid`, msgID)
+	} else {
+		log.Printf("[WS] ⏳ Adresat offline, xabar DB da kutmoqda: to=%s", p.RecipientID)
 	}
 }
 
-// flushPending — mijoz ulanganida unga yetkazilmagan xabarlar topiladi va yuboriladi.
+// handleKeyExchange — X3DH kalitlar almashinuvi (DB ga saqlanmaydi, to'g'ridan-to'g'ri uzatiladi).
+func (h *Hub) handleKeyExchange(ctx context.Context, env inboundEnvelope) {
+	var p struct {
+		ChatID        string `json:"chat_id"`
+		RecipientID   string `json:"recipient_id"`
+		EkPk          string `json:"ek_pk"`
+		SenderIkX25519 string `json:"sender_ik_x25519"`
+		SpkKeyID      uint32 `json:"spk_key_id"`
+		OtpkKeyID     uint32 `json:"otpk_key_id"`
+	}
+	if err := json.Unmarshal(env.Payload, &p); err != nil {
+		log.Printf("[WS] ✗ key_exchange JSON parse xatoligi (from=%s): %v", env.From, err)
+		return
+	}
+
+	log.Printf("[WS] 🔑 key_exchange: from=%s → to=%s | chat=%s | spk_id=%d",
+		env.From, p.RecipientID, p.ChatID, p.SpkKeyID)
+
+	// Adresatga to'g'ridan-to'g'ri uzatiladi (DB ga saqlanmaydi)
+	delivered := h.sendTo(p.RecipientID, "key_exchange", map[string]any{
+		"chat_id":         p.ChatID,
+		"sender_id":       env.From,
+		"ek_pk":           p.EkPk,
+		"sender_ik_x25519": p.SenderIkX25519,
+		"spk_key_id":      p.SpkKeyID,
+		"otpk_key_id":     p.OtpkKeyID,
+	})
+
+	if delivered {
+		log.Printf("[WS] ✓ key_exchange yetkazildi: to=%s", p.RecipientID)
+	} else {
+		log.Printf("[WS] ⚠ Adresat offline — key_exchange yo'qoldi: to=%s", p.RecipientID)
+	}
+}
+
+// flushPending — mijoz ulanganida yetkazilmagan xabarlar yuboriladi.
 func (h *Hub) flushPending(ctx context.Context, c *Client) {
 	rows, err := h.db.Query(ctx, `
 		SELECT id::text, chat_id::text, sender_id::text,
@@ -172,6 +226,7 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 	}
 	defer rows.Close()
 
+	count := 0
 	for rows.Next() {
 		var msgID, chatID, senderID, ct string
 		var mtype int
@@ -187,17 +242,21 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 		}) {
 			_, _ = h.db.Exec(ctx,
 				`UPDATE messages SET delivered_at = NOW() WHERE id = $1::uuid`, msgID)
+			count++
 		}
+	}
+	if count > 0 {
+		log.Printf("[WS] 📬 flushPending: %d ta xabar yetkazildi: to=%s", count, c.UserID)
 	}
 }
 
 // sendTo — berilgan foydalanuvchiga JSON paket yuborishga uriniladi.
-// Foydalanuvchi onlayn bo'lmasa false qaytariladi.
 func (h *Hub) sendTo(userID, eventType string, payload any) bool {
 	h.mu.RLock()
 	c, ok := h.clients[userID]
 	h.mu.RUnlock()
 	if !ok || c.closed {
+		log.Printf("[WS] sendTo: userID=%s offline yoki yo'q", userID)
 		return false
 	}
 	raw, _ := json.Marshal(map[string]any{"type": eventType, "payload": payload})
@@ -205,17 +264,15 @@ func (h *Hub) sendTo(userID, eventType string, payload any) bool {
 	case c.Send <- raw:
 		return true
 	default:
-		// Yuborish bufer to'lgan bo'lsa — mijoz uzilgan deb belgilanadi
+		log.Printf("[WS] sendTo: bufer to'lgan, mijoz uzilmoqda: userID=%s", userID)
 		h.unreg <- c
 		return false
 	}
 }
 
-// markDelivered — "msg.delivered" hodisasida xabar bazada belgilanadi.
+// markDelivered — xabar bazada yetkazilgan deb belgilanadi.
 func (h *Hub) markDelivered(ctx context.Context, env inboundEnvelope) {
-	var p struct {
-		MsgID string `json:"msg_id"`
-	}
+	var p struct{ MsgID string `json:"msg_id"` }
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
 		return
 	}
@@ -224,11 +281,9 @@ func (h *Hub) markDelivered(ctx context.Context, env inboundEnvelope) {
 		    WHERE id = $1::uuid AND recipient_id = $2::uuid`, p.MsgID, env.From)
 }
 
-// markRead — "msg.read" hodisasida xabar o'qilgan deb belgilanadi.
+// markRead — xabar o'qilgan deb belgilanadi.
 func (h *Hub) markRead(ctx context.Context, env inboundEnvelope) {
-	var p struct {
-		MsgID string `json:"msg_id"`
-	}
+	var p struct{ MsgID string `json:"msg_id"` }
 	if err := json.Unmarshal(env.Payload, &p); err != nil {
 		return
 	}
@@ -237,11 +292,6 @@ func (h *Hub) markRead(ctx context.Context, env inboundEnvelope) {
 		    WHERE id = $1::uuid AND recipient_id = $2::uuid`, p.MsgID, env.From)
 }
 
-// Inbound — kiruvchi xabarlar kanaliga tashqi kirish imkoni.
-func (h *Hub) Inbound() chan<- inboundEnvelope { return h.inbound }
-
-// Register — yangi mijoz ro'yxatga olish kanaliga tashqi kirish imkoni.
-func (h *Hub) Register() chan<- *Client { return h.register }
-
-// Unregister — mijozni ro'yxatdan o'chirish kanaliga tashqi kirish imkoni.
-func (h *Hub) Unregister() chan<- *Client { return h.unreg }
+func (h *Hub) Inbound() chan<- inboundEnvelope  { return h.inbound }
+func (h *Hub) Register() chan<- *Client          { return h.register }
+func (h *Hub) Unregister() chan<- *Client        { return h.unreg }

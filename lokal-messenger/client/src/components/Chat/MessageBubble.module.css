@@ -45,6 +45,19 @@
 }
 .textFailed svg { color: var(--accent); opacity: 0.6; flex-shrink: 0; }
 
+.bubbleError {
+  background: rgba(220, 50, 50, 0.12) !important;
+  border-color: rgba(220, 50, 50, 0.3) !important;
+}
+.textError {
+  font-size: 13px;
+  color: #e85d5d;
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.textError svg { flex-shrink: 0; }
+
 .meta {
   display: flex;
   align-items: center;

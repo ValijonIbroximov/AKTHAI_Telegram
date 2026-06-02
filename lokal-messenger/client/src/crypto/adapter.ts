@@ -1,5 +1,13 @@
 // Platform adapter: Tauri (Rust) yoki Brauzer (Web Crypto API) muhitini avtomatik aniqlaydi.
-import { webEncryptMessage, webDecryptMessage, webEstablishSession } from "./webCrypto";
+import {
+  webEncryptMessage,
+  webDecryptMessage,
+  webEstablishSession,
+  webEstablishSessionReceiver,
+  webInitSignalKeys,
+  getWebIdentityPublicKeyB64,
+  type WebEstablishResult,
+} from "./webCrypto";
 
 export const isTauri =
   typeof (window as unknown as { __TAURI__?: unknown }).__TAURI__ !== "undefined";
@@ -32,28 +40,77 @@ export async function decryptMessage(
   return webDecryptMessage(senderId, ciphertext);
 }
 
-// ── X3DH Sessiya o'rnatish ────────────────────────────────────────────────────
-// Birinchi xabar yuborishdan oldin sherik kalit-bundle asosida sessiya o'rnatiladi.
+// ── X3DH Sessiya o'rnatish (yuboruvchi tomoni) ────────────────────────────────
+// Qaytaradi: { ekPk, senderIkX25519, spkKeyId, otpkKeyId }
+
+export interface EstablishResult {
+  ekPk:           string;
+  senderIkX25519: string;
+  spkKeyId:       number;
+  otpkKeyId:      number;
+}
 
 export async function establishSession(
   peerId:     string,
   bundleJson: string
+): Promise<EstablishResult> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<EstablishResult>("establish_session", { peerId, bundleJson });
+  }
+  const r: WebEstablishResult = await webEstablishSession(peerId, bundleJson);
+  return {
+    ekPk:           r.ekPk,
+    senderIkX25519: r.senderIkX25519,
+    spkKeyId:       r.spkKeyId,
+    otpkKeyId:      r.otpkKeyId,
+  };
+}
+
+// ── X3DH Sessiya o'rnatish (qabul qiluvchi tomoni) ────────────────────────────
+
+export async function establishSessionReceiver(
+  peerId:             string,
+  peerEkPkB64:        string,
+  senderIkX25519B64:  string,
+  spkKeyId:           number,
+  otpkKeyId:          number
 ): Promise<void> {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<void>("establish_session", { peerId, bundleJson });
+    return invoke<void>("establish_session_receiver", {
+      peerId,
+      peerEkPkB64,
+      senderIkX25519B64,
+      spkKeyId,
+      otpkKeyId,
+    });
   }
-  return webEstablishSession(peerId, bundleJson);
+  return webEstablishSessionReceiver(peerId, peerEkPkB64, senderIkX25519B64, spkKeyId, otpkKeyId);
 }
 
-// ── Signal kalitlarini ishga tushirish ────────────────────────────────────────
+// ── Signal kalitlarini ishga tushirish + yuklash ──────────────────────────────
 
 export async function initSignalKeys(token: string, userId: string): Promise<void> {
   if (isTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<void>("init_signal_keys", { token, userId });
   }
-  // Brauzer: IndexedDB ga kalit juftligi saqlanadi (webCrypto.ts ichida)
+  // Brauzer: kalit generatsiya + server yuklash
+  return webInitSignalKeys(token);
+}
+
+// ── Identifikatsiya kaliti (key_exchange uchun) ───────────────────────────────
+
+export async function getIdentityPublicKeyB64(): Promise<string> {
+  if (isTauri) {
+    // Tauri'da IK pub key init_signal_keys paytida serverga yuklangan
+    // Uni DB'dan o'qishimiz kerak — hozircha serverdan olamiz (bu safe)
+    // Oddiy yechim: server /me emas, storage'dan o'qish. Hozircha brauzer kabi ishlaymiz.
+    // TODO: add get_identity_pk Tauri command if needed
+    return "";
+  }
+  return getWebIdentityPublicKeyB64();
 }
 
 // ── Token saqlash ─────────────────────────────────────────────────────────────

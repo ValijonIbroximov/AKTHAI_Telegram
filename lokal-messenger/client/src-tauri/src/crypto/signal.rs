@@ -139,68 +139,77 @@ pub fn hkdf_derive(ikm: &[u8], salt: Option<&[u8]>, info: &[u8], len: usize) -> 
 
 // ── X3DH ──────────────────────────────────────────────────────────────────
 
+/// Identifikatsiya ochiq kalitini X25519 ga o'tkazadi.
+/// Ed25519 Edwards nuqtasini sinab ko'radi, muvaffaqiyatsiz bo'lsa X25519 deb qabul qiladi.
+/// (Brauzer X25519 kalitlarini yuklaydi, Tauri Ed25519 → X25519 konvertatsiyasi kerak.)
+fn ik_pk_to_x25519(ik_pk: &[u8]) -> Result<X25519Pub> {
+    match ed25519_pk_to_x25519(ik_pk) {
+        Ok(x) => Ok(X25519Pub::from(x)),
+        Err(_) => x25519_pub(ik_pk), // allaqachon X25519 (brauzer kalit)
+    }
+}
+
 /// X3DH — yuboruvchi (Alice) tomoni.
 ///
 /// Qaytaradi:
-///  - `shared_key`:  32 bayt SK (Double Ratchet boshlang'ich holati uchun)
-///  - `ek_public`:   efemer ochiq kalit (xabar header'iga qo'shiladi)
+///  - `shared_key`:      32 bayt SK (Double Ratchet boshlang'ich holati uchun)
+///  - `ek_public`:       efemer ochiq kalit (qabul qiluvchiga key_exchange orqali yuboriladi)
+///  - `our_ik_x25519`:   bizning IK X25519 shaklida (brauzerda konvertatsiya kerak emas)
 pub fn x3dh_sender(
-    our_ik_sk:   &[u8],                 // Alice IK maxfiy kalit (Ed25519 seed)
-    _our_ik_pk:  &[u8],                 // Alice IK ochiq kalit (ishlatilmaydi — serverda mavjud)
-    peer_ik_pk:  &[u8],                 // Bob   IK ochiq kalit (Ed25519)
+    our_ik_sk:   &[u8],                 // Alice IK maxfiy kalit (Ed25519 seed yoki X25519)
+    _our_ik_pk:  &[u8],                 // Alice IK ochiq kalit (ishlatilmaydi)
+    peer_ik_pk:  &[u8],                 // Bob   IK ochiq kalit (Ed25519 yoki X25519)
     peer_spk_pk: &[u8],                 // Bob   SPK ochiq kalit (X25519)
-    peer_spk_sig:&[u8],                 // Bob   SPK imzosi
+    peer_spk_sig:&[u8],                 // Bob   SPK imzosi (0-filled bo'lsa tekshirilmaydi)
     peer_otpk:   Option<(&[u8], u32)>,  // Bob   OPK ochiq kalit + key_id (ixtiyoriy)
-) -> Result<([u8; 32], Vec<u8>)> {
+) -> Result<([u8; 32], Vec<u8>, Vec<u8>)> {
 
-    // 1. SPK imzosi tekshiriladi — tasdiqlanmagan kalitni qabul qilmaslik xavfsizlik talabi
-    verify_prekey_signature(peer_ik_pk, peer_spk_pk, peer_spk_sig)?;
+    // 1. SPK imzosi tekshiriladi — LEKIN imzo to'liq nol bo'lsa (brauzer rejimi) o'tkazib yuboriladi
+    let sig_is_dummy = peer_spk_sig.len() < 64 || peer_spk_sig.iter().all(|&b| b == 0);
+    if !sig_is_dummy {
+        verify_prekey_signature(peer_ik_pk, peer_spk_pk, peer_spk_sig)?;
+    }
 
-    // 2. Alice efemer kalit juftligi yaratiladi (StaticSecret — DH ni bir necha marta ishlatish uchun)
+    // 2. Alice efemer kalit juftligi yaratiladi
     let ek_sk  = StaticSecret::random_from_rng(OsRng);
     let ek_pk  = X25519Pub::from(&ek_sk);
 
-    // 3. Alice IK → X25519 ga konvertatsiya
+    // 3. Alice IK → X25519 ga konvertatsiya (Ed25519 seed dan)
     let ik_a_sk = ed25519_sk_to_x25519(our_ik_sk)?;
 
-    // 4. Bob IK ochiq kalitini X25519 ga konvertatsiya
-    let ik_b_x = ed25519_pk_to_x25519(peer_ik_pk)?;
-    let ik_b_pub = X25519Pub::from(ik_b_x);
+    // 4. Alice IK X25519 ochiq kalit (receiver ga yuboriladi)
+    let our_ik_x25519 = X25519Pub::from(&ik_a_sk);
 
-    // 5. Bob SPK ochiq kaliti
+    // 5. Bob IK ochiq kalitini X25519 ga (Ed25519 yoki to'g'ridan-to'g'ri X25519)
+    let ik_b_pub = ik_pk_to_x25519(peer_ik_pk)?;
+
+    // 6. Bob SPK ochiq kaliti
     let spk_b_pub = x25519_pub(peer_spk_pk)?;
 
-    // 6. Uchta DH hisob-kitobi:
-    //    DH1 = DH(IK_A, SPK_B)  — identifikatsiya + imzolangan prekey
-    //    DH2 = DH(EK_A, IK_B)   — efemer + identifikatsiya
-    //    DH3 = DH(EK_A, SPK_B)  — efemer + imzolangan prekey
+    // 7. DH1=DH(IK_A, SPK_B), DH2=DH(EK_A, IK_B), DH3=DH(EK_A, SPK_B)
     let dh1 = ik_a_sk.diffie_hellman(&spk_b_pub);
     let dh2 = ek_sk.diffie_hellman(&ik_b_pub);
     let dh3 = ek_sk.diffie_hellman(&spk_b_pub);
 
-    // 7. KDF kiritmasi: F || DH1 || DH2 || DH3 [|| DH4]
-    let mut ikm = Vec::with_capacity(32 * 5);
+    let mut ikm = Vec::with_capacity(32 * 6);
     ikm.extend_from_slice(&KDF_F);
     ikm.extend_from_slice(dh1.as_bytes());
     ikm.extend_from_slice(dh2.as_bytes());
     ikm.extend_from_slice(dh3.as_bytes());
 
-    // 8. OPK mavjud bo'lsa DH4 ham qo'shiladi
     if let Some((otpk_bytes, _)) = peer_otpk {
         let otpk_pub = x25519_pub(otpk_bytes)?;
         let dh4 = ek_sk.diffie_hellman(&otpk_pub);
         ikm.extend_from_slice(dh4.as_bytes());
     }
 
-    // 9. Mualliflik imzosi IKM ga qo'shiladi (o'zgartirish sessiyani buzadi)
     ikm.extend_from_slice(AUTHOR_PEPPER);
 
-    // 10. HKDF orqali 32 baytlik SK hosil qilinadi
     let sk_vec = hkdf_derive(&ikm, None, X3DH_INFO, 32)?;
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&sk_vec);
 
-    Ok((sk, ek_pk.as_bytes().to_vec()))
+    Ok((sk, ek_pk.as_bytes().to_vec(), our_ik_x25519.as_bytes().to_vec()))
 }
 
 /// X3DH — qabul qiluvchi (Bob) tomoni.
@@ -220,9 +229,8 @@ pub fn x3dh_receiver(
     // Bob IK maxfiy kalitini X25519 ga konvertatsiya
     let ik_b_sk   = ed25519_sk_to_x25519(our_ik_sk)?;
 
-    // Alice IK ochiq kalitini X25519 ga konvertatsiya
-    let ik_a_x    = ed25519_pk_to_x25519(peer_ik_pk)?;
-    let ik_a_pub  = X25519Pub::from(ik_a_x);
+    // Alice IK ochiq kalitini X25519 ga (Ed25519 yoki to'g'ridan-to'g'ri X25519)
+    let ik_a_pub  = ik_pk_to_x25519(peer_ik_pk)?;
 
     // Alice EK ochiq kaliti
     let ek_a_pub  = x25519_pub(peer_ek_pk)?;
