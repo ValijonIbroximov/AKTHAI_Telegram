@@ -1,27 +1,35 @@
-// Asosiy ilova komponenti — autentifikatsiya holatiga qarab sahifalar almashadi.
+// Asosiy ilova komponenti.
+// Autentifikatsiya holatiga qarab Login yoki Chat oynasini ko'rsatadi.
+// SideDrawer hamburger menyudan ochiladi — SettingsModal o'chirildi.
 import { useState } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import LoginPage         from "@/components/Auth/LoginPage";
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
-import SettingsModal     from "@/components/Settings/SettingsModal";
+import SideDrawer        from "@/components/Layout/SideDrawer";
 import styles            from "./App.module.css";
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   if (!token) {
-    return <LoginPage onSettings={() => setSettingsOpen(true)} />;
+    return <LoginPage />;
   }
 
   return (
     <div className={styles.layout}>
-      <ChatList onSettings={() => setSettingsOpen(true)} />
+      {/* Slide-out menyu (Telegram uslubi) */}
+      <SideDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+      />
+
+      {/* Chap panel */}
+      <ChatList onMenuOpen={() => setDrawerOpen(true)} />
+
+      {/* O'ng panel */}
       <MessageArea />
-      {settingsOpen && (
-        <SettingsModal onClose={() => setSettingsOpen(false)} />
-      )}
     </div>
   );
 }

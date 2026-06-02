@@ -1,0 +1,266 @@
+/* Telegram Desktop uslubidagi slide-out drawer */
+
+/* ── Overlay ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-overlay);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-slow);
+}
+.overlayVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Drawer paneli ── */
+.drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background: var(--bg-panel);
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform var(--t-slow);
+  box-shadow: 4px 0 24px rgba(0,0,0,0.40);
+  overflow: hidden;
+}
+.drawerOpen {
+  transform: translateX(0);
+}
+
+/* ── Profil bloki ── */
+.profile {
+  position: relative;
+  padding: 20px 20px 16px;
+  overflow: hidden;
+  flex-shrink: 0;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.profileBg {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-dark) 0%, var(--bg-base) 100%);
+  opacity: 0.6;
+}
+
+.profileAvatar {
+  position: relative;
+  z-index: 1;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.30);
+  letter-spacing: -0.5px;
+}
+
+.profileName {
+  position: relative;
+  z-index: 1;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+  line-height: 1.2;
+}
+.profileRole {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+
+/* ── Navigatsiya ── */
+.nav {
+  flex-shrink: 0;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 11px 20px;
+  font-size: 14px;
+  color: var(--text-1);
+  transition: background var(--t-fast);
+  text-align: left;
+}
+.navItem:hover { background: var(--bg-hover); }
+
+.navIcon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+}
+.navLabel { font-size: 14px; font-weight: 400; }
+
+.separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* ── Dark/Light mode toggle ── */
+.modeRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 20px;
+}
+
+.modeToggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: background var(--t-med), border-color var(--t-med);
+}
+.modeToggleDark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.modeKnob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--t-med);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.modeToggleDark .modeKnob {
+  transform: translateX(20px);
+}
+
+/* ── Mavzu tanlash ── */
+.themeSection {
+  padding: 12px 16px 8px;
+  flex-shrink: 0;
+}
+
+.themeSectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  padding: 0 4px;
+}
+
+.themeGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.themeChip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  transition: background var(--t-fast);
+  text-align: left;
+  overflow: hidden;
+}
+.themeChip:hover { background: var(--bg-hover); }
+.themeChipActive { background: var(--bg-active); }
+
+.themeChipBg {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  position: relative;
+  border: 1px solid rgba(255,255,255,0.12);
+  overflow: hidden;
+}
+
+.themeChipDot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 22px;
+  border-radius: 0 6px 6px 0;
+}
+
+.themeChipLabel {
+  font-size: 13px;
+  color: var(--text-1);
+  font-weight: 400;
+}
+.themeChipActive .themeChipLabel {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Footer ── */
+.footer {
+  margin-top: auto;
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.authorBadge {
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  padding: 6px;
+  border-radius: var(--r-sm);
+  background: var(--accent-xs);
+  border: 1px solid var(--border);
+  font-style: italic;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--danger);
+  border: 1px solid transparent;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.logoutBtn:hover {
+  background: rgba(248, 81, 73, 0.10);
+  border-color: rgba(248, 81, 73, 0.20);
+}

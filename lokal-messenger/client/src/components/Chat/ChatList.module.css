@@ -1,53 +1,86 @@
-/* ─── Chap panel — suhbatlar ro'yxati ────────────────────────── */
+/* ─── Chap panel — Telegram Desktop uslubi ─────────────────── */
 
 .root {
   display: flex;
   flex-direction: column;
-  width: 252px;
-  min-width: 200px;
-  max-width: 300px;
+  width: 280px;
+  min-width: 220px;
+  max-width: 340px;
   height: 100%;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   flex-shrink: 0;
-  position: relative;
+  overflow: hidden;
 }
 
-/* Yuqori sarlavha */
+/* ── Sarlavha ── */
 .header {
   display: flex;
   align-items: center;
-  height: 48px;
-  padding: 0 12px;
+  height: var(--header-height);
+  padding: 0 8px 0 4px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 2px;
 }
+
+/* Hamburger tugmasi */
+.menuBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4.5px;
+  flex-shrink: 0;
+  color: var(--text-2);
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.menuBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.burger {
+  display: block;
+  width: 17px;
+  height: 1.5px;
+  background: currentColor;
+  border-radius: 1px;
+  transition: background var(--t-fast);
+}
+
 .headerTitle {
   flex: 1;
-  font-size: 12px;
-  font-family: var(--font-mono);
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+  padding-left: 2px;
+  letter-spacing: -0.2px;
 }
+
+/* Umumiy icon tugma */
 .iconBtn {
-  width: 28px; height: 28px;
-  border-radius: var(--r-xs);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-3);
-  transition: background var(--t-fast), color var(--t-fast);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
   flex-shrink: 0;
+  transition: background var(--t-fast), color var(--t-fast);
 }
 .iconBtn:hover {
   background: var(--bg-hover);
-  color: var(--cyan);
+  color: var(--text-1);
 }
 
-/* Qidiruv maydoni */
-.searchBox {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+/* ── Qidiruv ── */
+.searchWrap {
+  padding: 8px 10px 6px;
   flex-shrink: 0;
 }
 .searchInner {
@@ -57,90 +90,51 @@
 }
 .searchIcon {
   position: absolute;
-  left: 9px;
+  left: 10px;
   color: var(--text-3);
   pointer-events: none;
-  display: flex;
 }
 .searchInput {
   width: 100%;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xs);
-  padding: 6px 10px 6px 28px;
-  font-size: 12px;
+  border: none;
+  border-radius: var(--r-full);
+  padding: 7px 32px 7px 32px;
+  font-size: 14px;
   color: var(--text-1);
-  transition: border-color var(--t-fast);
+  transition: box-shadow var(--t-fast);
   user-select: text;
 }
-.searchInput:focus   { border-color: var(--border-soft); }
-.searchInput::placeholder { color: var(--text-3); }
+.searchInput::-webkit-search-cancel-button { display: none; }
+.searchInput::placeholder { color: var(--text-3); font-size: 14px; }
+.searchInput:focus { box-shadow: 0 0 0 2px var(--accent-xs); }
 
-/* Suhbatlar ro'yxati */
+.searchClear {
+  position: absolute;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-3);
+  color: var(--bg-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity var(--t-fast);
+}
+.searchClear:hover { opacity: 1; }
+
+/* ── Suhbatlar ro'yxati ── */
 .list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
-}
-.empty {
-  padding: 40px 16px;
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
+  padding: 2px 0;
 }
 
-/* Pastki profil paneli */
-.footer {
-  border-top: 1px solid var(--border);
-  padding: 8px 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-.footerAvatar {
-  width: 30px; height: 30px;
-  border-radius: var(--r-xs);
-  background: var(--bg-active);
-  border: 1px solid var(--border-soft);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--cyan);
-  flex-shrink: 0;
-  font-family: var(--font-mono);
-}
-.footerInfo {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.footerName {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-1);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.footerRole {
-  font-size: 10px;
+.empty {
+  padding: 48px 20px;
+  text-align: center;
+  font-size: 13px;
   color: var(--text-3);
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
-}
-.logoutBtn {
-  width: 26px; height: 26px;
-  border-radius: var(--r-xs);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-3);
-  transition: background var(--t-fast), color var(--t-fast);
-  flex-shrink: 0;
-}
-.logoutBtn:hover {
-  background: rgba(255, 59, 59, 0.1);
-  color: var(--danger);
 }

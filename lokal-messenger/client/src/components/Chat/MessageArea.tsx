@@ -1,20 +1,14 @@
-// O'ng panel: xabar tarixi sarlavhasi va kirish maydoni.
+// O'ng panel — Telegram Desktop uslubidagi chat oynasi.
 import { useEffect, useRef } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore }  from "@/store/chatStore";
+import Avatar            from "@/components/Common/Avatar";
 import MessageBubble     from "./MessageBubble";
 import InputBar          from "./InputBar";
 import s                 from "./MessageArea.module.css";
 
-const COLORS = ["#1a6b8a","#1a6b4a","#6b4a1a","#6b1a4a","#4a1a6b","#1a4a6b"];
-function colorFor(str: string) {
-  let h = 0;
-  for (const c of str) h = (h * 31 + c.charCodeAt(0)) | 0;
-  return COLORS[Math.abs(h) % COLORS.length];
-}
-
 export default function MessageArea() {
-  const { userId, token }  = useAuthStore();
+  const { userId, token } = useAuthStore();
   const { activeChatId, chats, messages, presenceMap } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -26,22 +20,24 @@ export default function MessageArea() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
 
+  // Suhbat tanlanmagan holat
   if (!activeChat) {
     return (
       <div className={s.root}>
         <div className={s.empty}>
-          <div className={s.emptyGlyph}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <div className={s.emptyIcon}>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
               <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
             </svg>
           </div>
-          <span className={s.emptyLabel}>Suhbat tanlang</span>
-          <div className={s.emptySecure}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <p className={s.emptyTitle}>Suhbatni tanlang</p>
+          <p className={s.emptyDesc}>Xabarlarni ko'rish uchun chap tarafdan suhbat tanlang</p>
+          <div className={s.emptyE2ee}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="11" width="18" height="11" rx="2"/>
               <path d="M7 11V7a5 5 0 0110 0v4"/>
             </svg>
-            E2EE · Signal Protocol · AES-256-GCM
+            E2E shifrlangan · Signal Protocol · AES-256-GCM
           </div>
         </div>
       </div>
@@ -50,45 +46,45 @@ export default function MessageArea() {
 
   return (
     <div className={s.root}>
-      {/* Sarlavha */}
+      {/* Chat sarlavhasi */}
       <div className={s.header}>
-        <div
-          className={s.headerAvatar}
-          style={{ background: colorFor(activeChat.title) }}
-          aria-hidden
-        >
-          {activeChat.title.charAt(0).toUpperCase()}
-        </div>
+        <Avatar name={activeChat.title} size={36} online={isOnline} />
 
         <div className={s.headerInfo}>
           <span className={s.headerName}>{activeChat.title}</span>
-          <span className={`${s.headerSub} ${isOnline ? s.online : ""}`}>
-            {isOnline ? "● ONLINE" : "○ OFFLINE"}
+          <span className={`${s.headerStatus} ${isOnline ? s.online : ""}`}>
+            {isOnline ? "onlayn" : "so'nggi marta uzoq vaqt oldin"}
           </span>
         </div>
 
-        <div className={s.headerEncBadge}>
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <rect x="3" y="11" width="18" height="11" rx="2"/>
-            <path d="M7 11V7a5 5 0 0110 0v4"/>
-          </svg>
-          E2EE
+        {/* O'ng tomondagi tugmalar */}
+        <div className={s.headerActions}>
+          <button className={s.actionBtn} aria-label="Qidirish" title="Suhbatda qidirish">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="M17 17l4 4" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <button className={s.actionBtn} aria-label="Qo'ng'iroq" title="Qo'ng'iroq" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" strokeLinecap="round"/>
+            </svg>
+          </button>
+          <button className={s.actionBtn} aria-label="Ko'proq" title="Ko'proq">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+              <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+              <circle cx="12" cy="19" r="1.5" fill="currentColor"/>
+            </svg>
+          </button>
         </div>
-
-        <button className={s.headerIconBtn} aria-label="Qidirish">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="7"/>
-            <path d="M17 17l4 4" strokeLinecap="round"/>
-          </svg>
-        </button>
       </div>
 
-      {/* Xabarlar */}
+      {/* Xabarlar maydoni */}
       <div className={s.messages}>
         {msgs.length === 0 ? (
           <div className={s.noMsgs}>
-            <div className={s.noMsgsIcon}>▣</div>
-            <div className={s.noMsgsText}>// xabar yo'q</div>
+            <div className={s.noMsgsBox}>Suhbat boshlash uchun xabar yuboring</div>
           </div>
         ) : (
           msgs.map(msg => (
@@ -102,7 +98,7 @@ export default function MessageArea() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
+      {/* Kiritish paneli */}
       <InputBar
         chatId={activeChatId ?? ""}
         recipientId={activeChat.id}

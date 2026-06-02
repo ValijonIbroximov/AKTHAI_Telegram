@@ -1,19 +1,22 @@
+/* Telegram uslubidagi doira avatar */
 .root {
-  border-radius: var(--r-xs);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
-  color: rgba(200, 230, 255, 0.9);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
   flex-shrink: 0;
   position: relative;
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
+  user-select: none;
+  letter-spacing: -0.5px;
 }
+
 .dot {
   position: absolute;
-  bottom: -1px; right: -1px;
-  width: 9px; height: 9px;
+  bottom: 1px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  border: 1.5px solid var(--bg-panel);
+  border: 2px solid;
 }

@@ -1,14 +1,13 @@
-// Harbiy autentifikatsiya ekrani — Dark Navy / Cyan uslubi.
+// Harbiy autentifikatsiya ekrani.
 // Faqat admin tomonidan yaratilgan hisob bilan kirish amalga oshiriladi.
 import { useState, FormEvent } from "react";
 import { useAuthStore } from "@/store/authStore";
 import s from "./LoginPage.module.css";
 
-interface Props { onSettings?: () => void }
-
-export default function LoginPage({ onSettings }: Props) {
+export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const { login, loading, error, clearError } = useAuthStore();
 
   const onSubmit = async (e: FormEvent) => {
@@ -21,57 +20,52 @@ export default function LoginPage({ onSettings }: Props) {
     <div className={s.root}>
       <div className={s.card}>
 
-        {/* Status satri */}
-        <div className={s.statusBar}>
-          <span className={s.statusDot} />
-          <span>Yopiq Tarmoq · TLS Aktiv</span>
-          {onSettings && (
-            <button className={s.settingsBtn} onClick={onSettings} aria-label="Sozlamalar" title="Sozlamalar">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-              </svg>
-            </button>
-          )}
-        </div>
-
         {/* Logo */}
         <div className={s.logo}>
           <div className={s.logoIcon}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
+              <path d="M2 17l10 5 10-5" opacity="0.7"/>
+              <path d="M2 12l10 5 10-5" opacity="0.85"/>
             </svg>
           </div>
           <div className={s.logoTitle}>Harbiy Messenjer</div>
-          <div className={s.logoSub}>E2EE · Signal Protocol · v0.1</div>
+          <div className={s.logoSub}>E2E Shifrlangan · Signal Protocol</div>
         </div>
+
+        {/* Xato xabari */}
+        {error && (
+          <div className={s.error} role="alert">
+            <span className={s.errorIcon}>⚠</span>
+            <span className={s.errorText}>{error}</span>
+            <button type="button" className={s.errorClose} onClick={clearError} aria-label="Yopish">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Forma */}
         <form onSubmit={onSubmit} className={s.form} noValidate>
-          {error && (
-            <div className={s.error} role="alert">
-              <span>⚠</span>
-              <span>{error}</span>
-              <button type="button" className={s.errorClose} onClick={clearError}>✕</button>
-            </div>
-          )}
-
           <div className={s.field}>
-            <label htmlFor="un" className={s.label}>Identifikator</label>
+            <label htmlFor="un" className={s.label}>Foydalanuvchi nomi</label>
             <div className={s.inputWrap}>
-              <span className={s.inputIcon}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-              </span>
+              <svg className={s.inputIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
               <input
-                id="un" type="text" className={s.input}
+                id="un"
+                type="text"
+                className={s.input}
                 placeholder="login_nomi"
-                value={username} onChange={e => setUsername(e.target.value)}
-                autoComplete="username" autoFocus disabled={loading} required
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                autoComplete="username"
+                autoFocus
+                disabled={loading}
+                required
               />
             </div>
           </div>
@@ -79,42 +73,60 @@ export default function LoginPage({ onSettings }: Props) {
           <div className={s.field}>
             <label htmlFor="pw" className={s.label}>Parol</label>
             <div className={s.inputWrap}>
-              <span className={s.inputIcon}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0110 0v4"/>
-                </svg>
-              </span>
+              <svg className={s.inputIcon} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                <path d="M7 11V7a5 5 0 0110 0v4"/>
+              </svg>
               <input
-                id="pw" type="password" className={s.input}
-                placeholder="••••••••"
-                value={password} onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password" disabled={loading} required
+                id="pw"
+                type={showPass ? "text" : "password"}
+                className={s.input}
+                placeholder="Parolni kiriting"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                autoComplete="current-password"
+                disabled={loading}
+                required
               />
+              <button
+                type="button"
+                className={s.eyeBtn}
+                onClick={() => setShowPass(v => !v)}
+                tabIndex={-1}
+                aria-label={showPass ? "Parolni yashirish" : "Parolni ko'rsatish"}
+              >
+                {showPass ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
             </div>
           </div>
 
           <button
-            type="submit" className={s.btn}
+            type="submit"
+            className={s.btn}
             disabled={loading || !username.trim() || !password}
           >
-            {loading
-              ? <span className={s.spinner} />
-              : <>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>
-                  </svg>
-                  Kirish
-                </>
-            }
+            {loading ? (
+              <span className={s.spinner} />
+            ) : (
+              "Kirish"
+            )}
           </button>
         </form>
 
         <p className={s.hint}>
           Hisob yaratish taqiqlangan.{" "}
-          <span className={s.hintHighlight}>Administrator</span>ga murojaat qiling.
+          <span className={s.hintAccent}>Administrator</span>ga murojaat qiling.
         </p>
-        <p className={s.versionTag}>SYS · SEC-LVL-3 · AES-256-GCM · ARGON2ID</p>
       </div>
     </div>
   );

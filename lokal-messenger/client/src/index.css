@@ -1,150 +1,179 @@
 /* ================================================================
-   HARBIY MESSENJER — Dark Navy / Cyan dizayn tizimi
-   Barcha CSS o'zgaruvchilari shu faylda markazlashtirilgan.
+   HARBIY MESSENJER — Global Design System
+   Inter/Roboto font, smooth transitions, Telegram-class spacing.
    ================================================================ */
+
+/* Inter shrifti — tizimda bo'lsa ishlatiladi, yo'qsa Segoe UI */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Asosiy mavzu: High-Tech Dark (Navy + Cyan) ──────────────── */
 :root {
-  /* ── Fon qatlamlari ──────────────────────────────────────── */
-  --bg-base:     #070c18;   /* eng chuqur qora-ko'k */
-  --bg-panel:    #0b1220;   /* yon panel */
-  --bg-surface:  #0f1a2e;   /* kartalar, inputlar */
-  --bg-hover:    #142035;   /* hover holati */
-  --bg-active:   #1a2d47;   /* tanlangan element */
-  --bg-overlay:  rgba(7,12,24,0.85); /* modal orqa fon */
+  /* Fon */
+  --bg-base:     #0d1117;
+  --bg-panel:    #161b22;
+  --bg-surface:  #21262d;
+  --bg-hover:    #1c2128;
+  --bg-active:   #1f3550;
+  --bg-overlay:  rgba(1, 4, 9, 0.82);
+  --bg-msg:      #0d1117;
 
-  /* ── Asosiy rang: Cyan ───────────────────────────────────── */
-  --cyan:        #00d4ff;
-  --cyan-dim:    #0099bb;
-  --cyan-dark:   #005577;
-  --cyan-glow:   rgba(0, 212, 255, 0.18);
-  --cyan-glow-s: rgba(0, 212, 255, 0.08);
+  /* Asosiy rang */
+  --accent:      #00d4ff;
+  --accent-dim:  #0099bb;
+  --accent-dark: #004466;
+  --accent-glow: rgba(0, 212, 255, 0.20);
+  --accent-xs:   rgba(0, 212, 255, 0.08);
 
-  /* ── Matn ────────────────────────────────────────────────── */
-  --text-1:      #cde8ff;   /* asosiy matn */
-  --text-2:      #5a8aaa;   /* ikkinchi darajali */
-  --text-3:      #2a4d66;   /* placeholder, vaqt */
-  --text-inv:    #07101e;   /* teskari (tugma ustida) */
+  /* Alias (eski komponentlar uchun) */
+  --cyan:        var(--accent);
+  --cyan-dim:    var(--accent-dim);
+  --cyan-dark:   var(--accent-dark);
+  --cyan-glow:   var(--accent-glow);
+  --cyan-glow-s: var(--accent-xs);
 
-  /* ── Chegara ─────────────────────────────────────────────── */
-  --border:      rgba(0, 212, 255, 0.07);
-  --border-soft: rgba(0, 212, 255, 0.14);
-  --border-med:  rgba(0, 212, 255, 0.25);
+  /* Matn */
+  --text-1:      #e6edf3;
+  --text-2:      #7d8590;
+  --text-3:      #484f58;
+  --text-inv:    #0d1117;
 
-  /* ── Holat ranglari ──────────────────────────────────────── */
-  --success:     #00e676;
-  --warning:     #ffcc00;
-  --danger:      #ff3b3b;
-  --muted:       #3a5a7a;
+  /* Chegara */
+  --border:      rgba(48, 54, 61, 1);
+  --border-soft: rgba(48, 54, 61, 0.8);
+  --border-med:  rgba(0, 212, 255, 0.30);
 
-  /* ── Xabar pufakchalari ──────────────────────────────────── */
-  --bubble-out:  rgba(0, 180, 220, 0.13);
-  --bubble-in:   rgba(15, 26, 46, 0.95);
-  --bubble-out-border: rgba(0, 212, 255, 0.22);
-  --bubble-in-border:  rgba(0, 212, 255, 0.06);
+  /* Holat */
+  --success:     #3fb950;
+  --warning:     #d29922;
+  --danger:      #f85149;
+  --muted:       #484f58;
 
-  /* ── Tipografiya ─────────────────────────────────────────── */
-  --font-ui:    -apple-system, 'Segoe UI', system-ui, sans-serif;
-  --font-mono:  'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  /* Xabar pufakchalari */
+  --bubble-out:        rgba(0, 180, 220, 0.18);
+  --bubble-in:         rgba(22, 27, 34, 1);
+  --bubble-out-border: rgba(0, 212, 255, 0.20);
+  --bubble-in-border:  rgba(48, 54, 61, 1);
+
+  /* Tipografiya */
+  --font-ui:   'Inter', -apple-system, 'Segoe UI', 'Roboto', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', 'SF Mono', monospace;
 
   font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 
-  /* ── Radiuslar ───────────────────────────────────────────── */
-  --r-xs: 3px;
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  /* Radiuslar */
+  --r-xs:  4px;
+  --r-sm:  8px;
+  --r-md:  12px;
+  --r-lg:  16px;
+  --r-xl:  24px;
+  --r-full: 9999px;
 
-  /* ── O'tishlar ───────────────────────────────────────────── */
-  --t-fast: 100ms ease;
-  --t-med:  180ms ease;
+  /* O'tishlar */
+  --t-fast: 120ms ease;
+  --t-med:  200ms ease;
+  --t-slow: 350ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  /* Ilovaga xos */
+  --sidebar-width:  280px;
+  --header-height:  56px;
+  --avatar-size:    46px;
 }
 
 /* ================================================================
-   MAVZU BLОKLARI — data-theme atributi orqali faollashadi.
-   Har bir mavzu :root ichidagi o'zgaruvchilarni qayta yozadi.
+   MAVZU BLOKLARI
    ================================================================ */
 
 /* ── High-Tech Light ─── */
 [data-theme="hightech-light"] {
-  --bg-base:     #e4f0f6;
-  --bg-panel:    #d0e6f0;
-  --bg-surface:  #eaf5fb;
-  --bg-hover:    #c0d8e8;
-  --bg-active:   #aacbde;
-  --bg-overlay:  rgba(180,210,230,0.85);
-  --cyan:        #006b8a;
-  --cyan-dim:    #005570;
-  --cyan-dark:   #003d52;
-  --cyan-glow:   rgba(0,107,138,0.20);
-  --cyan-glow-s: rgba(0,107,138,0.08);
-  --text-1:      #07283a;
-  --text-2:      #2a6880;
-  --text-3:      #6090aa;
-  --text-inv:    #e4f0f6;
-  --border:      rgba(0,107,138,0.10);
-  --border-soft: rgba(0,107,138,0.18);
-  --border-med:  rgba(0,107,138,0.30);
-  --bubble-out:  rgba(0,150,190,0.18);
-  --bubble-in:   rgba(255,255,255,0.9);
-  --bubble-out-border: rgba(0,107,138,0.28);
-  --bubble-in-border:  rgba(0,107,138,0.08);
+  --bg-base:     #f6f8fa;
+  --bg-panel:    #ffffff;
+  --bg-surface:  #f0f2f4;
+  --bg-hover:    #eaeef2;
+  --bg-active:   #ddf4ff;
+  --bg-overlay:  rgba(100,120,140,0.55);
+  --accent:      #0366d6;
+  --accent-dim:  #024ea4;
+  --accent-dark: #013580;
+  --accent-glow: rgba(3, 102, 214, 0.18);
+  --accent-xs:   rgba(3, 102, 214, 0.07);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
+  --text-1:      #24292f;
+  --text-2:      #57606a;
+  --text-3:      #8c959f;
+  --text-inv:    #ffffff;
+  --border:      rgba(208,215,222,1);
+  --border-soft: rgba(208,215,222,0.7);
+  --border-med:  rgba(3,102,214,0.35);
+  --bubble-out:  rgba(3,102,214,0.12);
+  --bubble-in:   rgba(246,248,250,1);
+  --bubble-out-border: rgba(3,102,214,0.20);
+  --bubble-in-border:  rgba(208,215,222,1);
 }
 
-/* ── Telegram Dark ─── */
+/* ── Telegram Dark (rasmiy ranglar) ─── */
 [data-theme="telegram-dark"] {
-  --bg-base:     #212121;
+  --bg-base:     #0e1621;
   --bg-panel:    #17212b;
   --bg-surface:  #1c2733;
-  --bg-hover:    #232e3c;
+  --bg-hover:    #202e3a;
   --bg-active:   #2b5278;
-  --bg-overlay:  rgba(10,10,10,0.85);
-  --cyan:        #2aabee;
-  --cyan-dim:    #1a8bc4;
-  --cyan-dark:   #0d5e8a;
-  --cyan-glow:   rgba(42,171,238,0.20);
-  --cyan-glow-s: rgba(42,171,238,0.08);
-  --text-1:      #e9e9e9;
-  --text-2:      #7d9db5;
+  --bg-overlay:  rgba(4, 8, 15, 0.85);
+  --accent:      #2aabee;
+  --accent-dim:  #1a8bc4;
+  --accent-dark: #0d5e8a;
+  --accent-glow: rgba(42,171,238,0.22);
+  --accent-xs:   rgba(42,171,238,0.09);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
+  --text-1:      #d4dde7;
+  --text-2:      #728ea5;
   --text-3:      #3d5a70;
-  --text-inv:    #0d1117;
-  --border:      rgba(42,171,238,0.07);
-  --border-soft: rgba(42,171,238,0.15);
+  --text-inv:    #0e1621;
+  --border:      rgba(30, 43, 57, 1);
+  --border-soft: rgba(40, 58, 75, 1);
   --border-med:  rgba(42,171,238,0.28);
-  --bubble-out:  rgba(42,171,238,0.20);
-  --bubble-in:   rgba(28,39,51,0.95);
-  --bubble-out-border: rgba(42,171,238,0.25);
-  --bubble-in-border:  rgba(42,171,238,0.06);
+  --bubble-out:  #2b5278;
+  --bubble-in:   #17212b;
+  --bubble-out-border: transparent;
+  --bubble-in-border:  transparent;
+  --r-xs:  6px;  --r-sm: 10px; --r-md: 14px; --r-lg: 18px;
 }
 
-/* ── Telegram Light ─── */
+/* ── Telegram Light (rasmiy ranglar) ─── */
 [data-theme="telegram-light"] {
-  --bg-base:     #f5f5f5;
+  --bg-base:     #f1f1f1;
   --bg-panel:    #ffffff;
   --bg-surface:  #ffffff;
-  --bg-hover:    #ebebeb;
-  --bg-active:   #d7edff;
-  --bg-overlay:  rgba(100,100,100,0.6);
-  --cyan:        #2aabee;
-  --cyan-dim:    #1a8bc4;
-  --cyan-dark:   #0d5e8a;
-  --cyan-glow:   rgba(42,171,238,0.18);
-  --cyan-glow-s: rgba(42,171,238,0.06);
+  --bg-hover:    #f4f4f5;
+  --bg-active:   #e3effd;
+  --bg-overlay:  rgba(100,100,100,0.55);
+  --accent:      #2aabee;
+  --accent-dim:  #1a8bc4;
+  --accent-dark: #0d5e8a;
+  --accent-glow: rgba(42,171,238,0.18);
+  --accent-xs:   rgba(42,171,238,0.07);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #000000;
-  --text-2:      #5a8fa8;
-  --text-3:      #aaaaaa;
+  --text-2:      #707579;
+  --text-3:      #a0a7ab;
   --text-inv:    #ffffff;
   --border:      rgba(0,0,0,0.08);
-  --border-soft: rgba(0,0,0,0.12);
+  --border-soft: rgba(0,0,0,0.05);
   --border-med:  rgba(42,171,238,0.30);
-  --bubble-out:  rgba(42,171,238,0.18);
-  --bubble-in:   rgba(255,255,255,0.98);
-  --bubble-out-border: rgba(42,171,238,0.22);
-  --bubble-in-border:  rgba(0,0,0,0.06);
+  --bubble-out:  #effdde;
+  --bubble-in:   #ffffff;
+  --bubble-out-border: transparent;
+  --bubble-in-border:  transparent;
+  --success:     #4dab56;
+  --r-xs:  6px;  --r-sm: 10px; --r-md: 14px; --r-lg: 18px;
 }
 
 /* ── Gradient Dark ─── */
@@ -155,22 +184,24 @@
   --bg-hover:    #1d1940;
   --bg-active:   #261f54;
   --bg-overlay:  rgba(8,5,18,0.88);
-  --cyan:        #a78bfa;
-  --cyan-dim:    #7c3aed;
-  --cyan-dark:   #4c1d95;
-  --cyan-glow:   rgba(167,139,250,0.22);
-  --cyan-glow-s: rgba(167,139,250,0.09);
+  --accent:      #a78bfa;
+  --accent-dim:  #7c3aed;
+  --accent-dark: #4c1d95;
+  --accent-glow: rgba(167,139,250,0.22);
+  --accent-xs:   rgba(167,139,250,0.09);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #ede9fe;
   --text-2:      #8b7cc5;
   --text-3:      #4a3d7a;
   --text-inv:    #0d0918;
-  --border:      rgba(167,139,250,0.08);
-  --border-soft: rgba(167,139,250,0.16);
-  --border-med:  rgba(167,139,250,0.28);
-  --bubble-out:  rgba(167,139,250,0.16);
-  --bubble-in:   rgba(22,19,46,0.95);
+  --border:      rgba(50,40,80,1);
+  --border-soft: rgba(60,50,90,1);
+  --border-med:  rgba(167,139,250,0.35);
+  --bubble-out:  rgba(167,139,250,0.18);
+  --bubble-in:   rgba(22,19,46,1);
   --bubble-out-border: rgba(167,139,250,0.24);
-  --bubble-in-border:  rgba(167,139,250,0.06);
+  --bubble-in-border:  rgba(50,40,80,1);
 }
 
 /* ── Gradient Light ─── */
@@ -181,22 +212,24 @@
   --bg-hover:    #ede4fa;
   --bg-active:   #ddd0f8;
   --bg-overlay:  rgba(100,80,160,0.55);
-  --cyan:        #7c3aed;
-  --cyan-dim:    #5b21b6;
-  --cyan-dark:   #3b0764;
-  --cyan-glow:   rgba(124,58,237,0.18);
-  --cyan-glow-s: rgba(124,58,237,0.07);
+  --accent:      #7c3aed;
+  --accent-dim:  #5b21b6;
+  --accent-dark: #3b0764;
+  --accent-glow: rgba(124,58,237,0.18);
+  --accent-xs:   rgba(124,58,237,0.07);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #1e0a3c;
   --text-2:      #6d28d9;
   --text-3:      #a78bfa;
   --text-inv:    #faf5ff;
-  --border:      rgba(124,58,237,0.10);
-  --border-soft: rgba(124,58,237,0.18);
-  --border-med:  rgba(124,58,237,0.32);
+  --border:      rgba(224,210,255,1);
+  --border-soft: rgba(210,190,255,0.7);
+  --border-med:  rgba(124,58,237,0.35);
   --bubble-out:  rgba(124,58,237,0.14);
   --bubble-in:   rgba(255,255,255,0.95);
   --bubble-out-border: rgba(124,58,237,0.22);
-  --bubble-in-border:  rgba(124,58,237,0.06);
+  --bubble-in-border:  rgba(224,210,255,1);
 }
 
 /* ── Terminal Dark ─── */
@@ -207,26 +240,29 @@
   --bg-hover:    #181818;
   --bg-active:   #202020;
   --bg-overlay:  rgba(0,0,0,0.92);
-  --cyan:        #00ff41;
-  --cyan-dim:    #00cc33;
-  --cyan-dark:   #006618;
-  --cyan-glow:   rgba(0,255,65,0.20);
-  --cyan-glow-s: rgba(0,255,65,0.07);
+  --accent:      #00ff41;
+  --accent-dim:  #00cc33;
+  --accent-dark: #006618;
+  --accent-glow: rgba(0,255,65,0.22);
+  --accent-xs:   rgba(0,255,65,0.08);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #ccffcc;
   --text-2:      #44aa44;
   --text-3:      #226622;
   --text-inv:    #000000;
-  --border:      rgba(0,255,65,0.08);
-  --border-soft: rgba(0,255,65,0.15);
-  --border-med:  rgba(0,255,65,0.28);
+  --border:      rgba(0,80,0,1);
+  --border-soft: rgba(0,60,0,0.8);
+  --border-med:  rgba(0,255,65,0.30);
   --bubble-out:  rgba(0,255,65,0.12);
-  --bubble-in:   rgba(10,10,10,0.95);
+  --bubble-in:   rgba(10,10,10,1);
   --bubble-out-border: rgba(0,255,65,0.20);
-  --bubble-in-border:  rgba(0,255,65,0.05);
-  --font-ui:     'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --bubble-in-border:  rgba(0,80,0,1);
+  --font-ui: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --r-xs: 2px; --r-sm: 2px; --r-md: 2px; --r-lg: 2px;
 }
 
-/* ── Terminal Light ─── */
+/* ── Terminal Light (Solarized) ─── */
 [data-theme="simpletext-light"] {
   --bg-base:     #fdf6e3;
   --bg-panel:    #eee8d5;
@@ -234,84 +270,89 @@
   --bg-hover:    #e6ded0;
   --bg-active:   #d0c8b0;
   --bg-overlay:  rgba(80,70,50,0.55);
-  --cyan:        #268bd2;
-  --cyan-dim:    #1a6fa8;
-  --cyan-dark:   #0d4d7a;
-  --cyan-glow:   rgba(38,139,210,0.18);
-  --cyan-glow-s: rgba(38,139,210,0.07);
+  --accent:      #268bd2;
+  --accent-dim:  #1a6fa8;
+  --accent-dark: #0d4d7a;
+  --accent-glow: rgba(38,139,210,0.18);
+  --accent-xs:   rgba(38,139,210,0.07);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #073642;
   --text-2:      #586e75;
   --text-3:      #93a1a1;
   --text-inv:    #fdf6e3;
-  --border:      rgba(38,139,210,0.10);
-  --border-soft: rgba(38,139,210,0.18);
-  --border-med:  rgba(38,139,210,0.30);
+  --border:      rgba(200,185,160,1);
+  --border-soft: rgba(185,170,145,0.8);
+  --border-med:  rgba(38,139,210,0.32);
   --bubble-out:  rgba(38,139,210,0.14);
-  --bubble-in:   rgba(253,246,227,0.95);
+  --bubble-in:   rgba(253,246,227,1);
   --bubble-out-border: rgba(38,139,210,0.22);
-  --bubble-in-border:  rgba(38,139,210,0.06);
-  --font-ui:     'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --bubble-in-border:  rgba(200,185,160,1);
+  --font-ui: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --r-xs: 2px; --r-sm: 2px; --r-md: 2px; --r-lg: 2px;
 }
 
 /* ── Windows 11 Dark ─── */
 [data-theme="windows-dark"] {
-  --bg-base:     #1c1c1c;
-  --bg-panel:    #202020;
-  --bg-surface:  #2b2b2b;
-  --bg-hover:    #333333;
-  --bg-active:   #004578;
-  --bg-overlay:  rgba(0,0,0,0.80);
-  --cyan:        #0078d4;
-  --cyan-dim:    #005a9e;
-  --cyan-dark:   #003d6e;
-  --cyan-glow:   rgba(0,120,212,0.22);
-  --cyan-glow-s: rgba(0,120,212,0.09);
-  --text-1:      #f9f9f9;
+  --bg-base:     #202020;
+  --bg-panel:    #2c2c2c;
+  --bg-surface:  #383838;
+  --bg-hover:    #313131;
+  --bg-active:   rgba(0,120,212,0.25);
+  --bg-overlay:  rgba(0,0,0,0.75);
+  --accent:      #60cdff;
+  --accent-dim:  #0078d4;
+  --accent-dark: #003d6e;
+  --accent-glow: rgba(96,205,255,0.20);
+  --accent-xs:   rgba(96,205,255,0.08);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
+  --text-1:      #ffffff;
   --text-2:      #9d9d9d;
   --text-3:      #5a5a5a;
-  --text-inv:    #1c1c1c;
-  --border:      rgba(255,255,255,0.07);
-  --border-soft: rgba(255,255,255,0.12);
-  --border-med:  rgba(0,120,212,0.40);
-  --bubble-out:  rgba(0,120,212,0.20);
-  --bubble-in:   rgba(43,43,43,0.95);
-  --bubble-out-border: rgba(0,120,212,0.30);
-  --bubble-in-border:  rgba(255,255,255,0.05);
-  --r-xs: 4px;
-  --r-sm: 8px;
-  --r-md: 8px;
-  --r-lg: 8px;
+  --text-inv:    #000000;
+  --border:      rgba(255,255,255,0.08);
+  --border-soft: rgba(255,255,255,0.05);
+  --border-med:  rgba(96,205,255,0.35);
+  --bubble-out:  rgba(0,120,212,0.30);
+  --bubble-in:   rgba(44,44,44,1);
+  --bubble-out-border: transparent;
+  --bubble-in-border:  rgba(255,255,255,0.06);
+  --r-xs: 6px; --r-sm: 10px; --r-md: 12px; --r-lg: 16px;
 }
 
 /* ── Windows 11 Light ─── */
 [data-theme="windows-light"] {
   --bg-base:     #f3f3f3;
   --bg-panel:    #ffffff;
-  --bg-surface:  #fbfbfb;
-  --bg-hover:    #e5e5e5;
-  --bg-active:   #cce4f7;
+  --bg-surface:  #f9f9f9;
+  --bg-hover:    #ebebeb;
+  --bg-active:   rgba(0,120,212,0.12);
   --bg-overlay:  rgba(100,100,100,0.55);
-  --cyan:        #0078d4;
-  --cyan-dim:    #005a9e;
-  --cyan-dark:   #003d6e;
-  --cyan-glow:   rgba(0,120,212,0.18);
-  --cyan-glow-s: rgba(0,120,212,0.06);
+  --accent:      #0078d4;
+  --accent-dim:  #005a9e;
+  --accent-dark: #003d6e;
+  --accent-glow: rgba(0,120,212,0.18);
+  --accent-xs:   rgba(0,120,212,0.06);
+  --cyan:        var(--accent); --cyan-dim: var(--accent-dim);
+  --cyan-dark:   var(--accent-dark); --cyan-glow: var(--accent-glow); --cyan-glow-s: var(--accent-xs);
   --text-1:      #1a1a1a;
   --text-2:      #616161;
   --text-3:      #aaaaaa;
   --text-inv:    #ffffff;
-  --border:      rgba(0,0,0,0.08);
-  --border-soft: rgba(0,0,0,0.12);
+  --border:      rgba(0,0,0,0.07);
+  --border-soft: rgba(0,0,0,0.05);
   --border-med:  rgba(0,120,212,0.35);
-  --bubble-out:  rgba(0,120,212,0.14);
-  --bubble-in:   rgba(255,255,255,0.98);
-  --bubble-out-border: rgba(0,120,212,0.22);
+  --bubble-out:  rgba(0,120,212,0.18);
+  --bubble-in:   rgba(255,255,255,1);
+  --bubble-out-border: transparent;
   --bubble-in-border:  rgba(0,0,0,0.05);
-  --r-xs: 4px;
-  --r-sm: 8px;
-  --r-md: 8px;
-  --r-lg: 8px;
+  --r-xs: 6px; --r-sm: 10px; --r-md: 12px; --r-lg: 16px;
 }
+
+/* ================================================================
+   GLOBAL ELEMENTLAR
+   ================================================================ */
 
 html, body, #root {
   height: 100%;
@@ -319,65 +360,56 @@ html, body, #root {
   color: var(--text-1);
   overflow: hidden;
   user-select: none;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Global scrollbar ──────────────────────────────────────── */
-::-webkit-scrollbar       { width: 3px; height: 3px; }
+/* Scrollbar */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: var(--cyan-dark);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--cyan-dim); }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
-/* ── Tanlanadigan matn ─────────────────────────────────────── */
-.selectable {
-  user-select: text;
-  cursor: text;
-}
+/* Matn tanlash */
+.selectable { user-select: text; cursor: text; }
 
-/* ── Fokus ─────────────────────────────────────────────────── */
+/* Fokus */
 :focus-visible {
-  outline: 1px solid var(--cyan);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: var(--r-xs);
 }
 
-/* ── Asosiy elementlar ─────────────────────────────────────── */
-button { cursor: pointer; border: none; background: none; color: inherit; font: inherit; }
-input, textarea { font: inherit; color: inherit; background: none; border: none; outline: none; }
-a { color: var(--cyan); text-decoration: none; }
+/* Asosiy elementlar */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+input, textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+a { color: var(--accent); text-decoration: none; }
 
-/* ── Animatsiyalar ─────────────────────────────────────────── */
-@keyframes fadeUp    { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* ── Animatsiyalar ── */
+@keyframes fadeUp    { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
 @keyframes spin      { to { transform: rotate(360deg); } }
 @keyframes pulse     { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-@keyframes scanline  {
-  0%   { background-position: 0 0; }
-  100% { background-position: 0 100%; }
+@keyframes slideLeft {
+  from { transform: translateX(-100%); opacity: 0.6; }
+  to   { transform: translateX(0);     opacity: 1; }
 }
 @keyframes glowPulse {
-  0%,100% { box-shadow: 0 0 4px var(--cyan-glow-s); }
-  50%      { box-shadow: 0 0 12px var(--cyan-glow); }
+  0%,100% { box-shadow: 0 0 4px var(--accent-xs); }
+  50%     { box-shadow: 0 0 14px var(--accent-glow); }
 }
 
-/* ── Yordamchilar ──────────────────────────────────────────── */
+/* ── Yordamchilar ── */
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mono     { font-family: var(--font-mono); }
-
-/* ── Skanerlash effekti (harbiy estetika) ──────────────────── */
-.scan-lines::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 212, 255, 0.015) 2px,
-    rgba(0, 212, 255, 0.015) 4px
-  );
-  pointer-events: none;
-  border-radius: inherit;
-}

@@ -1,155 +1,138 @@
-/* ─── Kirish sahifasi — Dark Navy / Cyan ─────────────────────── */
+/* ─── Kirish sahifasi — ikkala mavzuda ishlaydi ──────────────── */
 
 .root {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-width: 100vw;
   background: var(--bg-base);
   position: relative;
   overflow: hidden;
 }
 
-.settingsBtn {
-  margin-left: auto;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--r-xs);
-  color: var(--text-3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color var(--t-fast);
-}
-.settingsBtn:hover { color: var(--cyan); }
-
-/* Orqa fon: diagonal grid + glow */
+/* Fon bezagi */
 .root::before {
   content: '';
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    linear-gradient(var(--accent-xs) 1px, transparent 1px),
+    linear-gradient(90deg, var(--accent-xs) 1px, transparent 1px);
   background-size: 40px 40px;
   pointer-events: none;
 }
 .root::after {
   content: '';
   position: absolute;
-  bottom: -20%;
+  bottom: -10%;
   left: 50%;
   transform: translateX(-50%);
-  width: 60vw;
-  height: 40vh;
-  background: radial-gradient(ellipse at center, rgba(0,212,255,0.06) 0%, transparent 70%);
+  width: 50vw;
+  height: 30vh;
+  background: radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%);
   pointer-events: none;
 }
 
-/* Karta */
+/* ── Karta ── */
 .card {
   position: relative;
   z-index: 1;
-  width: 340px;
+  width: 360px;
   background: var(--bg-panel);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-md);
-  padding: 36px 32px 28px;
-  animation: fadeUp 0.3s ease;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 40px 36px 32px;
+  animation: fadeUp 0.28s ease;
   box-shadow:
-    0 0 0 1px rgba(0,212,255,0.04),
-    0 24px 60px rgba(0,0,0,0.55),
-    0 0 40px rgba(0,212,255,0.04);
+    0 20px 60px rgba(0,0,0,0.45),
+    0 0 0 1px var(--accent-xs);
 }
-/* Yuqori chiziq — cyan aksent */
 .card::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0; left: 20%; right: 20%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-  border-radius: var(--r-md) var(--r-md) 0 0;
+  background: linear-gradient(90deg, transparent, var(--accent) 50%, transparent);
+  border-radius: 1px;
 }
 
-/* Status indikator (tepada) */
-.statusBar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 24px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-.statusDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--cyan);
-  animation: glowPulse 2s infinite;
-  flex-shrink: 0;
-}
-
-/* Logo */
+/* ── Logo ── */
 .logo {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 28px;
+  gap: 12px;
+  margin-bottom: 32px;
 }
+
 .logoIcon {
-  width: 52px;
-  height: 52px;
-  border: 1.5px solid var(--border-med);
-  border-radius: var(--r-sm);
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, var(--accent-dark) 0%, var(--bg-surface) 100%);
+  border: 1px solid var(--border-med);
+  border-radius: var(--r-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-surface);
-  position: relative;
-  overflow: hidden;
-}
-.logoIcon::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, var(--cyan-glow-s) 0%, transparent 60%);
+  box-shadow: 0 0 24px var(--accent-glow);
 }
 .logoIcon svg {
-  width: 28px;
-  height: 28px;
-  color: var(--cyan);
-  position: relative;
-  z-index: 1;
+  width: 32px;
+  height: 32px;
+  color: var(--accent);
 }
+
 .logoTitle {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--text-1);
+  letter-spacing: -0.3px;
 }
 .logoSub {
-  font-size: 10px;
-  letter-spacing: 1px;
+  font-size: 12px;
   color: var(--text-3);
-  font-family: var(--font-mono);
 }
 
-/* Forma */
-.form { display: flex; flex-direction: column; gap: 12px; }
+/* ── Xato xabari ── */
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(248, 81, 73, 0.08);
+  border: 1px solid rgba(248, 81, 73, 0.20);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  animation: fadeUp 0.15s ease;
+}
+.errorIcon { font-size: 14px; flex-shrink: 0; margin-top: 1px; color: var(--danger); }
+.errorText { flex: 1; font-size: 13px; color: var(--danger); line-height: 1.4; }
+.errorClose {
+  color: var(--text-3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  transition: color var(--t-fast);
+}
+.errorClose:hover { color: var(--danger); }
 
-.field { display: flex; flex-direction: column; gap: 4px; }
+/* ── Forma ── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
 .label {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  text-transform: uppercase;
-  letter-spacing: 1.2px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-2);
 }
 
@@ -158,131 +141,91 @@
   display: flex;
   align-items: center;
 }
+
 .inputIcon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   color: var(--text-3);
-  display: flex;
   pointer-events: none;
   transition: color var(--t-fast);
+  flex-shrink: 0;
 }
+.inputWrap:focus-within .inputIcon { color: var(--accent); }
+
 .input {
   width: 100%;
-  background: var(--bg-base);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r-xs);
-  padding: 9px 12px 9px 34px;
-  font-size: 13px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 11px 40px 11px 40px;
+  font-size: 14px;
   color: var(--text-1);
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
   user-select: text;
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
 }
 .input:focus {
-  border-color: var(--cyan);
-  box-shadow: 0 0 0 2px var(--cyan-glow-s), inset 0 0 20px rgba(0,212,255,0.03);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-xs);
+  outline: none;
 }
-.input:focus + .inputIcon,
-.inputWrap:focus-within .inputIcon {
-  color: var(--cyan);
-}
-.input::placeholder { color: var(--text-3); letter-spacing: 0; }
-.input:disabled     { opacity: 0.4; cursor: not-allowed; }
+.input::placeholder { color: var(--text-3); }
+.input:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* Xato banner */
-.error {
+.eyeBtn {
+  position: absolute;
+  right: 10px;
+  color: var(--text-3);
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: rgba(255, 59, 59, 0.08);
-  border: 1px solid rgba(255, 59, 59, 0.2);
-  border-left: 2px solid var(--danger);
+  align-items: center;
+  padding: 4px;
   border-radius: var(--r-xs);
-  padding: 8px 10px;
-  font-size: 12px;
-  color: #ff8080;
-  animation: fadeUp 0.15s ease;
+  transition: color var(--t-fast);
 }
-.error span:first-child { font-size: 14px; margin-top: 1px; flex-shrink: 0; }
-.error span:nth-child(2) { flex: 1; line-height: 1.4; }
-.errorClose {
-  color: rgba(255,128,128,0.5);
-  font-size: 14px;
-  padding: 0 2px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.errorClose:hover { color: #ff8080; }
+.eyeBtn:hover { color: var(--text-2); }
 
-/* Yuborish tugmasi */
+/* ── Kirish tugmasi ── */
 .btn {
   margin-top: 4px;
-  padding: 10px;
-  background: linear-gradient(135deg, var(--cyan-dark) 0%, rgba(0,180,220,0.25) 100%);
-  border: 1px solid var(--border-med);
-  border-radius: var(--r-xs);
-  color: var(--cyan);
-  font-size: 12px;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  height: 40px;
+  height: 44px;
+  background: var(--accent);
+  border-radius: var(--r-sm);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   transition: background var(--t-fast), box-shadow var(--t-fast), transform 0.1s;
-  position: relative;
-  overflow: hidden;
+  letter-spacing: -0.1px;
 }
-.btn::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(0,212,255,0.08) 0%, transparent 60%);
-  opacity: 0;
-  transition: opacity var(--t-fast);
-}
-.btn:hover:not(:disabled)::after { opacity: 1; }
 .btn:hover:not(:disabled) {
-  box-shadow: 0 0 16px var(--cyan-glow-s);
-  border-color: var(--cyan);
+  box-shadow: 0 4px 16px var(--accent-glow);
+  filter: brightness(1.08);
 }
 .btn:active:not(:disabled) { transform: scale(0.98); }
-.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn:disabled {
+  opacity: 0.40;
+  cursor: not-allowed;
+}
 
+/* Spinner */
 .spinner {
   display: inline-block;
-  width: 14px; height: 14px;
-  border: 1.5px solid rgba(0,212,255,0.25);
-  border-top-color: var(--cyan);
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
 
-/* Pastki izoh */
+/* ── Izoh ── */
 .hint {
-  margin-top: 16px;
+  margin-top: 20px;
   text-align: center;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--text-3);
-  font-family: var(--font-mono);
-  letter-spacing: 0.5px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
-.hintHighlight {
-  color: var(--cyan-dim);
-}
-
-/* Versiya tag */
-.versionTag {
-  margin-top: 10px;
-  text-align: center;
-  font-size: 9px;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  letter-spacing: 1px;
-  opacity: 0.6;
-}
+.hintAccent { color: var(--accent); font-weight: 500; }
