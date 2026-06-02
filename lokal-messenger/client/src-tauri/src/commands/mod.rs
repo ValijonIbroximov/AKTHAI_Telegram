@@ -3,3 +3,4 @@ pub mod integrity;
 pub mod auth;
 pub mod messages;
 pub mod keys;
+pub mod history;

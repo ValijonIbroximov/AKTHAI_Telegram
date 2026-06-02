@@ -105,6 +105,19 @@ pub fn open_db(path: &str) -> Result<DbConn> {
             msg_key     BLOB NOT NULL,
             PRIMARY KEY (peer_id, ratchet_pk, msg_num)
         );
+
+        -- Mahalliy ochiq matn tarixi (E2EE — serverda faqat shifrlangan)
+        CREATE TABLE IF NOT EXISTS local_messages (
+            id          TEXT PRIMARY KEY,
+            chat_id     TEXT NOT NULL,
+            sender_id   TEXT NOT NULL,
+            plaintext   TEXT NOT NULL,
+            ciphertext  TEXT NOT NULL DEFAULT '',
+            msg_type    TEXT NOT NULL DEFAULT 'text',
+            status      TEXT NOT NULL DEFAULT 'sent',
+            created_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_local_messages_chat ON local_messages(chat_id);
     ")?;
 
     Ok(Arc::new(Mutex::new(conn)))

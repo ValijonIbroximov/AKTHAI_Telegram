@@ -60,6 +60,9 @@ pub fn run() {
             // E2EE xabar
             commands::messages::encrypt_message,
             commands::messages::decrypt_message,
+            // Mahalliy ochiq matn tarixi
+            commands::history::save_local_message,
+            commands::history::load_local_messages,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri ilovasini ishga tushirib bo'lmadi");

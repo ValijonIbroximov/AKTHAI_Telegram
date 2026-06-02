@@ -11,6 +11,11 @@ import {
 } from "@/crypto/adapter";
 import { chatApi, keysApi, userApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
+import {
+  persistLocalMessage,
+  loadLocalMessages,
+  mergeMessages,
+} from "@/storage/localHistory";
 import type {
   Chat, Message, User,
   WsEvent, WsMsgRecv, WsMsgAck, WsKeyExchange,
@@ -97,6 +102,12 @@ async function redDecryptChatMessages(
         )
       : s.chats,
   }));
+
+  for (const msg of updated) {
+    if (!isDecryptFailure(msg.plaintext)) {
+      await persistLocalMessage(msg).catch(() => {});
+    }
+  }
 }
 
 // Sherik kalit bundle'ini fetch qilib X3DH sessiya o'rnatish
@@ -198,23 +209,54 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }
 
-    const existing = get().messages[chatId];
-    if (existing?.length) return;
-
+    // 1) Mahalliy tarix — refresh dan keyin darhol ko'rinadi
     try {
+      const local = await loadLocalMessages(chatId);
+      if (local.length) {
+        set((s) => ({ messages: { ...s.messages, [chatId]: local } }));
+        const lastLocal = local[local.length - 1];
+        if (lastLocal.plaintext) {
+          set((s) => ({
+            chats: s.chats.map((c) =>
+              c.id === chatId
+                ? {
+                    ...c,
+                    last_message: {
+                      sender_id: lastLocal.sender_id,
+                      preview:     previewFromMessage(lastLocal),
+                      created_at:  lastLocal.created_at,
+                    },
+                    updated_at: lastLocal.created_at,
+                  }
+                : c
+            ),
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn("[Chat] mahalliy tarix o'qilmadi:", e);
+    }
+
+    // 2) Serverdan shifrlangan tarix + deshifrlash + birlashtirish
+    try {
+      const local = await loadLocalMessages(chatId);
       const rawMsgs = await chatApi.history(token, chatId);
       const decrypted = await Promise.all(
         rawMsgs.map(async (msg) => {
           if (msg.msg_type === "text" && msg.ciphertext) {
+            const localHit = local.find((l) => l.id === msg.id && l.plaintext && !isDecryptFailure(l.plaintext));
+            if (localHit) return localHit;
             return { ...msg, plaintext: await decryptPlaintext(chatId, msg.sender_id, msg.ciphertext) };
           }
           return msg;
         })
       );
-      const last = decrypted[decrypted.length - 1];
+      const merged = mergeMessages(local, decrypted);
+      const last = merged[merged.length - 1];
+
       set((s) => ({
-        messages: { ...s.messages, [chatId]: decrypted },
-        chats: last?.plaintext
+        messages: { ...s.messages, [chatId]: merged },
+        chats: last
           ? s.chats.map((c) =>
               c.id === chatId
                 ? {
@@ -230,9 +272,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
             )
           : s.chats,
       }));
+
+      for (const msg of merged) {
+        if (!isDecryptFailure(msg.plaintext)) {
+          await persistLocalMessage(msg).catch(() => {});
+        }
+      }
     } catch (e) {
-      console.error("[Chat] history yuklanmadi:", e);
-      set((s) => ({ messages: { ...s.messages, [chatId]: [] } }));
+      console.error("[Chat] server tarixi yuklanmadi:", e);
     }
   },
 
@@ -332,11 +379,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         client_msg_id: localId,
       });
 
+      const sentMsg: Message = {
+        ...tempMsg,
+        ciphertext,
+        status: "sent",
+      };
+
       set((s) => ({
         messages: {
           ...s.messages,
           [chatId]: s.messages[chatId].map((m) =>
-            m.id === localId ? { ...m, status: "sent" as const } : m
+            m.id === localId ? sentMsg : m
           ),
         },
         chats: s.chats.map((c) =>
@@ -345,6 +398,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             : c
         ),
       }));
+
+      await persistLocalMessage(sentMsg).catch(() => {});
     } catch (e) {
       console.error("[E2EE] sendMessage xatoligi:", e);
       // Xatolik xabarini UI da ko'rsatish
@@ -404,6 +459,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 : c
             ),
           }));
+          if (!isDecryptFailure(plaintext)) {
+            await persistLocalMessage(newMsg).catch(() => {});
+          }
           wsClient.send("msg.delivered", { msg_id: m.msg_id });
         })();
         break;
@@ -423,6 +481,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
           return { messages: updated };
         });
+        // Mahalliy bazada id yangilanishi
+        for (const msgs of Object.values(get().messages)) {
+          const hit = msgs.find((m) => m.id === ack.server_msg_id);
+          if (hit?.plaintext && !isDecryptFailure(hit.plaintext)) {
+            void persistLocalMessage(hit).catch(() => {});
+            break;
+          }
+        }
         break;
       }
 

@@ -71,9 +71,13 @@ async function aesEncrypt(
   return out;
 }
 
+/** AES-GCM: nonce(12) + ciphertext + tag(16) — Rust bilan bir xil */
 async function aesDecrypt(
   key: Uint8Array, data: Uint8Array, aad: Uint8Array
 ): Promise<Uint8Array> {
+  if (data.length < 28) {
+    throw new Error(`Shifrlangan ma'lumot juda qisqa (${data.length} bayt, min 28)`);
+  }
   const k     = await subtle.importKey("raw", toAB(key), "AES-GCM", false, ["decrypt"]);
   const nonce = data.slice(0, 12);
   const ct    = data.slice(12);
@@ -119,7 +123,12 @@ function dhX25519(sk: Uint8Array, theirPk: Uint8Array): Uint8Array {
 
 // ── IndexedDB ─────────────────────────────────────────────────────────────
 
-interface WebSession { sendCk: string; recvCk: string; }
+interface WebSession {
+  sendCk:     string;
+  recvCk:     string;
+  sendMsgNum: number;
+  recvMsgNum: number;
+}
 
 interface WebIdentity {
   ikSkB64: string;  // X25519 maxfiy kalit Base64
@@ -130,13 +139,17 @@ const IDB_NAME = "harbiy-signal";
 
 function openIdb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, 3);
+    const req = indexedDB.open(IDB_NAME, 4);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("sessions"))
         db.createObjectStore("sessions", { keyPath: "peerId" });
       if (!db.objectStoreNames.contains("identity"))
         db.createObjectStore("identity", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("message_history")) {
+        const os = db.createObjectStore("message_history", { keyPath: "id" });
+        os.createIndex("chat_id", "chat_id", { unique: false });
+      }
     };
     req.onsuccess = () => res(req.result);
     req.onerror   = () => rej(req.error);
@@ -163,11 +176,30 @@ async function idbPut(store: string, value: object): Promise<void> {
 }
 
 async function getSession(peerId: string): Promise<WebSession | null> {
-  return idbGet<WebSession>("sessions", peerId);
+  const raw = await idbGet<WebSession & { peerId?: string }>("sessions", peerId);
+  if (!raw) return null;
+  return {
+    sendCk:     raw.sendCk,
+    recvCk:     raw.recvCk,
+    sendMsgNum: raw.sendMsgNum ?? 0,
+    recvMsgNum: raw.recvMsgNum ?? 0,
+  };
 }
 
 async function saveSession(peerId: string, sess: WebSession): Promise<void> {
   return idbPut("sessions", { peerId, ...sess });
+}
+
+/** Qabul zanjirini header.msg_num ga moslab oldinga surish (Tauri ratchet bilan mos) */
+async function advanceRecvChain(sess: WebSession, targetMsgNum: number): Promise<WebSession> {
+  let { recvCk, recvMsgNum } = sess;
+  while (recvMsgNum < targetMsgNum) {
+    const ck = fromb64(recvCk);
+    const [, nextCk] = await kdfCk(ck);
+    recvCk = b64(nextCk);
+    recvMsgNum++;
+  }
+  return { ...sess, recvCk, recvMsgNum };
 }
 
 async function getIdentity(): Promise<WebIdentity | null> {
@@ -322,7 +354,9 @@ export async function webEstablishSession(
   }
 
   const sk = await x3dhKdf(dh1, dh2, dh3, dh4);
-  await saveSession(peerId, { sendCk: b64(sk), recvCk: b64(sk) });
+  await saveSession(peerId, {
+    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0,
+  });
 
   console.log(`[WebCrypto] X3DH sender sessiya o'rnatildi: ${peerId}`);
 
@@ -377,7 +411,9 @@ export async function webEstablishSessionReceiver(
   }
 
   const sk = await x3dhKdf(dh1, dh2, dh3, dh4);
-  await saveSession(peerId, { sendCk: b64(sk), recvCk: b64(sk) });
+  await saveSession(peerId, {
+    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0,
+  });
 
   console.log(`[WebCrypto] ✅ X3DH receiver sessiya o'rnatildi: ${peerId}`);
 }
@@ -425,11 +461,19 @@ export async function webEncryptMessage(
   const ck          = fromb64(sess.sendCk);
   const [mk, nextCk] = await kdfCk(ck);
 
-  const header: DrHeader = { dh_ratchet_pk: "", msg_num: 0, prev_chain_len: 0 };
+  const header: DrHeader = {
+    dh_ratchet_pk:  "",
+    msg_num:        sess.sendMsgNum,
+    prev_chain_len: 0,
+  };
   const pt  = new TextEncoder().encode(plaintext);
   const ct  = await aesEncrypt(mk, pt, headerAad(header));
 
-  await saveSession(peerId, { ...sess, sendCk: b64(nextCk) });
+  await saveSession(peerId, {
+    ...sess,
+    sendCk:     b64(nextCk),
+    sendMsgNum: sess.sendMsgNum + 1,
+  });
 
   return JSON.stringify({ header, ciphertext: b64(ct) });
 }
@@ -441,10 +485,12 @@ export async function webDecryptMessage(
   payloadJson: string
 ): Promise<string> {
   const payload = normalizePayload(payloadJson);
-  const val = JSON.parse(payload) as {
-    header?:     DrHeader;
-    ciphertext?: string;
-  };
+  let val: { header?: DrHeader; ciphertext?: string };
+  try {
+    val = JSON.parse(payload);
+  } catch (e) {
+    throw new Error(`Payload JSON noto'g'ri: ${e instanceof Error ? e.message : e}`);
+  }
 
   const header: DrHeader = val.header ?? {
     dh_ratchet_pk:  "",
@@ -454,16 +500,36 @@ export async function webDecryptMessage(
   const cipherB64 = val.ciphertext;
   if (!cipherB64) throw new Error("ciphertext maydoni yo'q");
 
-  const sess = await getSession(peerId);
+  let sess = await getSession(peerId);
   if (!sess) throw new Error(`Sessiya yo'q (${peerId}) — avval X3DH bajaring`);
+
+  // Tauri yuboruvchi msg_num ni oshiradi — qabul zanjirini sinxronlashtiramiz
+  sess = await advanceRecvChain(sess, header.msg_num);
 
   const ck          = fromb64(sess.recvCk);
   const [mk, nextCk] = await kdfCk(ck);
 
   const ct = fromb64(cipherB64);
-  const pt = await aesDecrypt(mk, ct, headerAad(header));
+  const aad = headerAad(header);
 
-  await saveSession(peerId, { ...sess, recvCk: b64(nextCk) });
+  let pt: Uint8Array;
+  try {
+    pt = await aesDecrypt(mk, ct, aad);
+  } catch (e) {
+    console.error("[WebCrypto] AES-GCM xato:", {
+      peerId,
+      msg_num: header.msg_num,
+      ct_len:  ct.length,
+      aad_len: aad.length,
+    });
+    throw e;
+  }
+
+  await saveSession(peerId, {
+    ...sess,
+    recvCk:     b64(nextCk),
+    recvMsgNum: header.msg_num + 1,
+  });
 
   return new TextDecoder().decode(pt);
 }
