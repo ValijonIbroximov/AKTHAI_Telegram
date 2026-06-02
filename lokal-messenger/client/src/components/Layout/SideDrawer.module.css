@@ -1,6 +1,5 @@
-/* Telegram uslubidagi slide-out drawer + qo'lda sozlash paneli */
+/* Telegram uslubidagi navigatsiya drawer — soddalashtirilgan */
 
-/* ── Overlay ── */
 .overlay {
   position: fixed;
   inset: 0;
@@ -10,17 +9,13 @@
   pointer-events: none;
   transition: opacity var(--t-slow);
 }
-.overlayVisible {
-  opacity: 1;
-  pointer-events: auto;
-}
+.overlayVisible { opacity: 1; pointer-events: auto; }
 
-/* ── Drawer ── */
 .drawer {
   position: fixed;
   top: 0; left: 0; bottom: 0;
-  width: 300px;
-  background: var(--bg-panel);
+  width: 290px;
+  background: var(--panel-bg-real, var(--bg-panel));
   backdrop-filter: var(--panel-backdrop);
   -webkit-backdrop-filter: var(--panel-backdrop);
   z-index: 201;
@@ -47,17 +42,14 @@
 .profileBg {
   position: absolute;
   inset: 0;
-  opacity: 0.5;
+  opacity: 0.55;
   pointer-events: none;
 }
 .profileAvatar {
-  position: relative;
-  z-index: 1;
+  position: relative; z-index: 1;
   width: 64px; height: 64px;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   font-size: 26px;
   font-weight: 600;
   color: #fff;
@@ -67,22 +59,20 @@
 }
 .profileName {
   position: relative; z-index: 1;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-1);
-  line-height: 1.2;
+  font-size: 16px; font-weight: 600;
+  color: var(--text-1); line-height: 1.2;
 }
 .profileRole {
   position: relative; z-index: 1;
-  font-size: 12px;
-  color: var(--text-2);
+  font-size: 12px; color: var(--text-2);
   margin-top: 3px;
 }
 
 /* ── Navigatsiya ── */
 .nav {
-  flex-shrink: 0;
+  flex: 1;
   padding: 4px 0;
+  overflow-y: auto;
   border-bottom: 1px solid var(--border);
 }
 .navItem {
@@ -90,13 +80,16 @@
   align-items: center;
   gap: 14px;
   width: 100%;
-  padding: 10px 20px;
+  padding: 12px 20px;
   font-size: 14px;
   color: var(--text-1);
-  transition: background var(--t-fast);
+  transition: background var(--t-fast), color var(--t-fast), box-shadow var(--t-fast);
   border-radius: var(--r-xs);
 }
-.navItem:hover { background: var(--bg-hover); }
+.navItem:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
 .navIcon { font-size: 18px; line-height: 1; width: 22px; text-align: center; flex-shrink: 0; }
 .navLabel { font-size: 14px; font-weight: 400; }
 
@@ -107,7 +100,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 20px;
+  padding: 12px 20px;
 }
 .toggle {
   position: relative;
@@ -130,223 +123,6 @@
 }
 .toggleOn .toggleKnob { transform: translateX(20px); }
 
-/* ── Scroll qiluvchi tana ── */
-.scrollBody {
-  flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: 8px;
-}
-
-/* ── Sektsiya ── */
-.section { padding: 12px 0 4px; border-bottom: 1px solid var(--border); }
-.sectionLabel {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  color: var(--text-3);
-  text-transform: uppercase;
-  padding: 0 20px 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.sectionLabel:last-child { padding-bottom: 0; }
-
-/* ── Mavzu grid ── */
-.themeGrid { display: flex; flex-direction: column; gap: 1px; padding: 0 8px; }
-.themeChip {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: var(--r-sm);
-  transition: background var(--t-fast);
-}
-.themeChip:hover { background: var(--bg-hover); }
-.themeChipActive { background: var(--bg-active); }
-
-.themeSwatch {
-  position: relative;
-  width: 32px; height: 32px;
-  border-radius: var(--r-xs);
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.themeAccentDot {
-  position: absolute;
-  bottom: 0; right: 0;
-  width: 12px; height: 12px;
-  border-radius: 50% 0 var(--r-xs) 0;
-}
-.themeChipLabel { flex: 1; font-size: 13px; color: var(--text-1); }
-.themeChipActive .themeChipLabel { color: var(--accent); font-weight: 500; }
-.themeCheck {
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-}
-
-/* ── Qo'lda sozlash header ── */
-.customHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 0 20px 10px;
-}
-.customHeader:hover .sectionLabel { color: var(--text-2); }
-.customBadge {
-  display: inline-block;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-left: 4px;
-  vertical-align: middle;
-}
-.chevron { color: var(--text-3); transition: transform var(--t-med); }
-.chevronOpen { transform: rotate(180deg); }
-
-/* ── Qo'lda sozlash paneli ── */
-.customPanel {
-  padding: 4px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  animation: fadeIn 0.15s ease;
-}
-.customGroup { display: flex; flex-direction: column; gap: 8px; }
-.customGroupLabel {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-2);
-}
-
-/* Rang doiralar */
-.colorRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.colorDot {
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  transition: transform var(--t-fast), border-color var(--t-fast);
-  flex-shrink: 0;
-}
-.colorDot:hover { transform: scale(1.15); }
-.colorDotActive { border-color: var(--text-1); transform: scale(1.15); }
-
-/* Erkin rang picker */
-.colorPickerLabel {
-  position: relative;
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  background: conic-gradient(#ff0000, #ff8000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 2px solid var(--border);
-}
-.colorPickerInput {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
-.colorPickerIcon {
-  color: #fff;
-  drop-shadow: 0 1px 2px rgba(0,0,0,0.5);
-  pointer-events: none;
-}
-
-.resetSmall {
-  font-size: 11px;
-  color: var(--text-3);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: color var(--t-fast);
-  text-align: left;
-}
-.resetSmall:hover { color: var(--text-2); }
-
-/* Shrift chipdlari */
-.fontGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.fontChip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  transition: background var(--t-fast), border-color var(--t-fast);
-}
-.fontChip:hover { background: var(--bg-hover); }
-.fontChipActive {
-  background: var(--bg-active);
-  border-color: var(--accent);
-}
-.fontPreview {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-1);
-  line-height: 1;
-  flex-shrink: 0;
-  width: 24px;
-}
-.fontLabel {
-  font-size: 11px;
-  color: var(--text-2);
-  line-height: 1.3;
-}
-.fontChipActive .fontLabel { color: var(--accent); }
-
-/* Radius tugmalari */
-.radiusRow { display: flex; gap: 6px; }
-.radiusBtn {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  font-size: 10px;
-  color: var(--text-2);
-  transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast);
-}
-.radiusBtn:hover { background: var(--bg-hover); }
-.radiusBtnActive {
-  background: var(--bg-active);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.radiusPreview {
-  width: 28px; height: 20px;
-  background: var(--bg-surface);
-  border: 1.5px solid currentColor;
-  display: block;
-}
-
-/* Hammasini tiklash */
-.resetAll {
-  font-size: 12px;
-  color: var(--danger);
-  opacity: 0.75;
-  text-align: center;
-  padding: 6px;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  transition: opacity var(--t-fast), background var(--t-fast);
-}
-.resetAll:hover {
-  opacity: 1;
-  background: rgba(248,81,73,0.08);
-  border-color: rgba(248,81,73,0.15);
-}
-
 /* ── Footer ── */
 .footer {
   padding: 12px 16px 16px;
@@ -368,15 +144,12 @@
   letter-spacing: 0.02em;
 }
 .logoutBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   gap: 8px;
   width: 100%;
   padding: 9px;
   border-radius: var(--r-sm);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 13px; font-weight: 500;
   color: var(--danger);
   border: 1px solid transparent;
   transition: background var(--t-fast), border-color var(--t-fast);
