@@ -241,3 +241,31 @@ export async function webDecryptMessage(
   await saveSession(peerId, { ...sess, recvCk: b64(ab(nextCk)) });
   return new TextDecoder().decode(pt);
 }
+
+// ── X3DH Sessiya o'rnatish (brauzer) ─────────────────────────────────────────
+// bundle_json: Go serverdan kelgan KeyBundle JSON
+export async function webEstablishSession(
+  peerId:     string,
+  bundleJson: string
+): Promise<void> {
+  const bundle = JSON.parse(bundleJson) as {
+    identity_key: string;
+    signed_prekey: { public_key: string };
+  };
+
+  // Oddiy brauzer rejimida X3DH to'liq emas: tasodifiy umumiy kalit hosil qilinadi.
+  // Production uchun full X3DH kerak; hozircha AES kaliti HKDF bilan hosil qilinadi.
+  const ikBytes  = fromb64(bundle.identity_key);
+  const spkBytes = fromb64(bundle.signed_prekey.public_key);
+  const combined = new Uint8Array(ikBytes.length + spkBytes.length);
+  combined.set(ikBytes, 0);
+  combined.set(spkBytes, ikBytes.length);
+
+  const [sharedKey] = await kdfRk(
+    new Uint8Array(32).fill(0),
+    combined
+  );
+
+  const sharedB64 = b64(ab(sharedKey));
+  await saveSession(peerId, { sendCk: sharedB64, recvCk: sharedB64 });
+}

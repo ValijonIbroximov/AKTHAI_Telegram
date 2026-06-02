@@ -34,10 +34,17 @@ class WsClient {
     this._cleanup();
   }
 
-  // Har bir xabar yuborish uchun JSON payload jo'natiladi
-  send(payload: object): void {
+  // Hub kutgan format: { type, payload }
+  send(type: string, payload: object): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify(payload));
+      this.socket.send(JSON.stringify({ type, payload }));
+    }
+  }
+
+  // Xom JSON jo'natish (ping kabi oddiy paketlar uchun)
+  sendRaw(data: object): void {
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify(data));
     }
   }
 
@@ -79,7 +86,7 @@ class WsClient {
   private _startPing(): void {
     this._stopPing();
     this.pingTimer = setInterval(() => {
-      this.send({ type: "ping" });
+      this.sendRaw({ type: "ping" });
     }, PING_INTERVAL_MS);
   }
 

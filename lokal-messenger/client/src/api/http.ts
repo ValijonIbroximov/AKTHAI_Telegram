@@ -1,21 +1,16 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
-// Tauri WebView ichida ishlaydi — CORS cheklovlari amal qilmaydi.
-import type { LoginResponse, User, Chat, Message, KeyBundle } from "@/types";
+import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
 
-// Dev rejimida Vite proxy ishlatiladi (TLS sertifikat muammosini hal qiladi).
-// Production build'da to'g'ridan-to'g'ri Go serverga murojaat qilinadi.
 const BASE_URL = import.meta.env.PROD
   ? "https://server.lokal:8443/api/v1"
   : "/api/v1";
 
-// So'rov sarlavhalari token bilan birga qaytariladi
 function headers(token?: string): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
   if (token) h["Authorization"] = `Bearer ${token}`;
   return h;
 }
 
-// Umumiy so'rov yuboruvchi yordamchi funksiya
 async function request<T>(
   method: string,
   path:   string,
@@ -33,12 +28,11 @@ async function request<T>(
     throw new Error(`HTTP ${res.status}: ${errText}`);
   }
 
-  // 204 No Content holatida bo'sh ob'ekt qaytariladi
   if (res.status === 204) return {} as T;
   return res.json() as Promise<T>;
 }
 
-// ── Autentifikatsiya ────────────────────────────────────────────────
+// ── Autentifikatsiya ──────────────────────────────────────────────────────────
 export const authApi = {
   login: (username: string, password: string) =>
     request<LoginResponse>("POST", "/auth/login", undefined, { username, password }),
@@ -53,8 +47,7 @@ export const authApi = {
     }),
 };
 
-// ── Foydalanuvchilar ────────────────────────────────────────────────
-// Go server /me → { user_id, role } qaytaradi (id va username alohida yo'q)
+// ── Foydalanuvchilar ──────────────────────────────────────────────────────────
 interface MeResponse { user_id: string; role: string }
 
 export const userApi = {
@@ -64,7 +57,9 @@ export const userApi = {
   list: (token: string) =>
     request<User[]>("GET", "/users", token),
 
-  // Faqat admin uchun
+  search: (token: string, q: string) =>
+    request<User[]>("GET", `/users?q=${encodeURIComponent(q)}`, token),
+
   create: (token: string, data: Partial<User> & { role: string }) =>
     request<{ user_id: string; temporary_password: string }>(
       "POST", "/admin/users", token, data
@@ -74,22 +69,62 @@ export const userApi = {
     request<void>("PATCH", `/admin/users/${userId}/active`, token, { is_active: active }),
 };
 
-// ── Suhbatlar ───────────────────────────────────────────────────────
+// ── Suhbatlar ─────────────────────────────────────────────────────────────────
+function msgTypeNum(n: number): Message["msg_type"] {
+  if (n === 2) return "file";
+  if (n === 3) return "key_exchange";
+  return "text";
+}
+
+function msgStatus(delivered: boolean, read: boolean): Message["status"] {
+  if (read) return "read";
+  if (delivered) return "delivered";
+  return "sent";
+}
+
 export const chatApi = {
-  list: (token: string) =>
-    request<Chat[]>("GET", "/chats", token),
+  list: async (token: string): Promise<Chat[]> => {
+    const raw = await request<RawChat[]>("GET", "/chats", token);
+    return (raw ?? []).map((c) => ({
+      id:           c.id,
+      type:         c.type,
+      title:        c.title || "Nomsiz",
+      peer_user_id: c.peer_user_id ?? null,
+      last_message: c.last_time
+        ? { sender_id: "", preview: "[Shifrlangan xabar]", created_at: c.last_time }
+        : null,
+      unread_count: c.unread ?? 0,
+      updated_at:   c.last_time ?? new Date().toISOString(),
+    }));
+  },
 
-  create: (token: string, type: "private" | "group", memberIds: string[], title?: string) =>
-    request<Chat>("POST", "/chats", token, { type, member_ids: memberIds, title }),
+  // Shaxsiy suhbat yaratish: peer_user_id jo'natiladi
+  createPrivate: async (token: string, peerUserId: string): Promise<{ id: string; existing: boolean }> =>
+    request<{ id: string; existing: boolean }>("POST", "/chats", token, {
+      type:         "private",
+      peer_user_id: peerUserId,
+    }),
 
-  history: (token: string, chatId: string, before?: string, limit = 50) => {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (before) params.set("before", before);
-    return request<Message[]>("GET", `/chats/${chatId}/messages?${params}`, token);
+  history: async (token: string, chatId: string, limit = 100): Promise<Message[]> => {
+    const raw = await request<RawMessage[]>(
+      "GET", `/chats/${chatId}/messages?limit=${limit}`, token
+    );
+    return (raw ?? []).reverse().map((m) => ({
+      id:         m.msg_id,
+      chat_id:    chatId,
+      sender_id:  m.sender_id,
+      ciphertext: m.ciphertext,
+      plaintext:  null,
+      msg_type:   msgTypeNum(m.msg_type),
+      status:     msgStatus(m.delivered, m.read),
+      created_at: typeof m.created_at === "string"
+        ? m.created_at
+        : new Date(m.created_at as unknown as number).toISOString(),
+    }));
   },
 };
 
-// ── Signal Protocol kalitlari ───────────────────────────────────────
+// ── Signal Protocol kalitlari ─────────────────────────────────────────────────
 export const keysApi = {
   upload: (token: string, bundle: KeyBundle) =>
     request<void>("POST", "/keys/upload", token, bundle),

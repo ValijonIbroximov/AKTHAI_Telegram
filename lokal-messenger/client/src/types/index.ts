@@ -9,14 +9,15 @@ export interface User {
   role:         "admin" | "user";
   rank_title:   string | null;
   unit_code:    string | null;
-  is_active:    boolean;
-  last_seen_at: string | null;
+  is_active?:   boolean;
+  last_seen_at?: string | null;
 }
 
 export interface Chat {
   id:           string;
   type:         "private" | "group";
   title:        string;
+  peer_user_id: string | null;   // shaxsiy suhbatda sherik ID
   last_message: LastMessage | null;
   unread_count: number;
   updated_at:   string;
@@ -24,7 +25,7 @@ export interface Chat {
 
 export interface LastMessage {
   sender_id:  string;
-  preview:    string;   // Shifrlangan bo'lsa "[xabar]" ko'rsatiladi
+  preview:    string;
   created_at: string;
 }
 
@@ -32,65 +33,101 @@ export interface Message {
   id:           string;
   chat_id:      string;
   sender_id:    string;
-  // Ciphertext Base64 formatida keladi; E2EE ochgandan keyin plaintext saqlanadi
-  ciphertext:   string;
+  ciphertext:   string;          // Base64 encoded
   plaintext:    string | null;
   msg_type:     "text" | "file" | "key_exchange";
   status:       "sending" | "sent" | "delivered" | "read";
   created_at:   string;
 }
 
-// WebSocket orqali keladigan hodisalar
-export type WsEvent =
-  | { type: "message";         payload: WsMessage      }
-  | { type: "presence";        payload: WsPresence      }
-  | { type: "read_receipt";    payload: WsReadReceipt   }
-  | { type: "delivery_receipt";payload: WsDelivery      };
+// ── WebSocket hodisalari ────────────────────────────────────────────────────
+// Server hub.go dan keluvchi/ketuvchi hodisalar
 
-export interface WsMessage {
-  id:           string;
-  chat_id:      string;
-  sender_id:    string;
-  recipient_id: string;
-  ciphertext:   string;   // Base64 encoded
-  msg_type:     string;
-  created_at:   string;
+// Server → Client
+export type WsEvent =
+  | { type: "msg.recv";   payload: WsMsgRecv }
+  | { type: "msg.ack";    payload: WsMsgAck }
+  | { type: "presence";   payload: WsPresence };
+
+// Client → Server (wsClient.sendMsg orqali yuboriladi)
+export interface WsSendPayload {
+  chat_id:       string;
+  recipient_id:  string;
+  ciphertext:    string;   // Base64
+  msg_type:      number;   // 1 = text
+  client_msg_id: string;
+}
+
+export interface WsMsgRecv {
+  msg_id:     string;
+  chat_id:    string;
+  sender_id:  string;
+  ciphertext: string;      // Base64
+  msg_type:   number;
+}
+
+export interface WsMsgAck {
+  client_msg_id: string;
+  server_msg_id: string;
 }
 
 export interface WsPresence {
-  user_id:  string;
-  online:   boolean;
+  user_id: string;
+  online:  boolean;
 }
 
+// Legacy (eski kod bilan muvofiqliq uchun saqlanadi)
+export interface WsMessage extends WsMsgRecv {}
 export interface WsReadReceipt {
   chat_id:    string;
   message_id: string;
   reader_id:  string;
 }
-
 export interface WsDelivery {
   message_id: string;
 }
 
-// Login javob turi (Go server: loginResponse struct bilan mos)
+// Login javob turi
 export interface LoginResponse {
-  token:               string;   // Go server "token" deb qaytaradi
-  user_id:             string;
-  role:                string;
+  token:                string;
+  user_id:              string;
+  role:                 string;
   must_change_password: boolean;
 }
 
 // Signal Protocol kalit-bundle (X3DH uchun)
 export interface KeyBundle {
+  user_id?:         string;
   registration_id:  number;
-  identity_key:     string;  // Base64
+  identity_key:     string;    // Base64
   signed_prekey: {
     key_id:     number;
-    public_key: string;      // Base64
-    signature:  string;      // Base64
+    public_key: string;        // Base64
+    signature:  string;        // Base64
   };
   one_time_prekey?: {
     key_id:     number;
-    public_key: string;      // Base64
+    public_key: string;        // Base64
   };
+}
+
+// Server ListChats xom javob turi (transformatsiya uchun)
+export interface RawChat {
+  id:           string;
+  type:         "private" | "group";
+  title:        string;
+  peer_user_id: string | null;
+  last_time:    string | null;
+  unread:       number;
+}
+
+// Server ChatHistory xom javob turi
+export interface RawMessage {
+  msg_id:     string;
+  sender_id:  string;
+  ciphertext: string;
+  msg_type:   number;
+  created_at: string;
+  delivered:  boolean;
+  read:       boolean;
 }

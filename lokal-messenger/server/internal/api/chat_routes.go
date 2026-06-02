@@ -9,13 +9,18 @@ import (
 )
 
 // ListUsers — kim bilan yozish mumkinligi (faol foydalanuvchilar katalogi) qaytariladi.
+// ?q= parametri berilsa, username yoki display_name bo'yicha qidiradi.
 func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	selfID, _ := c.Locals("user_id").(string)
+	q := "%" + c.Query("q") + "%"
+
 	rows, err := h.deps.DB.Query(c.Context(), `
         SELECT id::text, username, display_name, role, rank_title, unit_code
           FROM users
          WHERE is_active = TRUE AND id <> $1::uuid
-         ORDER BY display_name`, selfID)
+           AND (username ILIKE $2 OR display_name ILIKE $2)
+         ORDER BY display_name
+         LIMIT 50`, selfID, q)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,8 @@ export default function MessageArea() {
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
-  const isOnline   = activeChatId ? (presenceMap[activeChatId] ?? false) : false;
+  const peerId     = activeChat?.peer_user_id ?? null;
+  const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -101,7 +102,7 @@ export default function MessageArea() {
       {/* Kiritish paneli */}
       <InputBar
         chatId={activeChatId ?? ""}
-        recipientId={activeChat.id}
+        recipientId={activeChat.peer_user_id ?? activeChat.id}
         token={token ?? ""}
       />
     </div>
