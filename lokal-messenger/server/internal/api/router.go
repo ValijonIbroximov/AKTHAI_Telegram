@@ -62,4 +62,11 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 		ReadBufferSize:  4096,
 		WriteBufferSize: 4096,
 	}))
+
+	// Brauzer orqali kirish: React SPA statik fayllarini xizmatga qo'yish.
+	// -web-dist bayrog'i berilgandagina yoqiladi.
+	// /api va /ws marshrutlari yuqorida ro'yxatga olingan — ular ustunlik qiladi.
+	if deps.WebDistDir != "" {
+		app.Use("/", ServeSPA(deps.WebDistDir))
+	}
 }

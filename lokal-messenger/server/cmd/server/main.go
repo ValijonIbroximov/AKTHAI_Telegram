@@ -24,7 +24,8 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "Konfiguratsiya fayli yo'li")
+	configPath  := flag.String("config",   "config.yaml", "Konfiguratsiya fayli yo'li")
+	webDistDir  := flag.String("web-dist", "",            "React dist papkasi (bo'sh bo'lsa SPA o'chiriladi)")
 	flag.Parse()
 
 	// Konfiguratsiya fayldan o'qiladi
@@ -74,13 +75,15 @@ func main() {
 		Output: os.Stdout,
 	}))
 
-	// REST va WebSocket marshrutlari ro'yxatdan o'tkaziladi
+	// REST va WebSocket marshrutlari ro'yxatdan o'tkaziladi.
+	// WebDistDir berilganda brauzer orqali kirish uchun SPA ham xizmatga qo'yiladi.
 	api.RegisterRoutes(app, &api.Deps{
-		DB:     pgPool,
-		Cache:  redisClient,
-		JWT:    jwtMgr,
-		Hub:    hub,
-		Config: cfg,
+		DB:         pgPool,
+		Cache:      redisClient,
+		JWT:        jwtMgr,
+		Hub:        hub,
+		Config:     cfg,
+		WebDistDir: *webDistDir,
 	})
 
 	// Server ishga tushiriladi (TLS yoqilgan bo'lsa shifrlangan kanalda)

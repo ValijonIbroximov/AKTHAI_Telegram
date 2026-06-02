@@ -4,7 +4,9 @@ import { useState, FormEvent } from "react";
 import { useAuthStore } from "@/store/authStore";
 import s from "./LoginPage.module.css";
 
-export default function LoginPage() {
+interface Props { onSettings?: () => void }
+
+export default function LoginPage({ onSettings }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const { login, loading, error, clearError } = useAuthStore();
@@ -23,6 +25,14 @@ export default function LoginPage() {
         <div className={s.statusBar}>
           <span className={s.statusDot} />
           <span>Yopiq Tarmoq · TLS Aktiv</span>
+          {onSettings && (
+            <button className={s.settingsBtn} onClick={onSettings} aria-label="Sozlamalar" title="Sozlamalar">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Logo */}

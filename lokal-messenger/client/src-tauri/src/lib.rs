@@ -1,7 +1,10 @@
 // Tauri ilovasi kutubxona kiritish nuqtasi.
 // AppState — barcha buyruqlar orasida umumlashtirilgan holat.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::AtomicBool,
+    Arc, Mutex,
+};
 use tauri::Manager;
 
 pub mod commands;
@@ -11,8 +14,10 @@ use crypto::store::{open_db, DbConn};
 
 /// Ilova umumiy holati — barcha Tauri buyruqlariga State<AppState> orqali beriladi.
 pub struct AppState {
-    pub db:    DbConn,
-    pub token: Arc<Mutex<Option<String>>>,
+    pub db:       DbConn,
+    pub token:    Arc<Mutex<Option<String>>>,
+    /// Mualliflik tekshiruvi o'tmasa true bo'ladi — barcha kripto buyruqlar bloklanadi.
+    pub poisoned: Arc<AtomicBool>,
 }
 
 /// Tauri ilovasini sozlash va ishga tushirish.
@@ -31,14 +36,19 @@ pub fn run() {
             let db = open_db(db_path.to_str().unwrap())
                 .expect("Signal bazasini ochib bo'lmadi");
 
+            // poisoned = true: React mualliflik tekshiruvini o'tkazguncha kripto bloklanadi
             app.manage(AppState {
                 db,
-                token: Arc::new(Mutex::new(None)),
+                token:    Arc::new(Mutex::new(None)),
+                poisoned: Arc::new(AtomicBool::new(true)),
             });
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Mualliflik yaxlitligi (birinchi navbatda chaqirilishi shart)
+            commands::integrity::verify_author_text,
+            commands::integrity::get_author,
             // Autentifikatsiya
             commands::auth::store_token,
             commands::auth::clear_token,

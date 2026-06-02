@@ -1,6 +1,6 @@
 // Autentifikatsiya holati: token, joriy foydalanuvchi, session boshqaruvi.
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { storeToken, clearToken, initSignalKeys } from "@/crypto/adapter";
 import { authApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
 
@@ -33,14 +33,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const res = await authApi.login(username, password);
       const jwt = res.token;
 
-      // Tokenni Tauri xavfsiz xotiraga saqlash
-      await invoke("store_token", { token: jwt });
+      // Tokenni xavfsiz xotiraga saqlash (Tauri → Rust, Brauzer → sessionStorage)
+      await storeToken(jwt);
 
       // Signal Protocol kalitlari bazasi mavjud bo'lmasa, yangi yaratilib yuklanadi
-      await invoke("init_signal_keys", {
-        token:  jwt,
-        userId: res.user_id,
-      });
+      await initSignalKeys(jwt, res.user_id);
 
       set({
         token:    jwt,
@@ -64,7 +61,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     wsClient.disconnect();
     if (token) {
       await authApi.logout(token).catch(() => {});
-      await invoke("clear_token");
+      await clearToken();
     }
     set({ token: null, userId: null, username: null, role: null });
   },

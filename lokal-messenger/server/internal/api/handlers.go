@@ -17,11 +17,13 @@ import (
 
 // Deps — barcha handler'larga uzatiladigan umumiy bog'liqliklar to'plami.
 type Deps struct {
-	DB     *pgxpool.Pool
-	Cache  *redis.Client
-	JWT    *auth.JWTManager
-	Hub    *ws.Hub
-	Config *config.Config
+	DB         *pgxpool.Pool
+	Cache      *redis.Client
+	JWT        *auth.JWTManager
+	Hub        *ws.Hub
+	Config     *config.Config
+	// WebDistDir bo'sh bo'lmasa, SPA statik fayllar xizmati yoqiladi.
+	WebDistDir string
 }
 
 // Handlers — REST handler metodlari shu strukturaga biriktiriladi.

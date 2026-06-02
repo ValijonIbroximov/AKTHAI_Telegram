@@ -1,23 +1,27 @@
 // Asosiy ilova komponenti — autentifikatsiya holatiga qarab sahifalar almashadi.
+import { useState } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import LoginPage         from "@/components/Auth/LoginPage";
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
+import SettingsModal     from "@/components/Settings/SettingsModal";
 import styles            from "./App.module.css";
 
 export default function App() {
   const token = useAuthStore((s) => s.token);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Token mavjud bo'lmasa kirish sahifasi ko'rsatiladi
   if (!token) {
-    return <LoginPage />;
+    return <LoginPage onSettings={() => setSettingsOpen(true)} />;
   }
 
-  // Kirgan foydalanuvchiga asosiy interfeys ko'rsatiladi
   return (
     <div className={styles.layout}>
-      <ChatList />
+      <ChatList onSettings={() => setSettingsOpen(true)} />
       <MessageArea />
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }

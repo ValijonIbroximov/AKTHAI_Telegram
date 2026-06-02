@@ -1,6 +1,6 @@
 // Suhbatlar va xabarlar holati. E2EE ochilgandan keyingi matn saqlanadi.
 import { create } from "zustand";
-import { invoke } from "@tauri-apps/api/core";
+import { encryptMessage, decryptMessage } from "@/crypto/adapter";
 import { chatApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
 import type { Chat, Message, WsEvent, WsMessage } from "@/types";
@@ -49,11 +49,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       raw.map(async (msg) => {
         if (msg.msg_type === "text") {
           try {
-            const plaintext = await invoke<string>("decrypt_message", {
-              chatId,
-              senderId:   msg.sender_id,
-              ciphertext: msg.ciphertext,
-            });
+            const plaintext = await decryptMessage(chatId, msg.sender_id, msg.ciphertext);
             return { ...msg, plaintext };
           } catch {
             return { ...msg, plaintext: "[shifr ochilmadi]" };
@@ -91,12 +87,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      // Xabar Rust E2EE qatlami orqali shifrlanadi
-      const ciphertext = await invoke<string>("encrypt_message", {
-        chatId,
-        recipientId,
-        plaintext,
-      });
+      // Xabar E2EE qatlami orqali shifrlanadi (Tauri → Rust, Brauzer → Web Crypto)
+      const ciphertext = await encryptMessage(chatId, recipientId, plaintext);
 
       // Shifrlangan payload WebSocket orqali serverga yuboriladi
       wsClient.send({
@@ -132,11 +124,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case "message": {
         const m = event.payload as WsMessage;
         // Kiruvchi xabar E2EE dan ochiladi va suhbat ro'yxatiga qo'shiladi
-        invoke<string>("decrypt_message", {
-          chatId:     m.chat_id,
-          senderId:   m.sender_id,
-          ciphertext: m.ciphertext,
-        })
+        decryptMessage(m.chat_id, m.sender_id, m.ciphertext)
           .then((plaintext) => {
             const newMsg: Message = {
               id:         m.id,

@@ -33,6 +33,13 @@ const RATCHET_INFO: &[u8] = b"HarbiyMessenjer_DR_v1";
 // X3DH kiritma to'ldiruvchisi: 32 ta 0xFF bayt
 const KDF_F: [u8; 32] = [0xFF; 32];
 
+// ── Mualliflik qatlami (Poison Pill) ─────────────────────────────────────
+//
+// DIQQAT: Bu konstantani o'zgartirish BARCHA mavjud E2EE sessiyalarini
+// yaroqsiz qiladi, chunki X3DH umumiy kalit hosil qilishida ishlatiladi.
+// Dasturning kriptografik shaxsiyati shu yerda kodlangan.
+const AUTHOR_PEPPER: &[u8] = b"Valijon Ibroximov";
+
 // ── Kalit generatsiya ──────────────────────────────────────────────────────
 
 /// Ed25519 identifikatsiya kalit juftligi yaratiladi.
@@ -185,7 +192,10 @@ pub fn x3dh_sender(
         ikm.extend_from_slice(dh4.as_bytes());
     }
 
-    // 9. HKDF orqali 32 baytlik SK hosil qilinadi
+    // 9. Mualliflik imzosi IKM ga qo'shiladi (o'zgartirish sessiyani buzadi)
+    ikm.extend_from_slice(AUTHOR_PEPPER);
+
+    // 10. HKDF orqali 32 baytlik SK hosil qilinadi
     let sk_vec = hkdf_derive(&ikm, None, X3DH_INFO, 32)?;
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&sk_vec);
@@ -235,6 +245,9 @@ pub fn x3dh_receiver(
         let dh4      = otpk_sk.diffie_hellman(&ek_a_pub);
         ikm.extend_from_slice(dh4.as_bytes());
     }
+
+    // Mualliflik imzosi — yuboruvchi tomon bilan simmetrik bo'lishi shart
+    ikm.extend_from_slice(AUTHOR_PEPPER);
 
     let sk_vec = hkdf_derive(&ikm, None, X3DH_INFO, 32)?;
     let mut sk = [0u8; 32];

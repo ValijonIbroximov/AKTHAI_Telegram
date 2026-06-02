@@ -6,7 +6,9 @@ import { wsClient }      from "@/api/ws";
 import ChatItem          from "./ChatItem";
 import s                 from "./ChatList.module.css";
 
-export default function ChatList() {
+interface Props { onSettings?: () => void }
+
+export default function ChatList({ onSettings }: Props) {
   const [search, setSearch] = useState("");
   const { token, username, role, logout } = useAuthStore();
   const { chats, activeChatId, loadChats, selectChat, handleWsEvent } = useChatStore();
@@ -32,6 +34,14 @@ export default function ChatList() {
             <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
           </svg>
         </button>
+        {onSettings && (
+          <button className={s.iconBtn} onClick={onSettings} aria-label="Sozlamalar" title="Sozlamalar">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Qidiruv */}
