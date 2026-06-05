@@ -1,6 +1,7 @@
 // Platform adapter: Tauri (Rust) yoki Brauzer (Web Crypto API) muhitini avtomatik aniqlaydi.
 import {
   webEncryptMessage,
+  webEncryptFirstMessage,
   webDecryptMessage,
   webEstablishSession,
   webEstablishSessionReceiver,
@@ -84,7 +85,47 @@ export async function encryptMessage(
   return webEncryptMessage(recipientId, plaintext);
 }
 
+/**
+ * Birinchi xabar: X3DH + shifrlash bir bosqichda (PreKeySignalMessage, Type 3).
+ * Sessiya yo'q bo'lganda ishlatiladi.
+ * Server bu xabarni oddiy message kabi DB ga saqlaydi → offline yetkazish ishlaydi.
+ */
+export async function encryptFirstMessage(
+  chatId:     string,
+  peerId:     string,
+  bundleJson: string,
+  plaintext:  string,
+): Promise<string> {
+  if (isTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    // Step 1: X3DH — sessiya yaratish
+    const result = await invoke<EstablishResult>("establish_session", { peerId, bundleJson });
+    // Step 2: Xabarni shifrlash (sessiya endi mavjud)
+    const inner = await invoke<string>("encrypt_message", { chatId, recipientId: peerId, plaintext });
+    // Step 3: PreKeyMessage formatida birlashtirish
+    return JSON.stringify({
+      type:   3,
+      prekey: {
+        ek_pk:       result.ekPk,
+        sender_ik:   result.senderIkX25519,
+        spk_key_id:  result.spkKeyId,
+        otpk_key_id: result.otpkKeyId,
+      },
+      inner,
+    });
+  }
+  return webEncryptFirstMessage(peerId, bundleJson, plaintext);
+}
+
 // ── Xabar shifr ochish ────────────────────────────────────────────────────────
+//
+// PreKeyMessage (Type 3) avtomatik aniqlash:
+//   payload JSON da `type: 3` va `prekey` bo'lsa:
+//     1. establishSessionReceiver → sessiya yaratish
+//     2. inner payload ni qayta deshifrlash (oddiy SignalMessage)
+//
+// Bu mantiq adapter darajasida Tauri va brauzer uchun umumiy ishlaydi.
+// Brauzer webDecryptMessage ham o'z ichida Type 3 ni qo'llab-quvvatlaydi (qo'shimcha himoya).
 
 export async function decryptMessage(
   chatId:     string,
@@ -100,6 +141,35 @@ export async function decryptMessage(
 
   const payload = normalizePayload(raw);
 
+  // ── PreKeyMessage (Type 3) tekshiruvi ───────────────────────────────────
+  // JSON bo'lsa va type=3 ko'rsatilgan bo'lsa, X3DH sessiyasini o'rnatib deshifraymiz.
+  // Bu Tauri va brauzer uchun adapter darajasida bir xil ishlaydi.
+  try {
+    const parsed = JSON.parse(payload) as {
+      type?: number;
+      prekey?: { ek_pk: string; sender_ik: string; spk_key_id?: number; otpk_key_id?: number };
+      inner?: string;
+    };
+    if (parsed.type === 3 && parsed.prekey && parsed.inner) {
+      const pk = parsed.prekey;
+      await establishSessionReceiver(
+        senderId,
+        pk.ek_pk,
+        pk.sender_ik,
+        pk.spk_key_id  ?? 0,
+        pk.otpk_key_id ?? 0,
+      );
+      // Ichki xabarni deshifrlash (rekursiv → oddiy SignalMessage kabi)
+      return await decryptMessage(chatId, senderId, parsed.inner);
+    }
+  } catch (e) {
+    // DecryptError bo'lsa qayta throw qilamiz (genuine xato)
+    if (e instanceof DecryptError) throw e;
+    // JSON parse xatosi yoki boshqa — oddiy deshifrlashga o'tamiz
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
+  // Oddiy SignalMessage (Type 1 yoki legacy format)
   try {
     if (isTauri) {
       const { invoke } = await import("@tauri-apps/api/core");

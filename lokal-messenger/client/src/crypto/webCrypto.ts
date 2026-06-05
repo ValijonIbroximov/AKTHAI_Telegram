@@ -413,6 +413,56 @@ async function x3dhKdf(
   return hkdf(ikm, null, X3DH_INFO, 32);
 }
 
+// ── PreKeyMessage: X3DH + shifrlash bir bosqichda ─────────────────────────
+//
+// Signal Protocol standart yondashuvi:
+//   birinchi xabar = PreKeySignalMessage (Type 3)
+//   ichida: X3DH parametrlari + shifrlangan matn
+//
+// Bu yondashuv offline yetkazishni ta'minlaydi, chunki server bu xabarni
+// oddiy message kabi DB ga saqlaydi. Alohida 'key_exchange' WS event kerak emas.
+
+export interface PreKeyMessagePayload {
+  /** Xabar turi: 3 = PreKeyMessage, 1 = oddiy SignalMessage */
+  type:   3;
+  prekey: {
+    ek_pk:       string; // Efemer ochiq kalit (Base64 X25519)
+    sender_ik:   string; // Yuboruvchi IK X25519 (Base64)
+    spk_key_id:  number;
+    otpk_key_id: number;
+  };
+  /** Ichki shifrlangan xabar (DrHeader + ciphertext) */
+  inner: string;
+}
+
+/**
+ * X3DH + shifrlashni bir bosqichda bajaradi → PreKeyMessage (Type 3).
+ * Birinchi xabar yuborishda sessiya yo'q bo'lsa ishlatiladi.
+ * Qaytariladigan JSON server'da oddiy message kabi saqlanadi.
+ */
+export async function webEncryptFirstMessage(
+  peerId:     string,
+  bundleJson: string,
+  plaintext:  string,
+): Promise<string> {
+  // 1. X3DH → sessiya yaratish, parametrlarni olish
+  const result = await webEstablishSession(peerId, bundleJson);
+  // 2. Yangi sessiya bilan xabarni shifrlash
+  const inner  = await webEncryptMessage(peerId, plaintext);
+  // 3. PreKeyMessage formatida birlashtirish
+  const pkm: PreKeyMessagePayload = {
+    type:   3,
+    prekey: {
+      ek_pk:       result.ekPk,
+      sender_ik:   result.senderIkX25519,
+      spk_key_id:  result.spkKeyId,
+      otpk_key_id: result.otpkKeyId,
+    },
+    inner,
+  };
+  return JSON.stringify(pkm);
+}
+
 // ── X3DH Sessiya o'rnatish (yuboruvchi tomoni) ─────────────────────────────
 
 export interface WebEstablishResult {
@@ -626,7 +676,7 @@ export async function webDecryptMessage(
   payloadJson: string
 ): Promise<string> {
   const payload = normalizePayload(payloadJson);
-  let val: { header?: DrHeader; ciphertext?: string };
+  let val: { type?: number; prekey?: PreKeyMessagePayload["prekey"]; inner?: string; header?: DrHeader; ciphertext?: string };
   try {
     val = JSON.parse(payload);
   } catch (e) {
@@ -636,6 +686,31 @@ export async function webDecryptMessage(
       e
     );
   }
+
+  // ── PreKeyMessage (Type 3): X3DH sessiyasini o'rnatib deshifrlash ────────
+  // Signal Protocol standart: birinchi xabar X3DH parametrlarini ichida olib keladi.
+  // Bu brauzer va Tauri'da bir xil ishlaydi.
+  if (val.type === 3 && val.prekey && val.inner) {
+    const pk = val.prekey;
+    try {
+      await webEstablishSessionReceiver(
+        peerId,
+        pk.ek_pk,
+        pk.sender_ik,
+        pk.spk_key_id  ?? 0,
+        pk.otpk_key_id ?? 0,
+      );
+    } catch (e) {
+      throw new DecryptError(
+        "SESSION_NOT_FOUND",
+        `PreKeyMessage: sessiya o'rnatishda xatolik (peer=${peerId}): ${e instanceof Error ? e.message : e}`,
+        e
+      );
+    }
+    // Ichki xabarni deshifrlash (oddiy SignalMessage)
+    return webDecryptMessage(peerId, val.inner);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const header: DrHeader = val.header ?? {
     dh_ratchet_pk:  "",

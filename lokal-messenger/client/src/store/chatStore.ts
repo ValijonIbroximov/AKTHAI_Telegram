@@ -1,12 +1,18 @@
 // Suhbatlar, xabarlar va foydalanuvchi qidiruvi holati.
-// E2EE oqimi: establish_session → key_exchange WS → establish_session_receiver → encrypt/decrypt
+//
+// E2EE arxitekturasi (Signal Protocol standart):
+//   birinchi xabar  → PreKeySignalMessage (Type 3): X3DH + shifrlash ichida
+//   keyingi xabarlar → SignalMessage (Type 1): mavjud sessiya bilan
+//
+// Alohida 'key_exchange' WS event YO'Q — barcha kalit almashinuvi
+// xabarning o'zi ichida yashirinadi.
+// Bu offline yetkazishni ta'minlaydi: server xabarni DB ga saqlaydi.
 import { create } from "zustand";
 import { useAuthStore } from "@/store/authStore";
 import {
   encryptMessage,
+  encryptFirstMessage,
   decryptMessage,
-  establishSession,
-  establishSessionReceiver,
   hasSession,
   clearSession,
   DECRYPT_ERROR_LABEL,
@@ -34,7 +40,7 @@ import {
 } from "@/utils/notifications";
 import type {
   Chat, Message, User,
-  WsEvent, WsMsgRecv, WsMsgAck, WsKeyExchange, WsSessionRekeyRequest,
+  WsEvent, WsMsgRecv, WsMsgAck,
 } from "@/types";
 
 interface ChatState {
@@ -54,280 +60,43 @@ interface ChatState {
   handleWsEvent:    (event: WsEvent) => void;
   searchUsers:      (query: string, token: string) => Promise<void>;
   clearUserResults: () => void;
-  /** Multi-account: pending queue tozalash + accountId yangilash */
   onAccountSwitch:  (userId: string) => void;
-  /** Split-brain / doimiy deshifrlash xatosi: sessiyani qayta tiklash */
   resetSessionWithPeer: (chatId: string, peerId: string, token: string) => Promise<void>;
 }
 
 export { PENDING_DECRYPT_LABEL };
 
-/** Faol akkaunt — pending queue faqat shu user uchun */
-let pendingAccountId: string | null = null;
-/** key_exchange kelguncha sessiyasiz xabarlar (senderId → xabarlar) */
-const pendingDecryptQueue = new Map<string, Message[]>();
-/** SESSION_NOT_FOUND uchun avtomatik qayta urinish taymerlari */
-const pendingRetryTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
+// ── Modul darajasidagi holat ────────────────────────────────────────────────
+/** Joriy faol akkaunt (multi-account uchun) */
+let activeAccountId: string | null = null;
 
-// ── Yuborish navbati (pendingSendQueue) ─────────────────────────────────────
-// Sessiya yo'q bo'lganda xabarlar bu navbatga tushadi.
-// key_exchange yuborilgach, event-driven trigger yoki 3s fallback timer bilan flush qilinadi.
-interface PendingOutMsg {
-  localId:   string;
-  chatId:    string;
-  plaintext: string;
-  token:     string;
-}
-/** key_exchange jo'natildi, sherik sessiya o'rnatishini kutmoqda */
-const pendingSendQueue  = new Map<string, PendingOutMsg[]>();
-/** 3 soniyalik fallback taymerlari (sherik event yubormasdan ketsa ham flush) */
-const pendingSendTimers = new Map<string, ReturnType<typeof setTimeout>>();
+// ── Yordamchi funksiyalar ───────────────────────────────────────────────────
 
-function ensurePendingAccount(): boolean {
-  const authId = useAuthStore.getState().userId;
-  if (!authId) return false;
-  if (pendingAccountId !== authId) {
-    pendingDecryptQueue.clear();
-    pendingAccountId = authId;
-  }
-  return true;
+function isPendingDecrypt(text: string | null | undefined): boolean {
+  return text === PENDING_DECRYPT_LABEL;
 }
 
-function clearPendingRetryTimers(peerId: string): void {
-  const timers = pendingRetryTimers.get(peerId);
-  if (timers) {
-    timers.forEach(clearTimeout);
-    pendingRetryTimers.delete(peerId);
-  }
+function isDecryptFailure(text: string | null | undefined): boolean {
+  return text === DECRYPT_ERROR_LABEL;
 }
 
-function clearAllPendingRetryTimers(): void {
-  for (const peerId of [...pendingRetryTimers.keys()]) {
-    clearPendingRetryTimers(peerId);
-  }
-}
-
-function clearPendingSendTimers(peerId: string): void {
-  const t = pendingSendTimers.get(peerId);
-  if (t) { clearTimeout(t); pendingSendTimers.delete(peerId); }
-}
-
-function clearAllPendingSend(): void {
-  for (const t of pendingSendTimers.values()) clearTimeout(t);
-  pendingSendTimers.clear();
-  pendingSendQueue.clear();
-}
-
-/** Bitta xabarni shifrlash va WebSocket orqali yuborish */
-async function encryptAndSend(
-  chatId:      string,
-  recipientId: string,
-  plaintext:   string,
-  localId:     string,
-  token:       string,
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-): Promise<void> {
-  const ciphertext = await encryptMessage(chatId, recipientId, plaintext);
-
-  wsClient.send("msg.send", {
-    chat_id:       chatId,
-    recipient_id:  recipientId,
-    ciphertext,
-    msg_type:      1,
-    client_msg_id: localId,
-  });
-
-  const now = new Date().toISOString();
-  const sentMsg: Message = {
-    id:         localId,
-    chat_id:    chatId,
-    sender_id:  "me",
-    ciphertext,
-    plaintext,
-    msg_type:   "text",
-    status:     "sent",
-    created_at: now,
-  };
-
-  set((s) => ({
-    messages: {
-      ...s.messages,
-      [chatId]: (s.messages[chatId] ?? []).map((m) =>
-        m.id === localId ? sentMsg : m
-      ),
-    },
-    chats: s.chats.map((c) =>
-      c.id === chatId
-        ? {
-            ...c,
-            last_message: { sender_id: "me", preview: plaintext, created_at: now },
-            updated_at:   now,
-          }
-        : c
-    ),
-  }));
-
-  await persistLocalMessage(sentMsg).catch(() => {});
+/** Chat ro'yxatida ko'rsatiladigan preview matn */
+function previewFromMessage(msg: Message): string {
+  if (msg.plaintext?.startsWith("⚠ Yuborilmadi")) return msg.plaintext;
+  if (isDecryptFailure(msg.plaintext)) return DECRYPT_ERROR_LABEL;
+  if (isPendingDecrypt(msg.plaintext)) return PENDING_DECRYPT_LABEL;
+  return msg.plaintext ?? "";
 }
 
 /**
- * pendingSendQueue'dagi xabarlarni shifrlash va yuborish.
- * Trigger: key_exchange kelganda, msg.recv kelganda yoki 3s fallback timer.
+ * Xabarni deshifrlab ochiq matn qaytaradi.
+ * PreKeyMessage (Type 3): decryptMessage ichida avtomatik X3DH + decrypt.
+ * SESSION_NOT_FOUND → throw qilinadi.
  */
-async function flushPendingSend(
-  peerId: string,
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-): Promise<void> {
-  const queue = pendingSendQueue.get(peerId);
-  if (!queue?.length) return;
-  pendingSendQueue.delete(peerId);
-  clearPendingSendTimers(peerId);
-
-  console.log(`[X3DH] flushPendingSend: ${queue.length} xabar → ${peerId}`);
-
-  for (const { chatId, plaintext, localId, token } of queue) {
-    try {
-      await encryptAndSend(chatId, peerId, plaintext, localId, token, set);
-    } catch (e) {
-      console.error("[E2EE] flushPendingSend xatoligi:", e);
-      set((s) => ({
-        messages: {
-          ...s.messages,
-          [chatId]: (s.messages[chatId] ?? []).map((m) =>
-            m.id === localId
-              ? { ...m, status: "sent" as const, plaintext: `⚠ Yuborilmadi: ${e instanceof Error ? e.message : String(e)}` }
-              : m
-          ),
-        },
-      }));
-    }
-  }
-}
-
-function requestPeerRekey(chatId: string, peerId: string): void {
-  wsClient.send("session.rekey_request", {
-    chat_id:      chatId,
-    recipient_id: peerId,
-  });
-  console.log(`[X3DH] session.rekey_request yuborildi → ${peerId}`);
-}
-
-function schedulePendingRetries(
-  peerId: string,
-  chatId: string,
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get: () => ChatState
-): void {
-  if (pendingRetryTimers.has(peerId)) return;
-
-  const timers: ReturnType<typeof setTimeout>[] = [];
-
-  timers.push(setTimeout(async () => {
-    console.log(`[X3DH] Retry #1 (2s): pending decrypt peer=${peerId}`);
-    await flushPendingForPeer(peerId, set, get);
-    if ((pendingDecryptQueue.get(peerId)?.length ?? 0) > 0) {
-      console.log(`[X3DH] Retry #1 muvaffaqiyatsiz — rekey_request yuborilmoqda peer=${peerId}`);
-      requestPeerRekey(chatId, peerId);
-    }
-  }, 2000));
-
-  timers.push(setTimeout(async () => {
-    console.log(`[X3DH] Retry #2 (3s): pending decrypt peer=${peerId}`);
-    await flushPendingForPeer(peerId, set, get);
-
-    const stillPending = (pendingDecryptQueue.get(peerId)?.length ?? 0) > 0;
-    if (stillPending) {
-      requestPeerRekey(chatId, peerId);
-      const token = useAuthStore.getState().token;
-      if (token) {
-        await runSenderRekey(chatId, peerId, token, set, get);
-      }
-    }
-    clearPendingRetryTimers(peerId);
-  }, 3000));
-
-  pendingRetryTimers.set(peerId, timers);
-}
-
-function queuePendingDecrypt(
-  senderId: string,
-  msg: Message,
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get: () => ChatState
-): void {
-  if (!ensurePendingAccount()) return;
-  const q = pendingDecryptQueue.get(senderId) ?? [];
-  if (!q.some((m) => m.id === msg.id)) q.push(msg);
-  pendingDecryptQueue.set(senderId, q);
-  console.log(`[E2EE] ⏳ Pending queue: peer=${senderId} total=${q.length} account=${pendingAccountId}`);
-  schedulePendingRetries(senderId, msg.chat_id, set, get);
-}
-
-/** key_exchange yoki sessiya tayyor bo'lgach navbatdagi xabarlarni deshifrlash */
-async function flushPendingForPeer(
-  peerId: string,
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get: () => ChatState
-): Promise<void> {
-  const queued = pendingDecryptQueue.get(peerId) ?? [];
-  if (!queued.length) return;
-  pendingDecryptQueue.delete(peerId);
-
-  let anySuccess = false;
-
-  for (const qMsg of queued) {
-    let pt: string;
-    try {
-      pt = await decryptPlaintext(qMsg.chat_id, peerId, qMsg.ciphertext);
-    } catch (e) {
-      const err = classifyDecryptError(e);
-      if (err.code === "SESSION_NOT_FOUND") {
-        queuePendingDecrypt(peerId, qMsg, set, get);
-        continue;
-      }
-      pt = DECRYPT_ERROR_LABEL;
-    }
-    if (isPendingDecrypt(pt)) {
-      queuePendingDecrypt(peerId, qMsg, set, get);
-      continue;
-    }
-    if (isReadablePlaintext(pt)) {
-      anySuccess = true;
-      const saved = { ...qMsg, plaintext: pt };
-      await persistLocalMessage(saved).catch((e) =>
-        console.warn("[E2EE] flush persist:", e)
-      );
-      set((s) => ({
-        messages: {
-          ...s.messages,
-          [qMsg.chat_id]: (s.messages[qMsg.chat_id] ?? []).map((x) =>
-            x.id === qMsg.id ? saved : x
-          ),
-        },
-      }));
-    }
-  }
-
-  if (anySuccess && !(pendingDecryptQueue.get(peerId)?.length)) {
-    clearPendingRetryTimers(peerId);
-  }
-}
-
-async function flushAllPending(
-  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get: () => ChatState
-): Promise<void> {
-  const peers = [...pendingDecryptQueue.keys()];
-  for (const peerId of peers) {
-    await flushPendingForPeer(peerId, set, get);
-  }
-}
-
-/** Xabarni deshifrlab ochiq matn qaytaradi; SESSION_NOT_FOUND → throw */
 async function decryptPlaintext(
   chatId:     string,
   senderId:   string,
-  ciphertext: string
+  ciphertext: string,
 ): Promise<string> {
   if (!ciphertext?.trim()) return "";
   try {
@@ -340,73 +109,31 @@ async function decryptPlaintext(
   }
 }
 
-function isDecryptFailure(text: string | null | undefined): boolean {
-  return text === DECRYPT_ERROR_LABEL;
-}
-
-function isPendingDecrypt(text: string | null | undefined): boolean {
-  return text === PENDING_DECRYPT_LABEL;
-}
-
-/** Xabardan chat ro'yxati preview matnini hosil qiladi */
-function previewFromMessage(msg: Message): string {
-  if (msg.plaintext?.startsWith("⚠ Yuborilmadi")) return msg.plaintext;
-  if (isDecryptFailure(msg.plaintext)) return DECRYPT_ERROR_LABEL;
-  if (isPendingDecrypt(msg.plaintext)) return PENDING_DECRYPT_LABEL;
-  return msg.plaintext ?? "";
-}
-
-/** Tarix/UI uchun: sessiya yo'q bo'lsa pending, boshqa xato — label */
-async function decryptForDisplay(
-  chatId:     string,
-  senderId:   string,
-  ciphertext: string,
-  set:        (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get:        () => ChatState,
-  msg?:       Message
-): Promise<string> {
-  try {
-    return await decryptPlaintext(chatId, senderId, ciphertext);
-  } catch (e) {
-    if (classifyDecryptError(e).code === "SESSION_NOT_FOUND") {
-      if (msg) queuePendingDecrypt(senderId, msg, set, get);
-      return PENDING_DECRYPT_LABEL;
-    }
-    return DECRYPT_ERROR_LABEL;
-  }
-}
-
 /**
- * Server tarixi uchun: mahalliy bazada topilmagan xabar deshifrlashga urinadi.
- * Muvaffaqiyatsiz bo'lsa → PENDING yoki MISSING (xatolik emas).
- * Bu funksiya live WS xabar uchun EMAS — faqat selectChat tarixida ishlatiladi.
+ * Server tarixi uchun: mahalliy bazada topilmagan xabarni deshifrlashga urinadi.
+ * Sessiya yo'q → PENDING_DECRYPT_LABEL
+ * Boshqa xato → MISSING_PLAINTEXT_LABEL
+ * Bu funksiya live WS xabar uchun EMAS.
  */
 async function decryptForHistory(
   chatId:     string,
   senderId:   string,
   ciphertext: string,
-  set:        (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get:        () => ChatState,
-  msg:        Message
 ): Promise<string> {
   try {
     return await decryptPlaintext(chatId, senderId, ciphertext);
   } catch (e) {
     const code = classifyDecryptError(e).code;
-    if (code === "SESSION_NOT_FOUND") {
-      queuePendingDecrypt(senderId, msg, set, get);
-      return PENDING_DECRYPT_LABEL;
-    }
-    // Ratchet davlat yo'q yoki eski kalit → xatolik emas, shunchaki saqlanmagan
+    if (code === "SESSION_NOT_FOUND") return PENDING_DECRYPT_LABEL;
     return MISSING_PLAINTEXT_LABEL;
   }
 }
 
-/** Suhbatdagi deshifrlanmagan / xato xabarlarni qayta ochish */
+/** Suhbatdagi deshifrlanmagan xabarlarni qayta ochish (sessiya yangilanganida) */
 async function redDecryptChatMessages(
   chatId: string,
   set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get: () => ChatState
+  get: () => ChatState,
 ): Promise<void> {
   const msgs = get().messages[chatId];
   if (!msgs?.length) return;
@@ -415,10 +142,8 @@ async function redDecryptChatMessages(
     msgs.map(async (msg) => {
       if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
       if (isReadablePlaintext(msg.plaintext)) return msg;
-      return {
-        ...msg,
-        plaintext: await decryptForDisplay(chatId, msg.sender_id, msg.ciphertext, set, get, msg),
-      };
+      const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+      return { ...msg, plaintext: pt };
     })
   );
 
@@ -431,9 +156,9 @@ async function redDecryptChatMessages(
             ? {
                 ...c,
                 last_message: {
-                  sender_id: last.sender_id,
-                  preview:     previewFromMessage(last),
-                  created_at:  last.created_at,
+                  sender_id:  last.sender_id,
+                  preview:    previewFromMessage(last),
+                  created_at: last.created_at,
                 },
                 updated_at: last.created_at,
               }
@@ -443,86 +168,13 @@ async function redDecryptChatMessages(
   }));
 
   for (const msg of updated) {
-    if (!isDecryptFailure(msg.plaintext)) {
+    if (isReadablePlaintext(msg.plaintext)) {
       await persistLocalMessage(msg).catch(() => {});
     }
   }
 }
 
-// Sherik kalit bundle'ini fetch qilib X3DH sessiya o'rnatish
-// Returns: EstablishResult yoki null (xatolik bo'lsa)
-async function tryEstablishSenderSession(
-  peerId: string,
-  token:  string
-) {
-  // 1. Bundle olish
-  let bundle;
-  try {
-    bundle = await keysApi.getBundle(token, peerId);
-    console.log(`[X3DH] Bundle olindi (${peerId}):`, {
-      identity_key:   bundle.identity_key?.slice(0, 12) + "…",
-      spk_key_id:     bundle.signed_prekey?.key_id,
-      has_otpk:       !!bundle.one_time_prekey,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("404")) {
-      console.error(`[X3DH] ❌ ${peerId} uchun kalit bundle server'da yo'q (HTTP 404).`
-        + ` Peer login qilganda kalitlarini yuklamagandir yoki server DB tozalangan.`);
-    } else {
-      console.error(`[X3DH] ❌ Bundle olishda xatolik (${peerId}):`, msg);
-    }
-    return null;
-  }
-
-  // 2. X3DH sessiya o'rnatish
-  try {
-    const result = await establishSession(peerId, JSON.stringify(bundle));
-    console.log(`[X3DH] ✅ Sessiya o'rnatildi (sender): ${peerId}`);
-    return result;
-  } catch (e) {
-    console.error(`[X3DH] ❌ establish_session xatoligi (${peerId}):`, e);
-    return null;
-  }
-}
-
-/** Yuboruvchi tomoni: sessiyani tozalab yangi X3DH + key_exchange */
-async function runSenderRekey(
-  chatId: string,
-  peerId: string,
-  token:  string,
-  set:    (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
-  get:    () => ChatState
-): Promise<void> {
-  await clearSession(peerId);
-  const result = await tryEstablishSenderSession(peerId, token);
-  if (result) {
-    sendKeyExchangeWs(chatId, peerId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
-    await new Promise<void>((res) => setTimeout(res, 800));
-    await flushPendingForPeer(peerId, set, get);
-    await redDecryptChatMessages(chatId, set, get);
-  }
-}
-
-// Key_exchange WS xabari yuborish
-function sendKeyExchangeWs(
-  chatId:      string,
-  recipientId: string,
-  ekPk:        string,
-  senderIkX25519: string,
-  spkKeyId:    number,
-  otpkKeyId:   number
-): void {
-  wsClient.send("key_exchange", {
-    chat_id:          chatId,
-    recipient_id:     recipientId,
-    ek_pk:            ekPk,
-    sender_ik_x25519: senderIkX25519,
-    spk_key_id:       spkKeyId,
-    otpk_key_id:      otpkKeyId,
-  });
-  console.log(`[X3DH] key_exchange WS yuborildi → ${recipientId}`);
-}
+// ── Store ───────────────────────────────────────────────────────────────────
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chats:        [],
@@ -545,19 +197,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  // Suhbat tanlanganida tarixi yuklanadi
+  // Suhbat tanlanganida tarixi yuklanadi (mahalliy + server)
   selectChat: async (chatId, token) => {
     set({ activeChatId: chatId });
 
     const chat = get().chats.find((c) => c.id === chatId);
     const peerId = chat?.peer_user_id ?? null;
 
-    // MUHIM: selectChat da sender X3DH ISHLATILMAYDI — qabul qiluvchi sessiyasini buzmaslik uchun.
-    // Sessiya faqat key_exchange (qabul) yoki sendMessage (birinchi yuborish) orqali o'rnatiladi.
     if (peerId) {
       const sessionExists = await hasSession(peerId).catch(() => false);
       console.log(
-        `[X3DH] selectChat: peer=${peerId} session=${sessionExists ? "mavjud" : "yo'q — key_exchange yoki xabar yuborish kutiladi"}`
+        `[E2EE] selectChat: peer=${peerId} session=${sessionExists ? "mavjud" : "yo'q — birinchi xabarda PreKeyMessage yaratiladi"}`
       );
     }
 
@@ -574,9 +224,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 ? {
                     ...c,
                     last_message: {
-                      sender_id: lastLocal.sender_id,
-                      preview:     previewFromMessage(lastLocal),
-                      created_at:  lastLocal.created_at,
+                      sender_id:  lastLocal.sender_id,
+                      preview:    previewFromMessage(lastLocal),
+                      created_at: lastLocal.created_at,
                     },
                     updated_at: lastLocal.created_at,
                   }
@@ -589,23 +239,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.warn("[Chat] mahalliy tarix o'qilmadi:", e);
     }
 
-    // 2) Serverdan shifrlangan tarix — mahalliy ochiq matn ustun, qayta deshifrlash yo'q
+    // 2) Serverdan shifrlangan tarix — mahalliy ochiq matn ustun
     try {
       const local = await loadLocalMessages(chatId);
       const rawMsgs = await chatApi.history(token, chatId);
+
       const decrypted = await Promise.all(
         rawMsgs.map(async (msg) => {
           if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
+          // Mahalliy bazada ochiq matn mavjud bo'lsa → qayta deshifrlash kerak emas
           const hydrated = hydrateFromLocal(local, msg);
           if (isReadablePlaintext(hydrated.plaintext)) return hydrated;
           // Mahalliy bazada topilmadi — deshifrlashga urinib ko'ramiz
-          // (muvaffaqiyatsiz → MISSING_PLAINTEXT_LABEL, xatolik ko'rsatmaymiz)
           return {
             ...msg,
-            plaintext: await decryptForHistory(chatId, msg.sender_id, msg.ciphertext, set, get, msg),
+            plaintext: await decryptForHistory(chatId, msg.sender_id, msg.ciphertext),
           };
         })
       );
+
       const merged = mergeMessages(local, decrypted);
       const last = merged[merged.length - 1];
 
@@ -617,9 +269,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 ? {
                     ...c,
                     last_message: {
-                      sender_id: last.sender_id,
-                      preview:     previewFromMessage(last),
-                      created_at:  last.created_at,
+                      sender_id:  last.sender_id,
+                      preview:    previewFromMessage(last),
+                      created_at: last.created_at,
                     },
                     updated_at: last.created_at,
                   }
@@ -647,7 +299,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const newChat: Chat = {
         id:           chatId,
-        type:         "private",
+        type:         "direct",
         title:        peer.display_name,
         peer_user_id: peer.id,
         last_message: null,
@@ -660,18 +312,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
         activeChatId: chatId,
         userResults:  [],
       }));
-
-      // Yangi chat: X3DH birinchi xabar yuborilganda (sendMessage) o'rnatiladi
     } catch (e) {
       console.error("[Chat] createChat xatoligi:", e);
     }
   },
 
-  // Xabar yuborish: E2EE → WebSocket
-  // Sessiya yo'q bo'lsa: xabar pendingSendQueue ga tushadi, key_exchange yuboriladi,
-  // event-driven trigger (key_exchange/msg.recv) yoki 3s fallback timer bilan flush.
+  // ── Xabar yuborish ────────────────────────────────────────────────────────
+  //
+  // Signal Protocol:
+  //   sessiya yo'q → encryptFirstMessage (PreKeySignalMessage, Type 3)
+  //                  = X3DH + shifrlash bir bosqichda
+  //                  → server DB ga saqlaydi → offline yetkazish ishlaydi
+  //
+  //   sessiya bor  → encryptMessage (SignalMessage, Type 1)
+  //
+  // Alohida 'key_exchange' WS event YO'Q.
   sendMessage: async (chatId, recipientId, plaintext, token) => {
     const localId = `local_${Date.now()}`;
+    const now     = new Date().toISOString();
 
     const tempMsg: Message = {
       id:         localId,
@@ -681,59 +339,81 @@ export const useChatStore = create<ChatState>((set, get) => ({
       plaintext,
       msg_type:   "text",
       status:     "sending",
-      created_at: new Date().toISOString(),
+      created_at: now,
     };
 
+    // UI'da darhol ko'rinadi
     set((s) => ({
-      messages: { ...s.messages, [chatId]: [...(s.messages[chatId] ?? []), tempMsg] },
+      messages: {
+        ...s.messages,
+        [chatId]: [...(s.messages[chatId] ?? []), tempMsg],
+      },
     }));
 
     try {
       const sessionExists = await hasSession(recipientId).catch(() => false);
+      let ciphertext: string;
+      let msgTypeNum: number;
 
       if (!sessionExists) {
-        // ── Sessiya yo'q: xabarni navbatga qo'yib key_exchange yuboramiz ──
-        console.log(`[X3DH] sendMessage: sessiya yo'q → ${recipientId}, navbatga qo'shildi`);
-
-        const q = pendingSendQueue.get(recipientId) ?? [];
-        q.push({ localId, chatId, plaintext, token });
-        pendingSendQueue.set(recipientId, q);
-
-        const result = await tryEstablishSenderSession(recipientId, token);
-        if (!result) {
-          throw new Error("X3DH muvaffaqiyatsiz: peer kalit to'plamini ololmadi");
-        }
-
-        sendKeyExchangeWs(chatId, recipientId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
-        console.log(`[X3DH] key_exchange → ${recipientId} | event-driven flush kutilmoqda (3s fallback)`);
-
-        // Fallback: event 3 soniya ichida kelmasa ham flush qilamiz
-        if (!pendingSendTimers.has(recipientId)) {
-          const timer = setTimeout(async () => {
-            console.log(`[X3DH] 3s fallback: flush pendingSend → ${recipientId}`);
-            await flushPendingSend(recipientId, set);
-          }, 3000);
-          pendingSendTimers.set(recipientId, timer);
-        }
-
-        return; // Sessiya o'rnatilguncha shu yerda to'xtatamiz
+        // ── Sessiya yo'q: PreKeyMessage (X3DH + shifrlash inline) ──────────
+        console.log(`[E2EE] 🔑 PreKeyMessage → ${recipientId} (sessiya yangi)`);
+        const bundle = await keysApi.getBundle(token, recipientId);
+        ciphertext = await encryptFirstMessage(
+          chatId,
+          recipientId,
+          JSON.stringify(bundle),
+          plaintext,
+        );
+        msgTypeNum = 3; // PreKeySignalMessage
+      } else {
+        // ── Sessiya mavjud: oddiy SignalMessage ────────────────────────────
+        ciphertext = await encryptMessage(chatId, recipientId, plaintext);
+        msgTypeNum = 1;
       }
 
-      // ── Sessiya mavjud: darhol shifrlash va yuborish ──
-      await encryptAndSend(chatId, recipientId, plaintext, localId, token, set);
+      wsClient.send("msg.send", {
+        chat_id:       chatId,
+        recipient_id:  recipientId,
+        ciphertext,
+        msg_type:      msgTypeNum,
+        client_msg_id: localId,
+      });
 
-    } catch (e) {
-      console.error("[E2EE] sendMessage xatoligi:", e);
-      // Navbatdan olib tashlaymiz (tashlangan xabarlarni ushlamaymiz)
-      const q = pendingSendQueue.get(recipientId);
-      if (q) pendingSendQueue.set(recipientId, q.filter((m) => m.localId !== localId));
+      const sentMsg: Message = { ...tempMsg, ciphertext, status: "sent" };
 
       set((s) => ({
         messages: {
           ...s.messages,
           [chatId]: (s.messages[chatId] ?? []).map((m) =>
+            m.id === localId ? sentMsg : m
+          ),
+        },
+        chats: s.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                last_message: { sender_id: "me", preview: plaintext, created_at: now },
+                updated_at:   now,
+              }
+            : c
+        ),
+      }));
+
+      await persistLocalMessage(sentMsg).catch(() => {});
+
+    } catch (e) {
+      console.error("[E2EE] sendMessage xatoligi:", e);
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [chatId]: (s.messages[chatId] ?? []).map((m) =>
             m.id === localId
-              ? { ...m, status: "sent" as const, plaintext: `⚠ Yuborilmadi: ${e instanceof Error ? e.message : String(e)}` }
+              ? {
+                  ...m,
+                  status:   "sent" as const,
+                  plaintext: `⚠ Yuborilmadi: ${e instanceof Error ? e.message : String(e)}`,
+                }
               : m
           ),
         },
@@ -741,36 +421,43 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  // WebSocket hodisalari
+  // ── WebSocket hodisalari ──────────────────────────────────────────────────
   handleWsEvent: (event) => {
     const authUserId = useAuthStore.getState().userId;
     if (!authUserId) return;
-    ensurePendingAccount();
+    if (activeAccountId !== authUserId) activeAccountId = authUserId;
 
     switch (event.type) {
+
       case "msg.recv": {
         const m = event.payload as WsMsgRecv;
-        console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id} id=${m.msg_id}`);
+        console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id} id=${m.msg_id} type=${m.msg_type}`);
 
         void (async () => {
           // Takroriy xabar tekshiruvi
           if (get().messages[m.chat_id]?.some((x) => x.id === m.msg_id)) {
-            console.log(`[WS] msg.recv: takroriy xabar id=${m.msg_id}, o'tkazib yuborildi`);
+            console.log(`[WS] msg.recv: takroriy xabar id=${m.msg_id}`);
             return;
           }
 
-          // a) E2EE — BIR MARTA deshifrlash
+          // ── E2EE: BIR MARTA deshifrlash ──────────────────────────────────
+          // decryptMessage ichida PreKeyMessage (Type 3) avtomatik aniqlaydi:
+          //   1. X3DH sessiyasini o'rnatadi
+          //   2. Ichki xabarni deshifrlaydi
+          // Oddiy xabar (Type 1): mavjud sessiya bilan deshifrlaydi.
           let plaintext: string;
           try {
-            plaintext = await decryptPlaintext(m.chat_id, m.sender_id, m.ciphertext);
+            plaintext = await decryptMessage(m.chat_id, m.sender_id, m.ciphertext);
             console.log(`[WS] ✅ Deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
           } catch (e) {
             const err = classifyDecryptError(e);
-            console.warn(`[WS] Deshifrlash xatosi: id=${m.msg_id} code=${err.code}`);
+            console.warn(`[WS] ❌ Deshifrlash xatosi: id=${m.msg_id} code=${err.code}`);
+            // SESSION_NOT_FOUND: sessiya yo'q (Type 1 message, eski sessiya)
+            // Boshqa xato: noto'g'ri kalit yoki buzilgan xabar
             plaintext =
-              err.code !== "SESSION_NOT_FOUND"
-                ? DECRYPT_ERROR_LABEL
-                : PENDING_DECRYPT_LABEL;
+              err.code === "SESSION_NOT_FOUND"
+                ? PENDING_DECRYPT_LABEL
+                : DECRYPT_ERROR_LABEL;
           }
 
           const newMsg: Message = {
@@ -784,22 +471,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
             created_at: new Date().toISOString(),
           };
 
-          if (isPendingDecrypt(plaintext)) {
-            // Sessiya hali yo'q — keyinroq retry qilinadi
-            queuePendingDecrypt(m.sender_id, newMsg, set, get);
-          } else if (isReadablePlaintext(plaintext)) {
-            // b) OCHIQ MATNNI DARHOL saqlash — qayta deshifrlash oldini olish
+          // ── Ochiq matnni mahalliy bazaga saqlash (qayta deshifrlashni oldini olish) ──
+          if (isReadablePlaintext(plaintext)) {
             try {
               await persistLocalMessage(newMsg);
               console.log(`[WS] 💾 Saqlandi: id=${m.msg_id}`);
             } catch (e) {
-              // MISMATCH xatosi: boshqa akkaunt konteksti — xabarni tashlamaymiz, faqat log
               console.error("[WS] persistLocalMessage xatoligi (davom etadi):", e);
             }
           }
-          // DECRYPT_ERROR_LABEL holati: ratchet xatosi — saqlanmaydi, pending ham qilinmaydi
 
-          // c) Store / UI yangilash (persist dan SO'NG)
+          // ── Store / UI yangilash ──────────────────────────────────────────
           set((s) => ({
             messages: {
               ...s.messages,
@@ -815,18 +497,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
                       created_at: newMsg.created_at,
                     },
                     unread_count:
-                      c.id === get().activeChatId ? c.unread_count : c.unread_count + 1,
+                      c.id === get().activeChatId
+                        ? c.unread_count
+                        : c.unread_count + 1,
                     updated_at: newMsg.created_at,
                   }
                 : c
             ),
           }));
 
-          // d) pendingSendQueue flush: bu peer dan xabar keldi → ular sessiyani ishlatmoqda
-          // → bizning key_exchange ham ular tomonidan qabul qilingan bo'lishi mumkin
-          void flushPendingSend(m.sender_id, set);
-
-          // e) Tauri OS bildirishnomasi (faqat muvaffaqiyatli deshifrlanganda)
+          // ── Tauri OS bildirishnomasi ──────────────────────────────────────
           if (isReadablePlaintext(plaintext)) {
             const chat = get().chats.find((c) => c.id === m.chat_id);
             const show = await shouldNotifyIncoming(m.chat_id, get().activeChatId);
@@ -834,7 +514,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               await notifyIncomingMessage(
                 chat?.title ?? m.sender_id,
                 plaintext,
-                m.chat_id
+                m.chat_id,
               );
             }
           }
@@ -877,90 +557,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         break;
       }
 
-      case "key_exchange": {
-        const ke = event.payload as WsKeyExchange;
-        console.log(`[X3DH] key_exchange keldi: from=${ke.sender_id} chat=${ke.chat_id}`);
-
-        // Qabul qiluvchi tomoni X3DH sessiyasini o'rnatadi
-        establishSessionReceiver(
-          ke.sender_id,
-          ke.ek_pk,
-          ke.sender_ik_x25519,
-          ke.spk_key_id,
-          ke.otpk_key_id
-        )
-          .then(async () => {
-            console.log(`[X3DH] ✅ Qabul qiluvchi sessiya o'rnatildi (persisted): ${ke.sender_id}`);
-
-            // Navbatdagi + pending xabarlar (msg key_exchange dan oldin kelgan bo'lishi mumkin)
-            await flushPendingForPeer(ke.sender_id, set, get);
-            await flushAllPending(set, get);
-
-            // Sessiya o'rnatilgach — oldingi deshifrlanmagan xabarlarni qayta ochish
-            await redDecryptChatMessages(ke.chat_id, set, get);
-
-            // pendingSendQueue flush: agar biz bu peer ga xabar yuborishni kutayotgan bo'lsak
-            // (biz key_exchange yubordik, peer ham javob berdi → ular bizning sessiyamizni biladi)
-            await flushPendingSend(ke.sender_id, set);
-
-            // Ushbu suhbat uchun chat_id topib birinchi suhbatni chatlar ro'yxatiga qo'shamiz
-            const existingChat = get().chats.find((c) => c.id === ke.chat_id);
-            if (!existingChat) {
-              // Yangi suhbat: state'ga qo'shamiz (foydalanuvchi ma'lumoti keyinroq to'ldiriladi)
-              const newChat: Chat = {
-                id:           ke.chat_id,
-                type:         "private",
-                title:        ke.sender_id,   // vaqtinchalik — username
-                peer_user_id: ke.sender_id,
-                last_message: null,
-                unread_count: 0,
-                updated_at:   new Date().toISOString(),
-              };
-              set((s) => ({ chats: [newChat, ...s.chats] }));
-            }
-          })
-          .catch((e) => console.error("[X3DH] establish_session_receiver xatoligi:", e));
-        break;
-      }
-
-      case "session.rekey_request": {
-        const p = event.payload as WsSessionRekeyRequest;
-        console.log(`[X3DH] session.rekey_request keldi: from=${p.requester_id} chat=${p.chat_id}`);
-
-        void (async () => {
-          const token = useAuthStore.getState().token;
-          if (!token) return;
-          await clearSession(p.requester_id);
-          const result = await tryEstablishSenderSession(p.requester_id, token);
-          if (result) {
-            sendKeyExchangeWs(
-              p.chat_id,
-              p.requester_id,
-              result.ekPk,
-              result.senderIkX25519,
-              result.spkKeyId,
-              result.otpkKeyId
-            );
-          }
-        })();
-        break;
-      }
-
       case "presence": {
         const p = event.payload;
         set((s) => ({ presenceMap: { ...s.presenceMap, [p.user_id]: p.online } }));
         break;
       }
     }
-  },
-
-  resetSessionWithPeer: async (chatId, peerId, token) => {
-    console.log(`[X3DH] Sessiyani qayta tiklash: peer=${peerId} chat=${chatId}`);
-    clearPendingRetryTimers(peerId);
-    await clearSession(peerId);
-
-    requestPeerRekey(chatId, peerId);
-    await runSenderRekey(chatId, peerId, token, set, get);
   },
 
   // Foydalanuvchi qidiruvi
@@ -978,11 +580,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearUserResults: () => set({ userResults: [] }),
 
+  // ── Akkaunt almashinuvi ───────────────────────────────────────────────────
   onAccountSwitch: (userId) => {
-    pendingDecryptQueue.clear();
-    clearAllPendingRetryTimers();
-    clearAllPendingSend();
-    pendingAccountId = userId;
+    activeAccountId = userId;
     set({
       chats:        [],
       messages:     {},
@@ -991,11 +591,39 @@ export const useChatStore = create<ChatState>((set, get) => ({
       userResults:  [],
     });
     void initNotifications();
-    console.log(`[Chat] onAccountSwitch: ${userId}, barcha navbatlar tozalandi`);
+    console.log(`[Chat] onAccountSwitch: ${userId}, state tozalandi`);
+  },
+
+  // ── Sessiyani qayta tiklash ───────────────────────────────────────────────
+  //
+  // Sessiya tozalanadi. Keyingi xabarda sendMessage avtomatik PreKeyMessage
+  // yaratadi — alohida 'session.rekey_request' WS event kerak emas.
+  resetSessionWithPeer: async (chatId, peerId, _token) => {
+    console.log(`[E2EE] Sessiyani qayta tiklash: peer=${peerId}`);
+    await clearSession(peerId);
+
+    // UI'dagi xato xabarlarni "qayta tiklandi" belgisi bilan almashtirish
+    set((s) => ({
+      messages: {
+        ...s.messages,
+        [chatId]: (s.messages[chatId] ?? []).map((m) =>
+          !isReadablePlaintext(m.plaintext)
+            ? {
+                ...m,
+                plaintext: "🔄 Sessiya tiklandi. Yangi xabar yuborib ko'ring.",
+              }
+            : m
+        ),
+      },
+    }));
+
+    // Sessiya o'rnatilsa ham qayta ko'rsatish uchun
+    await redDecryptChatMessages(chatId, set, get);
+
+    console.log(`[E2EE] ✅ Sessiya tozalandi. Keyingi xabarda PreKeyMessage yaratiladi.`);
   },
 }));
 
-// ── Permanent WS handler (race condition oldini olish) ─────────────────────
-// ChatList.tsx ga bog'liq emas: WS ulangandan darhol xabarlarni qayta ishlaydi.
-// React render bo'lishini kutmaymiz — modul import paytida bir marta ro'yxatdan o'tadi.
+// ── Permanent WS handler ──────────────────────────────────────────────────────
+// ChatList.tsx ga bog'liq emas — modul import paytida bir marta ro'yxatdan o'tadi.
 wsClient.on((event) => useChatStore.getState().handleWsEvent(event));

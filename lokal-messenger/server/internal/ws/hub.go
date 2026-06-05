@@ -102,15 +102,16 @@ func (h *Hub) clientCount() int {
 }
 
 // handleInbound — kiruvchi paket turi bo'yicha tegishli funksiyaga yo'naltiriladi.
+//
+// Signal Protocol standart yondashuv:
+//   key_exchange va session.rekey_request eventlari YO'Q.
+//   Birinchi xabar = PreKeySignalMessage (msg_type=3) — barcha kalit almashinuvi ichida.
+//   Server oddiy "msg.send" kabi DB ga saqlaydi → offline yetkazish ishlaydi.
 func (h *Hub) handleInbound(ctx context.Context, env inboundEnvelope) {
 	log.Printf("[WS] ← kiruvchi: from=%s type=%s", env.From, env.Type)
 	switch env.Type {
 	case "msg.send":
 		h.routeMessage(ctx, env)
-	case "key_exchange":
-		h.handleKeyExchange(ctx, env)
-	case "session.rekey_request":
-		h.handleSessionRekeyRequest(ctx, env)
 	case "msg.delivered":
 		h.markDelivered(ctx, env)
 	case "msg.read":
@@ -177,67 +178,6 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 			`UPDATE messages SET delivered_at = NOW() WHERE id = $1::uuid`, msgID)
 	} else {
 		log.Printf("[WS] ⏳ Adresat offline, xabar DB da kutmoqda: to=%s", p.RecipientID)
-	}
-}
-
-// handleKeyExchange — X3DH kalitlar almashinuvi (DB ga saqlanmaydi, to'g'ridan-to'g'ri uzatiladi).
-func (h *Hub) handleKeyExchange(ctx context.Context, env inboundEnvelope) {
-	var p struct {
-		ChatID        string `json:"chat_id"`
-		RecipientID   string `json:"recipient_id"`
-		EkPk          string `json:"ek_pk"`
-		SenderIkX25519 string `json:"sender_ik_x25519"`
-		SpkKeyID      uint32 `json:"spk_key_id"`
-		OtpkKeyID     uint32 `json:"otpk_key_id"`
-	}
-	if err := json.Unmarshal(env.Payload, &p); err != nil {
-		log.Printf("[WS] ✗ key_exchange JSON parse xatoligi (from=%s): %v", env.From, err)
-		return
-	}
-
-	log.Printf("[WS] 🔑 key_exchange: from=%s → to=%s | chat=%s | spk_id=%d",
-		env.From, p.RecipientID, p.ChatID, p.SpkKeyID)
-
-	// Adresatga to'g'ridan-to'g'ri uzatiladi (DB ga saqlanmaydi)
-	delivered := h.sendTo(p.RecipientID, "key_exchange", map[string]any{
-		"chat_id":         p.ChatID,
-		"sender_id":       env.From,
-		"ek_pk":           p.EkPk,
-		"sender_ik_x25519": p.SenderIkX25519,
-		"spk_key_id":      p.SpkKeyID,
-		"otpk_key_id":     p.OtpkKeyID,
-	})
-
-	if delivered {
-		log.Printf("[WS] ✓ key_exchange yetkazildi: to=%s", p.RecipientID)
-	} else {
-		log.Printf("[WS] ⚠ Adresat offline — key_exchange yo'qoldi: to=%s", p.RecipientID)
-	}
-}
-
-// handleSessionRekeyRequest — qabul qiluvchi sessiya yo'qligida sherikdan yangi key_exchange so'raydi.
-func (h *Hub) handleSessionRekeyRequest(ctx context.Context, env inboundEnvelope) {
-	var p struct {
-		ChatID      string `json:"chat_id"`
-		RecipientID string `json:"recipient_id"`
-	}
-	if err := json.Unmarshal(env.Payload, &p); err != nil {
-		log.Printf("[WS] ✗ session.rekey_request JSON parse xatoligi (from=%s): %v", env.From, err)
-		return
-	}
-
-	log.Printf("[WS] 🔄 session.rekey_request: from=%s → to=%s | chat=%s",
-		env.From, p.RecipientID, p.ChatID)
-
-	delivered := h.sendTo(p.RecipientID, "session.rekey_request", map[string]any{
-		"chat_id":      p.ChatID,
-		"requester_id": env.From,
-	})
-
-	if delivered {
-		log.Printf("[WS] ✓ session.rekey_request yetkazildi: to=%s", p.RecipientID)
-	} else {
-		log.Printf("[WS] ⚠ Adresat offline — session.rekey_request yo'qoldi: to=%s", p.RecipientID)
 	}
 }
 

@@ -69,26 +69,27 @@ export interface Message {
 
 // ── WebSocket hodisalari ────────────────────────────────────────────────────
 // Server hub.go dan keluvchi/ketuvchi hodisalar
-
-// Server → Client
-export interface WsSessionRekeyRequest {
-  chat_id:      string;
-  requester_id: string;
-}
+//
+// Signal Protocol standart (PreKeyMessage):
+//   key_exchange va session.rekey_request WS eventlari YO'Q.
+//   Birinchi xabar = PreKeySignalMessage (type=3) — barcha kalit almashinuvi ichida.
 
 export type WsEvent =
-  | { type: "msg.recv";              payload: WsMsgRecv }
-  | { type: "msg.ack";               payload: WsMsgAck }
-  | { type: "key_exchange";         payload: WsKeyExchange }
-  | { type: "session.rekey_request"; payload: WsSessionRekeyRequest }
-  | { type: "presence";             payload: WsPresence };
+  | { type: "msg.recv";  payload: WsMsgRecv }
+  | { type: "msg.ack";   payload: WsMsgAck }
+  | { type: "presence";  payload: WsPresence };
 
 // Client → Server (wsClient.sendMsg orqali yuboriladi)
 export interface WsSendPayload {
   chat_id:       string;
   recipient_id:  string;
-  ciphertext:    string;   // Base64
-  msg_type:      number;   // 1 = text
+  ciphertext:    string;
+  /**
+   * Xabar turi:
+   *   1 = SignalMessage    (mavjud sessiya bilan shifrlangan)
+   *   3 = PreKeySignalMessage (X3DH + shifrlash inline, sessiya yo'qda)
+   */
+  msg_type:      number;
   client_msg_id: string;
 }
 
@@ -96,7 +97,11 @@ export interface WsMsgRecv {
   msg_id:     string;
   chat_id:    string;
   sender_id:  string;
-  ciphertext: string;      // Base64
+  ciphertext: string;
+  /**
+   * 1 = SignalMessage
+   * 3 = PreKeySignalMessage (decryptMessage ichida avtomatik X3DH)
+   */
   msg_type:   number;
 }
 
@@ -105,29 +110,9 @@ export interface WsMsgAck {
   server_msg_id: string;
 }
 
-export interface WsKeyExchange {
-  chat_id:          string;
-  sender_id:        string;
-  ek_pk:            string;   // Base64 X25519
-  sender_ik_x25519: string;   // Base64 X25519
-  spk_key_id:       number;
-  otpk_key_id:      number;
-}
-
 export interface WsPresence {
   user_id: string;
   online:  boolean;
-}
-
-// Legacy (eski kod bilan muvofiqliq uchun saqlanadi)
-export interface WsMessage extends WsMsgRecv {}
-export interface WsReadReceipt {
-  chat_id:    string;
-  message_id: string;
-  reader_id:  string;
-}
-export interface WsDelivery {
-  message_id: string;
 }
 
 // Login javob turi

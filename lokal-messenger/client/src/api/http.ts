@@ -70,10 +70,13 @@ export const userApi = {
 };
 
 // ── Suhbatlar ─────────────────────────────────────────────────────────────────
+// msg_type raqamlarni string ga o'girish:
+//   1 = text (SignalMessage)
+//   2 = file
+//   3 = text ham (PreKeySignalMessage — ciphertext ichida kalit almashinuvi yashiringan)
 function msgTypeNum(n: number): Message["msg_type"] {
   if (n === 2) return "file";
-  if (n === 3) return "key_exchange";
-  return "text";
+  return "text"; // 1 va 3 ikkisi ham text — deshifrlash adapter ichida avtomatik
 }
 
 function msgStatus(delivered: boolean, read: boolean): Message["status"] {
