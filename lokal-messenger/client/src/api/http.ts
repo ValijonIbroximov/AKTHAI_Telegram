@@ -141,18 +141,31 @@ export const keysApi = {
 // Server faqat shifrlangan blob qabul qiladi/uzatadi.
 // AES kalit va IV Signal Protocol xabari orqali jo'natiladi.
 
-function mediaBaseUrl(): string {
-  // BASE_URL = "/api/v1"  (dev)  yoki  "https://server.lokal:8443/api/v1" (prod)
-  return BASE_URL.replace(/\/api\/v1$/, "");
+// ── Media URL yordamchisi ──────────────────────────────────────────────────
+//
+// Dev:  BASE_URL = "/api/v1"  → prefix = ""  → URL = "/api/v1/files/{id}"
+//       Vite proxy /api/* → https://server.lokal:8443 orqali proxylaydi.
+//
+// Prod: BASE_URL = "https://server.lokal:8443/api/v1"
+//       → prefix = "https://server.lokal:8443"
+//       → URL = "https://server.lokal:8443/api/v1/files/{id}"
+function mediaOrigin(): string {
+  if (!BASE_URL.startsWith("http")) return ""; // dev — relative URL (Vite proxy)
+  try {
+    return new URL(BASE_URL).origin;           // prod — "https://server.lokal:8443"
+  } catch {
+    return BASE_URL.replace(/\/api\/v1.*$/, "");
+  }
 }
 
 export const mediaApi = {
   /**
    * Shifrlangan blob'ni serverga yuklaydi.
-   * Multipart/form-data bilan, JSON emas.
+   * Multipart/form-data, fayl maydoni nomi: "data".
    * Qaytariladi: { id: string, url: string }  (url = /api/v1/files/{id})
    */
   uploadFile: async (token: string, blob: Blob): Promise<{ id: string; url: string }> => {
+    if (!token) throw new Error("Token yo'q — tizimga kiring");
     const form = new FormData();
     form.append("data", blob, "encrypted.bin");
 
@@ -171,19 +184,24 @@ export const mediaApi = {
 
   /**
    * Serverdan shifrlangan blob'ni yuklab oladi.
-   * `filePath` = /api/v1/files/{id}  yoki to'liq https:// URL.
+   * `filePath` = "/api/v1/files/{id}"  yoki to'liq "https://..." URL.
+   * Authorization: Bearer {token} sarlavhasi qo'shiladi.
    */
   downloadFile: async (token: string, filePath: string): Promise<Blob> => {
-    const url = filePath.startsWith("http")
-      ? filePath
-      : `${mediaBaseUrl()}${filePath}`;
+    if (!token) throw new Error("Token yo'q — tizimga kiring");
 
-    const res = await fetch(url, {
+    // To'liq URL quriladi: dev'da relative ("/api/v1/..."), prod'da absolute
+    const fetchUrl = filePath.startsWith("http")
+      ? filePath
+      : `${mediaOrigin()}${filePath}`;
+
+    const res = await fetch(fetchUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!res.ok) {
-      throw new Error(`Fayl yuklab olinmadi (${res.status})`);
+      const txt = await res.text().catch(() => "");
+      throw new Error(`Fayl yuklab olinmadi: HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
     }
     return res.blob();
   },

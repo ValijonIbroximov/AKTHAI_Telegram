@@ -191,6 +191,12 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": chatID, "existing": false})
 }
 
+// uploadsDir — server binary yonida (yoki ish katalogida) joylashgan faollar papkasi.
+// filepath.Abs har safar OS ning joriy katalogiga nisbatan to'liq yo'lni qaytaradi.
+func uploadsDir() (string, error) {
+	return filepath.Abs("uploads")
+}
+
 // UploadFile — mijozdan shifrlangan fayl blob'ini qabul qilib diskda saqlaydi.
 //
 // Server faylning nimaligini bilmaydi: u AES-256-GCM bilan shifrlangan.
@@ -211,6 +217,17 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "fayl 50 MB dan oshmasligi kerak")
 	}
 
+	// ── 1. Papkani eng avval yaratish — keyingi qadamlardan oldin ────────────
+	dir, err := uploadsDir()
+	if err != nil {
+		return internalError("UploadFile abs", err)
+	}
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+		log.Printf("[Upload] MkdirAll MUVAFFAQIYATSIZ: dir=%s err=%v", dir, err)
+		return internalError("UploadFile mkdir", err)
+	}
+
+	// ── 2. Fayl baytlarini o'qish ─────────────────────────────────────────
 	f, err := file.Open()
 	if err != nil {
 		return internalError("UploadFile open", err)
@@ -224,38 +241,37 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 
 	hash := sha256.Sum256(data)
 
-	// DB ga meta yozuv qo'shamiz (storage_key hali bo'sh)
+	// ── 3. DB ga yozish (to'liq storage_key bilan) ────────────────────────
+	// Avval placeholder UUID olamiz — fayl yozilgandan keyin update qilamiz
 	var fileID string
-	err = h.deps.DB.QueryRow(c.Context(), `
-        INSERT INTO files (uploader_id, storage_key, size_bytes, sha256)
-        VALUES ($1::uuid, '', $2, $3)
-        RETURNING id::text
-    `, uploaderID, file.Size, hash[:]).Scan(&fileID)
-	if err != nil {
+	if err := h.deps.DB.QueryRow(c.Context(),
+		`INSERT INTO files (uploader_id, storage_key, size_bytes, sha256)
+		 VALUES ($1::uuid, 'pending', $2, $3) RETURNING id::text`,
+		uploaderID, file.Size, hash[:],
+	).Scan(&fileID); err != nil {
 		return internalError("UploadFile insert", err)
 	}
 
-	// Uploads papkasini yaratish
-	uploadDir := "./uploads"
-	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
-		return internalError("UploadFile mkdir", err)
-	}
-
-	// Faylni UUID nom bilan saqlash
-	storagePath := filepath.Join(uploadDir, fileID)
+	// ── 4. Faylni to'liq (absolute) yo'l bilan diskka yozish ─────────────
+	storagePath := filepath.Join(dir, fileID)
 	if err := os.WriteFile(storagePath, data, 0o644); err != nil {
+		log.Printf("[Upload] WriteFile MUVAFFAQIYATSIZ: path=%s err=%v", storagePath, err)
+		// Orphan DB yozuvini o'chirish (best-effort)
+		_, _ = h.deps.DB.Exec(c.Context(),
+			`DELETE FROM files WHERE id = $1::uuid`, fileID)
 		return internalError("UploadFile write", err)
 	}
 
-	// storage_key ni yangilash
-	_, err = h.deps.DB.Exec(c.Context(),
+	// ── 5. DB da storage_key ni to'liq absolut yo'l bilan yangilash ──────
+	if _, err := h.deps.DB.Exec(c.Context(),
 		`UPDATE files SET storage_key = $1 WHERE id = $2::uuid`,
-		storagePath, fileID)
-	if err != nil {
+		storagePath, fileID,
+	); err != nil {
 		return internalError("UploadFile update_key", err)
 	}
 
-	log.Printf("[Upload] fayl saqlandi: id=%s size=%d uploader=%s", fileID, file.Size, uploaderID)
+	log.Printf("[Upload] ✓ saqlandi: id=%s size=%dB path=%s uploader=%s",
+		fileID, len(data), storagePath, uploaderID)
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"id":  fileID,
@@ -266,26 +282,40 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 // GetFile — autentifikatsiyalangan foydalanuvchiga shifrlangan fayl blob'ini uzatadi.
 //
 // Fayl mijozda deshifrlashni talab qiladi (server mazmunni bilmaydi).
+// c.SendFile o'rniga os.ReadFile + c.Send ishlatiladi — Windows da yo'l muammosi yo'q.
 func (h *Handlers) GetFile(c *fiber.Ctx) error {
 	fileID := c.Params("id")
+	if fileID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "fayl ID bo'sh")
+	}
 
+	// DB dan to'liq absolut yo'lni olamiz
 	var storagePath string
-	err := h.deps.DB.QueryRow(c.Context(),
-		`SELECT storage_key FROM files WHERE id = $1::uuid`,
-		fileID).Scan(&storagePath)
-	if err != nil {
+	if err := h.deps.DB.QueryRow(c.Context(),
+		`SELECT storage_key FROM files WHERE id = $1::uuid AND storage_key <> 'pending'`,
+		fileID,
+	).Scan(&storagePath); err != nil {
+		log.Printf("[GetFile] DB so'rov xatoligi: id=%s err=%v", fileID, err)
 		return fiber.NewError(fiber.StatusNotFound, "fayl topilmadi")
 	}
 
-	if _, err := os.Stat(storagePath); os.IsNotExist(err) {
-		log.Printf("[GetFile] diskda fayl yo'q: %s", storagePath)
-		return fiber.NewError(fiber.StatusNotFound, "fayl diskda yo'q")
+	// Diskda borligini tekshirish
+	if _, err := os.Stat(storagePath); err != nil {
+		log.Printf("[GetFile] diskda yo'q: path=%s err=%v", storagePath, err)
+		return fiber.NewError(fiber.StatusNotFound, "fayl diskda topilmadi")
+	}
+
+	// Faylni o'qib mijozga yuborish (c.SendFile emas — Windows path bug oldini olish)
+	fileData, err := os.ReadFile(storagePath)
+	if err != nil {
+		return internalError("GetFile read", err)
 	}
 
 	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Content-Length", fmt.Sprintf("%d", len(fileData)))
 	c.Set("Cache-Control", "private, max-age=31536000, immutable")
 	c.Set("X-Content-Type-Options", "nosniff")
-	return c.SendFile(storagePath)
+	return c.Send(fileData)
 }
 
 // ChatHistory — suhbatdagi xabarlar tarixi qaytariladi.

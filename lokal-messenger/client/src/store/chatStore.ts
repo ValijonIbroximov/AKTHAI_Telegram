@@ -20,7 +20,7 @@ import {
   logDecryptError,
 } from "@/crypto/adapter";
 import { chatApi, keysApi, userApi, mediaApi } from "@/api/http";
-import { encryptFile, parseMediaPayload, type MediaPayload } from "@/crypto/fileCrypto";
+import { encryptFile, parseMediaPayload, fcToB64, type MediaPayload } from "@/crypto/fileCrypto";
 import { wsClient } from "@/api/ws";
 import {
   persistLocalMessage,
@@ -259,14 +259,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
           // Mahalliy bazada ochiq matn mavjud bo'lsa → qayta deshifrlash kerak emas
           const hydrated = hydrateFromLocal(local, msg);
           if (isReadablePlaintext(hydrated.plaintext)) {
-            // Media ekanligini to'g'ri belgilash
             const mp = parseMediaPayload(hydrated.plaintext);
-            return mp ? { ...hydrated, msg_type: "file" as const } : hydrated;
+            if (mp) {
+              const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
+              return { ...hydrated, msg_type: mt };
+            }
+            return hydrated;
           }
           // Mahalliy bazada topilmadi — deshifrlashga urinib ko'ramiz
           const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
           const mp = parseMediaPayload(pt);
-          return { ...msg, plaintext: pt, msg_type: mp ? ("file" as const) : msg.msg_type };
+          const finalType: Message["msg_type"] = mp
+            ? (mp.mime_type.startsWith("image/") ? "image" : "file")
+            : msg.msg_type;
+          return { ...msg, plaintext: pt, msg_type: finalType };
         })
       );
 
@@ -445,6 +451,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const localId = `local_${Date.now()}`;
     const now     = new Date().toISOString();
     const isImage = file.type.startsWith("image/");
+    // "image" yoki "file" — MessageBubble shu qiymatga tayanadi
+    const mediaType: Message["msg_type"] = isImage ? "image" : "file";
     const displayPreview = isImage ? `🖼 ${file.name}` : `📎 ${file.name}`;
 
     // UI'da "yuklanmoqda" holati
@@ -454,7 +462,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       sender_id:  "me",
       ciphertext: "",
       plaintext:  `⏳ ${displayPreview}`,
-      msg_type:   "file",
+      msg_type:   mediaType,
       status:     "sending",
       created_at: now,
     };
@@ -472,7 +480,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.log(`[Media] ⬆ Yuklandi: ${url}`);
 
       // 3) AES kalit + IV JSON payload ichida Signal bilan shifrlash
-      const { fcToB64 } = await import("@/crypto/fileCrypto");
       const payload: MediaPayload = {
         url,
         aes_key:   fcToB64(key),
@@ -509,8 +516,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const sentMsg: Message = {
         ...tempMsg,
         ciphertext,
-        plaintext,         // ochiq matn saqlanadiA
-        msg_type: "file",
+        plaintext,
+        msg_type: mediaType,  // "image" yoki "file"
         status:   "sent",
       };
 
@@ -588,14 +595,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
 
           // Media xabar ekanligini deshifrlangan plaintext JSON'dan aniqlaymiz
+          // msg_type: "image" | "file" | "text" — MessageBubble shu qiymatga tayanadi
           const mediaP = parseMediaPayload(plaintext);
+          const detectedType: Message["msg_type"] = mediaP
+            ? (mediaP.mime_type.startsWith("image/") ? "image" : "file")
+            : "text";
           const newMsg: Message = {
             id:         m.msg_id,
             chat_id:    m.chat_id,
             sender_id:  m.sender_id,
             ciphertext: m.ciphertext,
             plaintext,
-            msg_type:   mediaP ? "file" : "text",
+            msg_type:   detectedType,
             status:     "delivered",
             created_at: new Date().toISOString(),
           };
