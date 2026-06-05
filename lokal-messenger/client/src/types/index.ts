@@ -13,14 +13,25 @@ export interface User {
   last_seen_at?: string | null;
 }
 
+/**
+ * Chat turi.
+ * Hozircha faol: "direct" (va eski "private").
+ * Kelajak: "group", "channel"
+ */
+export type ChatType = "direct" | "private" | "group" | "channel";
+
 export interface Chat {
-  id:           string;
-  type:         "private" | "group";
-  title:        string;
-  peer_user_id: string | null;   // shaxsiy suhbatda sherik ID
-  last_message: LastMessage | null;
-  unread_count: number;
-  updated_at:   string;
+  id:             string;
+  type:           ChatType;
+  title:          string;
+  peer_user_id:   string | null;   // to'g'ridan-to'g'ri suhbatda sherik ID
+  last_message:   LastMessage | null;
+  unread_count:   number;
+  updated_at:     string;
+  /** Guruh/kanal uchun a'zolar soni (kelajak) */
+  member_count?:  number | null;
+  /** Guruh/kanal tavsifi (kelajak) */
+  description?:   string | null;
 }
 
 export interface LastMessage {
@@ -29,15 +40,31 @@ export interface LastMessage {
   created_at: string;
 }
 
+/**
+ * Xabar turi.
+ * Hozircha faol: "text".
+ * Kelajak: "image", "file", "audio", "video"
+ * Ichki: "key_exchange" (Signal Protocol X3DH)
+ */
+export type MessageType =
+  | "text"
+  | "image"
+  | "file"
+  | "audio"
+  | "video"
+  | "key_exchange";
+
 export interface Message {
   id:           string;
   chat_id:      string;
   sender_id:    string;
   ciphertext:   string;          // Base64 encoded
   plaintext:    string | null;
-  msg_type:     "text" | "file" | "key_exchange";
+  msg_type:     MessageType;
   status:       "sending" | "sent" | "delivered" | "read";
   created_at:   string;
+  /** Media xabarlar uchun fayl URL (kelajak) */
+  media_url?:   string | null;
 }
 
 // ── WebSocket hodisalari ────────────────────────────────────────────────────
@@ -131,7 +158,7 @@ export interface KeyBundle {
 // Server ListChats xom javob turi (transformatsiya uchun)
 export interface RawChat {
   id:           string;
-  type:         "private" | "group";
+  type:         ChatType;
   title:        string;
   peer_user_id: string | null;
   last_time:    string | null;

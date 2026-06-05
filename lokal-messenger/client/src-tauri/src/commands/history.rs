@@ -127,6 +127,59 @@ pub async fn load_local_messages(
     Ok(out)
 }
 
+/// Barcha signal_*.db fayllarini o'chirib, signal_default.db ni qayta ochadi.
+/// Logout / hard reset paytida chaqiriladi.
+#[tauri::command]
+pub async fn nuke_local_data(state: State<'_, AppState>) -> Result<(), String> {
+    let data_dir = state.data_dir.clone();
+
+    // Faol foydalanuvchi ID ni tozalash
+    *state.active_user_id.lock().unwrap() = String::new();
+
+    // Joriy DB ulanishini signal_default.db ga qaytaramiz
+    // (bu eski signal_*.db faylini yopadi va yangi default ochadi)
+    let default_path = data_dir.join("signal_default.db");
+    let new_db = crate::crypto::store::open_db(
+        default_path.to_str().unwrap_or("signal_default.db"),
+    )
+    .map_err(|e| format!("nuke_local_data: default DB ochilmadi: {e}"))?;
+    *state.db.lock().unwrap() = new_db;
+
+    // signal_*.db, *.db-wal, *.db-shm fayllarini o'chirish
+    match std::fs::read_dir(&data_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+                if name.starts_with("signal_")
+                    && (name.ends_with(".db")
+                        || name.ends_with(".db-wal")
+                        || name.ends_with(".db-shm"))
+                {
+                    match std::fs::remove_file(&path) {
+                        Ok(_)  => log::info!("[Nuke] o'chirildi: {}", path.display()),
+                        Err(e) => log::warn!("[Nuke] o'chirib bo'lmadi {}: {e}", path.display()),
+                    }
+                }
+            }
+        }
+        Err(e) => log::warn!("[Nuke] read_dir xatoligi: {e}"),
+    }
+
+    // Toza default DB ni qayta ochib, jadval strukturasini ta'minlaymiz
+    let fresh_db = crate::crypto::store::open_db(
+        default_path.to_str().unwrap_or("signal_default.db"),
+    )
+    .map_err(|e| format!("nuke_local_data: toza DB ochilmadi: {e}"))?;
+    *state.db.lock().unwrap() = fresh_db;
+
+    log::info!("[Nuke] ✅ Barcha lokal ma'lumotlar o'chirildi");
+    Ok(())
+}
+
 /// client_msg_id → server_msg_id: mahalliy bazada ID almashtiriladi (ACK dan keyin).
 #[tauri::command]
 pub async fn migrate_local_message_id(

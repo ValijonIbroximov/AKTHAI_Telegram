@@ -18,6 +18,8 @@
   gap: 8px;
   padding: 0 12px;
   min-width: 0;
+  /* Faqat .drag Tauri drag-region sifatida ishlaydi */
+  -webkit-app-region: drag;
 }
 
 .icon {
@@ -42,6 +44,10 @@
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
+  /* MUHIM: drag-region ustidagi bosish tugmalari uchun */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  pointer-events: auto;
 }
 
 .ctrl {
@@ -55,6 +61,9 @@
   background: transparent;
   padding: 0;
   cursor: default;
+  /* Har bir tugma alohida kliklanishi uchun */
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .ctrl:hover {
@@ -67,7 +76,7 @@
   color: #fff;
 }
 
-/* Brauzerda oyna tugmalari — ko'rinadi lekin mock (ishlamaydi) */
+/* Brauzerda oyna tugmalari — ko'rinadi, mock (ish qilmaydi), crash qilmaydi */
 .ctrlBrowser {
   opacity: 0.4;
   cursor: not-allowed;

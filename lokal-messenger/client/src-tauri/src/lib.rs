@@ -88,6 +88,7 @@ pub fn run() {
             commands::history::save_local_message,
             commands::history::load_local_messages,
             commands::history::migrate_local_message_id,
+            commands::history::nuke_local_data,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri ilovasini ishga tushirib bo'lmadi");

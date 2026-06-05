@@ -4,9 +4,50 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import {
   clearToken,
   activateCryptoContext,
+  isTauri,
 } from "@/crypto/adapter";
 import { authApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
+
+// ── Nuke: barcha lokal shifrlash ma'lumotlarini o'chirish ─────────────────────
+// Logout yoki hard reset paytida ishga tushadi.
+// Brauzer: harbiy-signal-* IndexedDB bazalarini o'chiradi.
+// Tauri:   signal_*.db fayllarini o'chiradi (nuke_local_data buyrug'i orqali).
+async function nukeAllLocalData(): Promise<void> {
+  // 1) IndexedDB (brauzer + Tauri WebView)
+  try {
+    if (typeof indexedDB !== "undefined" && typeof indexedDB.databases === "function") {
+      const dbs = await indexedDB.databases();
+      await Promise.all(
+        dbs
+          .filter((db) => db.name?.startsWith("harbiy-signal"))
+          .map(
+            (db) =>
+              new Promise<void>((res) => {
+                const req = indexedDB.deleteDatabase(db.name!);
+                req.onsuccess  = () => res();
+                req.onerror    = () => res();
+                req.onblocked  = () => res();
+              })
+          )
+      );
+      console.log("[Nuke] ✅ IndexedDB tozalandi");
+    }
+  } catch (e) {
+    console.warn("[Nuke] IDB xatoligi:", e);
+  }
+
+  // 2) Tauri SQLite signal_*.db fayllarini o'chirish
+  if (isTauri) {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("nuke_local_data");
+      console.log("[Nuke] ✅ Tauri SQLite tozalandi");
+    } catch (e) {
+      console.warn("[Nuke] Tauri SQLite xatoligi:", e);
+    }
+  }
+}
 
 export interface AccountSession {
   userId:               string;
@@ -276,28 +317,26 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        const { token, activeAccountId, accounts } = get();
+        // Hard reset: barcha akkauntlarni tozalab, lokal shifrlash ma'lumotlarini o'chiradi.
+        const { accounts } = get();
+
+        // 1) WebSocket ulanishini yopish
         await wsClient.disconnectAsync();
-        if (token) {
-          await authApi.logout(token).catch(() => {});
-          await clearToken();
+
+        // 2) Barcha akkauntlar uchun serverda logout (xatolik bo'lsa ham davom etamiz)
+        for (const acc of accounts) {
+          await authApi.logout(acc.token).catch(() => {});
         }
-        const remaining = accounts.filter((a) => a.userId !== activeAccountId);
-        if (remaining.length > 0) {
-          const next = remaining[0]!;
-          set({
-            accounts:           remaining,
-            activeAccountId:    null,
-            token:              null,
-            userId:             null,
-            username:           null,
-            role:               null,
-            mustChangePassword: false,
-          });
-          await activateSession(next, set);
-          set({ accounts: remaining });
-          return;
-        }
+        await clearToken();
+
+        // 3) Lokal shifrlash ma'lumotlarini batamom o'chirish
+        //    (IndexedDB harbiy-signal-* va Tauri signal_*.db)
+        await nukeAllLocalData();
+
+        // 4) Auth store persist-ni localStorage dan tozalash
+        try { localStorage.removeItem("harbiy-auth-v2"); } catch { /* */ }
+
+        // 5) Zustand state ni reset qilish
         set({
           accounts:           [],
           activeAccountId:    null,
@@ -306,7 +345,10 @@ export const useAuthStore = create<AuthState>()(
           username:           null,
           role:               null,
           mustChangePassword: false,
+          uiMode:             "login",
         });
+
+        console.log("[Auth] ✅ Hard logout: barcha ma'lumotlar o'chirildi");
       },
 
       logoutAccount: async (userId) => {
