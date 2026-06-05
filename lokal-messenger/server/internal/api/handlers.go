@@ -5,6 +5,7 @@ package api
 
 import (
 	"context"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -39,8 +40,22 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	if e, ok := err.(*fiber.Error); ok {
 		code = e.Code
 		msg = e.Message
+		if code >= fiber.StatusInternalServerError {
+			log.Printf("[API] ERROR %s %s → %d: %s", c.Method(), c.Path(), code, e.Message)
+		}
+	} else {
+		log.Printf("[API] ERROR %s %s → 500: %v", c.Method(), c.Path(), err)
 	}
 	return c.Status(code).JSON(fiber.Map{"error": msg})
+}
+
+// internalError — ichki xatolikni log qilib, mijozga xavfsiz javob qaytaradi.
+func internalError(step string, err error) error {
+	if err == nil {
+		return nil
+	}
+	log.Printf("[API] ERROR %s: %v", step, err)
+	return fiber.NewError(fiber.StatusInternalServerError, "ichki xatolik")
 }
 
 // audit — audit jurnaliga yozuv qo'shiladi.

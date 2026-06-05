@@ -19,7 +19,19 @@ import {
   persistLocalMessage,
   loadLocalMessages,
   mergeMessages,
+  hydrateFromLocal,
+  migrateLocalMessageId,
 } from "@/storage/localHistory";
+import {
+  isReadablePlaintext,
+  PENDING_DECRYPT_LABEL,
+  MISSING_PLAINTEXT_LABEL,
+} from "@/utils/messageText";
+import {
+  initNotifications,
+  shouldNotifyIncoming,
+  notifyIncomingMessage,
+} from "@/utils/notifications";
 import type {
   Chat, Message, User,
   WsEvent, WsMsgRecv, WsMsgAck, WsKeyExchange, WsSessionRekeyRequest,
@@ -48,7 +60,7 @@ interface ChatState {
   resetSessionWithPeer: (chatId: string, peerId: string, token: string) => Promise<void>;
 }
 
-export const PENDING_DECRYPT_LABEL = "⏳ Sessiya kutilmoqda…";
+export { PENDING_DECRYPT_LABEL };
 
 /** Faol akkaunt — pending queue faqat shu user uchun */
 let pendingAccountId: string | null = null;
@@ -167,17 +179,20 @@ async function flushPendingForPeer(
       queuePendingDecrypt(peerId, qMsg, set, get);
       continue;
     }
-    if (!isDecryptFailure(pt)) {
+    if (isReadablePlaintext(pt)) {
       anySuccess = true;
+      const saved = { ...qMsg, plaintext: pt };
+      await persistLocalMessage(saved).catch((e) =>
+        console.warn("[E2EE] flush persist:", e)
+      );
       set((s) => ({
         messages: {
           ...s.messages,
           [qMsg.chat_id]: (s.messages[qMsg.chat_id] ?? []).map((x) =>
-            x.id === qMsg.id ? { ...x, plaintext: pt } : x
+            x.id === qMsg.id ? saved : x
           ),
         },
       }));
-      await persistLocalMessage({ ...qMsg, plaintext: pt }).catch(() => {});
     }
   }
 
@@ -249,6 +264,32 @@ async function decryptForDisplay(
   }
 }
 
+/**
+ * Server tarixi uchun: mahalliy bazada topilmagan xabar deshifrlashga urinadi.
+ * Muvaffaqiyatsiz bo'lsa → PENDING yoki MISSING (xatolik emas).
+ * Bu funksiya live WS xabar uchun EMAS — faqat selectChat tarixida ishlatiladi.
+ */
+async function decryptForHistory(
+  chatId:     string,
+  senderId:   string,
+  ciphertext: string,
+  set:        (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
+  get:        () => ChatState,
+  msg:        Message
+): Promise<string> {
+  try {
+    return await decryptPlaintext(chatId, senderId, ciphertext);
+  } catch (e) {
+    const code = classifyDecryptError(e).code;
+    if (code === "SESSION_NOT_FOUND") {
+      queuePendingDecrypt(senderId, msg, set, get);
+      return PENDING_DECRYPT_LABEL;
+    }
+    // Ratchet davlat yo'q yoki eski kalit → xatolik emas, shunchaki saqlanmagan
+    return MISSING_PLAINTEXT_LABEL;
+  }
+}
+
 /** Suhbatdagi deshifrlanmagan / xato xabarlarni qayta ochish */
 async function redDecryptChatMessages(
   chatId: string,
@@ -261,7 +302,7 @@ async function redDecryptChatMessages(
   const updated = await Promise.all(
     msgs.map(async (msg) => {
       if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
-      if (msg.plaintext && !isDecryptFailure(msg.plaintext) && !isPendingDecrypt(msg.plaintext)) return msg;
+      if (isReadablePlaintext(msg.plaintext)) return msg;
       return {
         ...msg,
         plaintext: await decryptForDisplay(chatId, msg.sender_id, msg.ciphertext, set, get, msg),
@@ -436,21 +477,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       console.warn("[Chat] mahalliy tarix o'qilmadi:", e);
     }
 
-    // 2) Serverdan shifrlangan tarix + deshifrlash + birlashtirish
+    // 2) Serverdan shifrlangan tarix — mahalliy ochiq matn ustun, qayta deshifrlash yo'q
     try {
       const local = await loadLocalMessages(chatId);
       const rawMsgs = await chatApi.history(token, chatId);
       const decrypted = await Promise.all(
         rawMsgs.map(async (msg) => {
-          if (msg.msg_type === "text" && msg.ciphertext) {
-            const localHit = local.find((l) => l.id === msg.id && l.plaintext && !isDecryptFailure(l.plaintext));
-            if (localHit) return localHit;
-            return {
-              ...msg,
-              plaintext: await decryptForDisplay(chatId, msg.sender_id, msg.ciphertext, set, get, msg),
-            };
-          }
-          return msg;
+          if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
+          const hydrated = hydrateFromLocal(local, msg);
+          if (isReadablePlaintext(hydrated.plaintext)) return hydrated;
+          // Mahalliy bazada topilmadi — deshifrlashga urinib ko'ramiz
+          // (muvaffaqiyatsiz → MISSING_PLAINTEXT_LABEL, xatolik ko'rsatmaymiz)
+          return {
+            ...msg,
+            plaintext: await decryptForHistory(chatId, msg.sender_id, msg.ciphertext, set, get, msg),
+          };
         })
       );
       const merged = mergeMessages(local, decrypted);
@@ -476,8 +517,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
 
       for (const msg of merged) {
-        if (!isDecryptFailure(msg.plaintext) && !isPendingDecrypt(msg.plaintext)) {
-          await persistLocalMessage(msg).catch(() => {});
+        if (isReadablePlaintext(msg.plaintext)) {
+          await persistLocalMessage(msg).catch((e) =>
+            console.warn("[Chat] persistLocalMessage:", e)
+          );
         }
       }
     } catch (e) {
@@ -623,16 +666,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
         console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id}`);
 
         void (async () => {
+          if (get().messages[m.chat_id]?.some((x) => x.id === m.msg_id)) return;
+
+          // a) E2EE deshifrlash
           let plaintext: string;
           try {
             plaintext = await decryptPlaintext(m.chat_id, m.sender_id, m.ciphertext);
           } catch (e) {
             const err = classifyDecryptError(e);
-            if (err.code !== "SESSION_NOT_FOUND") {
-              plaintext = DECRYPT_ERROR_LABEL;
-            } else {
-              plaintext = PENDING_DECRYPT_LABEL;
-            }
+            plaintext =
+              err.code !== "SESSION_NOT_FOUND"
+                ? DECRYPT_ERROR_LABEL
+                : PENDING_DECRYPT_LABEL;
           }
 
           const newMsg: Message = {
@@ -646,9 +691,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
             created_at: new Date().toISOString(),
           };
 
-          const dup = get().messages[m.chat_id]?.some((x) => x.id === m.msg_id);
-          if (dup) return;
+          if (isPendingDecrypt(plaintext)) {
+            queuePendingDecrypt(m.sender_id, newMsg, set, get);
+          } else if (isReadablePlaintext(plaintext)) {
+            // b) Mahalliy bazaga yozish (UI dan oldin)
+            try {
+              await persistLocalMessage(newMsg);
+            } catch (e) {
+              console.error("[WS] persistLocalMessage xatoligi:", e);
+            }
+          }
 
+          // c) Store / UI yangilash
           set((s) => ({
             messages: {
               ...s.messages,
@@ -663,17 +717,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
                       preview:     previewFromMessage(newMsg),
                       created_at:  newMsg.created_at,
                     },
-                    unread_count: c.id === get().activeChatId ? c.unread_count : c.unread_count + 1,
-                    updated_at:   newMsg.created_at,
+                    unread_count:
+                      c.id === get().activeChatId ? c.unread_count : c.unread_count + 1,
+                    updated_at: newMsg.created_at,
                   }
                 : c
             ),
           }));
-          if (isPendingDecrypt(plaintext)) {
-            queuePendingDecrypt(m.sender_id, newMsg, set, get);
-          } else if (!isDecryptFailure(plaintext)) {
-            await persistLocalMessage(newMsg).catch(() => {});
+
+          // Tauri OS bildirishnomasi
+          if (isReadablePlaintext(plaintext)) {
+            const chat = get().chats.find((c) => c.id === m.chat_id);
+            const show = await shouldNotifyIncoming(m.chat_id, get().activeChatId);
+            if (show) {
+              await notifyIncomingMessage(
+                chat?.title ?? m.sender_id,
+                plaintext,
+                m.chat_id
+              );
+            }
           }
+
           wsClient.send("msg.delivered", { msg_id: m.msg_id });
         })();
         break;
@@ -682,6 +746,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       case "msg.ack": {
         const ack = event.payload as WsMsgAck;
         console.log(`[WS] msg.ack: client=${ack.client_msg_id} → server=${ack.server_msg_id}`);
+
+        let ackMsg: Message | undefined;
+        for (const msgs of Object.values(get().messages)) {
+          const hit = msgs.find((m) => m.id === ack.client_msg_id);
+          if (hit) {
+            ackMsg = { ...hit, id: ack.server_msg_id, status: "delivered" };
+            break;
+          }
+        }
+
         set((s) => {
           const updated: Record<string, Message[]> = {};
           for (const [cid, msgs] of Object.entries(s.messages)) {
@@ -693,13 +767,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
           return { messages: updated };
         });
-        // Mahalliy bazada id yangilanishi
-        for (const msgs of Object.values(get().messages)) {
-          const hit = msgs.find((m) => m.id === ack.server_msg_id);
-          if (hit?.plaintext && !isDecryptFailure(hit.plaintext)) {
-            void persistLocalMessage(hit).catch(() => {});
-            break;
-          }
+
+        if (ackMsg && isReadablePlaintext(ackMsg.plaintext)) {
+          void migrateLocalMessageId(ack.client_msg_id, ackMsg).catch((e) =>
+            console.warn("[WS] migrateLocalMessageId:", e)
+          );
         }
         break;
       }
@@ -812,6 +884,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       presenceMap:  {},
       userResults:  [],
     });
+    void initNotifications();
     console.log(`[Chat] onAccountSwitch: ${userId}, pending cleared`);
   },
 }));
+
+// ── Permanent WS handler (race condition oldini olish) ─────────────────────
+// ChatList.tsx ga bog'liq emas: WS ulangandan darhol xabarlarni qayta ishlaydi.
+// React render bo'lishini kutmaymiz — modul import paytida bir marta ro'yxatdan o'tadi.
+wsClient.on((event) => useChatStore.getState().handleWsEvent(event));

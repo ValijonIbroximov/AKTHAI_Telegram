@@ -10,6 +10,7 @@ import SideDrawer        from "@/components/Layout/SideDrawer";
 import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
 import styles            from "./App.module.css";
+import { initNotifications } from "@/utils/notifications";
 
 type MainView = "chat" | "settings";
 
@@ -23,6 +24,7 @@ export default function App() {
   const [mainView, setMainView]     = useState<MainView>("chat");
 
   useEffect(() => {
+    void initNotifications();
     bootstrap().then(() => {
       const t = useAuthStore.getState().token;
       if (t) loadChats(t);

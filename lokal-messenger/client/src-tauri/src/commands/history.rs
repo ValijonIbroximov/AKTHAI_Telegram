@@ -78,3 +78,37 @@ pub async fn load_local_messages(
     }
     Ok(out)
 }
+
+/// client_msg_id → server_msg_id: mahalliy bazada id almashtiriladi (ACK dan keyin).
+#[tauri::command]
+pub async fn migrate_local_message_id(
+    old_id: String,
+    msg:    StoredMessage,
+    state:  State<'_, AppState>,
+) -> Result<(), String> {
+    let db = state.db_conn();
+    let c  = db.lock().unwrap();
+    c.execute("DELETE FROM local_messages WHERE id = ?1", [&old_id])
+        .map_err(|e| e.to_string())?;
+    c.execute(
+        "INSERT INTO local_messages (id, chat_id, sender_id, plaintext, ciphertext, msg_type, status, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(id) DO UPDATE SET
+           plaintext = excluded.plaintext,
+           ciphertext = excluded.ciphertext,
+           status = excluded.status,
+           created_at = excluded.created_at",
+        rusqlite::params![
+            msg.id,
+            msg.chat_id,
+            msg.sender_id,
+            msg.plaintext,
+            msg.ciphertext,
+            msg.msg_type,
+            msg.status,
+            msg.created_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}

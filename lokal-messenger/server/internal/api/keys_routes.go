@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"log"
 
@@ -29,6 +30,9 @@ type uploadIdentityRequest struct {
 // Bu Signal Protocol X3DH uchun zarur bo'lgan identity, signed va one-time prekey'larni o'z ichiga oladi.
 func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return fiber.NewError(fiber.StatusUnauthorized, "autentifikatsiya talab qilinadi")
+	}
 
 	var req uploadIdentityRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -41,12 +45,31 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "identity_key noaniq")
 	}
+	if len(identityKey) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "identity_key bo'sh")
+	}
+
+	spkPub, err := base64.StdEncoding.DecodeString(req.SignedPreKey.PublicKey)
+	if err != nil || len(spkPub) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "signed_prekey.public_key noaniq")
+	}
+	spkSig, err := base64.StdEncoding.DecodeString(req.SignedPreKey.Signature)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "signed_prekey.signature noaniq")
+	}
 
 	tx, err := h.deps.DB.Begin(c.Context())
 	if err != nil {
-		return err
+		return internalError("[KEYS] begin tx", err)
 	}
-	defer tx.Rollback(c.Context())
+	committed := false
+	defer func() {
+		if !committed {
+			if rbErr := tx.Rollback(context.Background()); rbErr != nil {
+				log.Printf("[KEYS] WARNING rollback: %v", rbErr)
+			}
+		}
+	}()
 
 	// Identity kalit upsert qilinadi (qayta yuklash imkoniyati bor)
 	_, err = tx.Exec(c.Context(), `
@@ -57,12 +80,10 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 		        identity_key    = EXCLUDED.identity_key
 	`, userID, req.RegistrationID, identityKey)
 	if err != nil {
-		return err
+		return internalError("[KEYS] upsert identity_keys", err)
 	}
 
 	// Imzolangan oldindan-kalit yangilanadi
-	spkPub, _ := base64.StdEncoding.DecodeString(req.SignedPreKey.PublicKey)
-	spkSig, _ := base64.StdEncoding.DecodeString(req.SignedPreKey.Signature)
 	_, err = tx.Exec(c.Context(), `
 		INSERT INTO signed_prekeys (user_id, key_id, public_key, signature)
 		VALUES ($1::uuid, $2, $3, $4)
@@ -72,44 +93,53 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 		        created_at = NOW()
 	`, userID, req.SignedPreKey.KeyID, spkPub, spkSig)
 	if err != nil {
-		return err
+		return internalError("[KEYS] upsert signed_prekeys", err)
 	}
 
 	// Split-brain oldini olish: har upload da eski OTPK'lar tozalanadi.
-	// Aks holda serverda qolgan eski OTPK'lar mijozda SK yo'qligi sababli X3DH ni buzadi.
+	// Jadval: one_time_prekeys (migration 0001_init.sql)
 	_, err = tx.Exec(c.Context(), `
 		DELETE FROM one_time_prekeys WHERE user_id = $1::uuid
 	`, userID)
 	if err != nil {
-		return err
+		return internalError("[KEYS] delete one_time_prekeys", err)
 	}
 
 	// force_overwrite: eski SPK yozuvlari ham tozalanadi (faqat yangi SPK qoladi)
 	if req.ForceOverwrite {
 		_, err = tx.Exec(c.Context(), `
 			DELETE FROM signed_prekeys
-			 WHERE user_id = $1::uuid AND key_id != $2
+			 WHERE user_id = $1::uuid AND key_id <> $2
 		`, userID, req.SignedPreKey.KeyID)
 		if err != nil {
-			return err
+			return internalError("[KEYS] delete stale signed_prekeys", err)
 		}
 	}
 
 	// Bir martalik oldindan-kalitlar yangi to'plam sifatida kiritiladi
 	for _, otpk := range req.OneTimePreKeys {
-		pub, _ := base64.StdEncoding.DecodeString(otpk.PublicKey)
+		pub, decErr := base64.StdEncoding.DecodeString(otpk.PublicKey)
+		if decErr != nil || len(pub) == 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "one_time_prekeys.public_key noaniq")
+		}
 		_, err = tx.Exec(c.Context(), `
 			INSERT INTO one_time_prekeys (user_id, key_id, public_key, used)
 			VALUES ($1::uuid, $2, $3, FALSE)
+			ON CONFLICT (user_id, key_id) DO UPDATE
+			    SET public_key = EXCLUDED.public_key,
+			        used       = FALSE,
+			        created_at = NOW()
 		`, userID, otpk.KeyID, pub)
 		if err != nil {
-			return err
+			return internalError("[KEYS] insert one_time_prekeys", err)
 		}
 	}
 
 	if err := tx.Commit(c.Context()); err != nil {
-		return err
+		return internalError("[KEYS] commit tx", err)
 	}
+	committed = true
+
 	log.Printf("[KEYS] ✅ upload: user=%s  saqlandi", userID)
 	return c.SendStatus(fiber.StatusNoContent)
 }

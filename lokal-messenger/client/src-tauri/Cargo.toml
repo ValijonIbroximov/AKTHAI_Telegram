@@ -15,6 +15,7 @@ path = "src/main.rs"
 # ── Tauri ──────────────────────────────────────────────────────────────────
 tauri            = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
 
 # ── Async runtime ──────────────────────────────────────────────────────────
 tokio   = { version = "1", features = ["full"] }

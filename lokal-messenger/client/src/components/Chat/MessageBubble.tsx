@@ -1,6 +1,7 @@
 // Telegram Desktop uslubidagi xabar pufakchasi.
 import type { Message } from "@/types";
 import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
+import { MISSING_PLAINTEXT_LABEL, PENDING_DECRYPT_LABEL } from "@/utils/messageText";
 import s from "./MessageBubble.module.css";
 
 function fmtTime(iso: string): string {
@@ -24,13 +25,22 @@ function TickIcon({ read }: { read: boolean }) {
 interface Props { message: Message; isOwn: boolean; }
 
 export default function MessageBubble({ message, isOwn }: Props) {
-  const isSendError   = message.plaintext?.startsWith("⚠ Yuborilmadi");
+  const isSendError    = message.plaintext?.startsWith("⚠ Yuborilmadi");
   const isDecryptError = message.plaintext === DECRYPT_ERROR_LABEL;
-  const displayText   = message.plaintext ?? "";
+  const isMissing      = message.plaintext === MISSING_PLAINTEXT_LABEL;
+  const isPending      = message.plaintext === PENDING_DECRYPT_LABEL;
+  const displayText    = message.plaintext ?? "";
+
+  const bubbleClass = [
+    s.bubble,
+    isOwn ? s.bubbleOwn : s.bubbleIn,
+    (isSendError || isDecryptError) ? s.bubbleError : "",
+    isMissing ? s.bubbleMissing : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <div className={`${s.wrap} ${isOwn ? s.own : s.incoming}`}>
-      <div className={`${s.bubble} ${isOwn ? s.bubbleOwn : s.bubbleIn} ${isSendError || isDecryptError ? s.bubbleError : ""}`}>
+      <div className={bubbleClass}>
 
         {isSendError || isDecryptError ? (
           <p className={s.textError}>
@@ -43,6 +53,10 @@ export default function MessageBubble({ message, isOwn }: Props) {
             )}
             {displayText}
           </p>
+        ) : isMissing ? (
+          <p className={s.textMissing}>{displayText}</p>
+        ) : isPending ? (
+          <p className={s.textPending}>{displayText}</p>
         ) : (
           <p className={`${s.text} selectable`}>{displayText}</p>
         )}

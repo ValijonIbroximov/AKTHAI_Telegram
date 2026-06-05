@@ -58,6 +58,28 @@
 }
 .textError svg { flex-shrink: 0; }
 
+/* Qurilmada saqlanmagan (MISSING_PLAINTEXT_LABEL) */
+.bubbleMissing {
+  background: rgba(100, 100, 120, 0.08) !important;
+  border-color: rgba(120, 120, 140, 0.2) !important;
+}
+.textMissing {
+  font-size: 12px;
+  color: var(--text-3);
+  font-style: italic;
+  margin-bottom: 4px;
+  opacity: 0.8;
+}
+
+/* Sessiya kutilmoqda (PENDING_DECRYPT_LABEL) */
+.textPending {
+  font-size: 12px;
+  color: var(--accent);
+  font-style: italic;
+  margin-bottom: 4px;
+  opacity: 0.85;
+}
+
 .meta {
   display: flex;
   align-items: center;

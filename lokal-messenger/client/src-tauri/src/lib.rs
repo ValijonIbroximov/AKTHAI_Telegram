@@ -36,6 +36,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_log::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Signal Protocol SQLite bazasi ilova ma'lumot papkasida saqlanadi
             let data_dir = app.path().app_data_dir()
@@ -78,6 +79,7 @@ pub fn run() {
             // Mahalliy ochiq matn tarixi
             commands::history::save_local_message,
             commands::history::load_local_messages,
+            commands::history::migrate_local_message_id,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri ilovasini ishga tushirib bo'lmadi");

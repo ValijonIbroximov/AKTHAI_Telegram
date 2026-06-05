@@ -5,6 +5,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,15 +33,29 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov tanasi noto'g'ri")
 	}
+	if req.Username == "" || req.Password == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "login va parol ko'rsatilishi shart")
+	}
 
 	// Kirish urinishlari soni cheklanadi (brute-force'dan himoya)
 	rateKey := fmt.Sprintf("ratelimit:login:%s", c.IP())
-	count, _ := h.deps.Cache.Incr(c.Context(), rateKey).Result()
-	if count == 1 {
-		h.deps.Cache.Expire(c.Context(), rateKey, 5*time.Minute)
-	}
-	if count > int64(h.deps.Config.Limits.RateLoginPer5Min) {
-		return fiber.NewError(fiber.StatusTooManyRequests, "juda ko'p urinish")
+	count, err := h.deps.Cache.Incr(c.Context(), rateKey).Result()
+	if err != nil {
+		// Redis vaqtincha ishlamasa login bloklanmasin (fail-open)
+		log.Printf("[AUTH] WARNING Redis rate-limit o'tkazib yuborildi: %v", err)
+	} else {
+		if count == 1 {
+			if expErr := h.deps.Cache.Expire(c.Context(), rateKey, 5*time.Minute).Err(); expErr != nil {
+				log.Printf("[AUTH] WARNING Redis Expire: %v", expErr)
+			}
+		}
+		limit := h.deps.Config.Limits.RateLoginPer5Min
+		if limit <= 0 {
+			limit = 500
+		}
+		if count > int64(limit) {
+			return fiber.NewError(fiber.StatusTooManyRequests, "juda ko'p urinish")
+		}
 	}
 
 	// Foydalanuvchi ma'lumoti DB'dan olinadi
@@ -50,7 +65,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		mustChange         bool
 		lockedUntil        *time.Time
 	)
-	err := h.deps.DB.QueryRow(c.Context(), `
+	err = h.deps.DB.QueryRow(c.Context(), `
 		SELECT id::text, password_hash, role, is_active, must_change_password, locked_until
 		  FROM users
 		 WHERE username = $1
@@ -60,7 +75,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "login yoki parol noto'g'ri")
 	}
 	if err != nil {
-		return err
+		return internalError("[AUTH] login users query", err)
 	}
 	if !active {
 		return fiber.NewError(fiber.StatusForbidden, "hisob bloklangan")
@@ -70,37 +85,52 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	}
 
 	// Parol Argon2id orqali tekshiriladi
-	ok, _ := auth.VerifyPassword(req.Password, hash)
+	ok, verifyErr := auth.VerifyPassword(req.Password, hash)
+	if verifyErr != nil {
+		log.Printf("[AUTH] ERROR password hash format (user=%s): %v", req.Username, verifyErr)
+		return fiber.NewError(fiber.StatusUnauthorized, "login yoki parol noto'g'ri")
+	}
 	if !ok {
 		// Muvaffaqiyatsiz urinish hisoblanadi va zarur bo'lsa hisob qulflanadi
-		_, _ = h.deps.DB.Exec(c.Context(), `
+		if _, execErr := h.deps.DB.Exec(c.Context(), `
 			UPDATE users
 			   SET failed_login_attempts = failed_login_attempts + 1,
 			       locked_until = CASE WHEN failed_login_attempts + 1 >= 5
 			                           THEN NOW() + INTERVAL '15 minutes'
 			                           ELSE locked_until END
-			 WHERE id = $1::uuid`, userID)
+			 WHERE id = $1::uuid`, userID); execErr != nil {
+			log.Printf("[AUTH] WARNING failed_login_attempts update: %v", execErr)
+		}
 		return fiber.NewError(fiber.StatusUnauthorized, "login yoki parol noto'g'ri")
 	}
 
 	// Muvaffaqiyatli kirishda hisoblagich va qulf tozalanadi
-	_, _ = h.deps.DB.Exec(c.Context(), `
+	if _, execErr := h.deps.DB.Exec(c.Context(), `
 		UPDATE users
 		   SET failed_login_attempts = 0,
 		       locked_until = NULL,
 		       last_seen_at = NOW()
-		 WHERE id = $1::uuid`, userID)
+		 WHERE id = $1::uuid`, userID); execErr != nil {
+		log.Printf("[AUTH] WARNING login success update: %v", execErr)
+	}
 
 	// Token chiqariladi va sessiya Redis'ga yoziladi
 	token, jti, err := h.deps.JWT.Issue(userID, role)
 	if err != nil {
-		return err
+		return internalError("[AUTH] JWT issue", err)
 	}
-	_ = h.deps.Cache.Set(c.Context(), "session:"+jti, userID,
-		time.Duration(h.deps.Config.Auth.AccessTTLMinutes)*time.Minute).Err()
+	ttl := time.Duration(h.deps.Config.Auth.AccessTTLMinutes) * time.Minute
+	if ttl <= 0 {
+		ttl = 12 * time.Hour
+	}
+	if err := h.deps.Cache.Set(c.Context(), "session:"+jti, userID, ttl).Err(); err != nil {
+		return internalError("[AUTH] Redis session set", err)
+	}
 
 	// Audit jurnaliga muvaffaqiyatli kirish yoziladi
-	_ = h.audit(c.Context(), userID, "login.success", nil, c.IP())
+	if auditErr := h.audit(c.Context(), userID, "login.success", nil, c.IP()); auditErr != nil {
+		log.Printf("[AUTH] WARNING audit login.success: %v", auditErr)
+	}
 
 	return c.JSON(loginResponse{
 		Token:              token,
@@ -144,17 +174,21 @@ func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi topilmadi")
 	}
 	if err != nil {
-		return err
+		return internalError("[AUTH] change-password query", err)
 	}
 
-	ok, _ := auth.VerifyPassword(req.OldPassword, hash)
+	ok, verifyErr := auth.VerifyPassword(req.OldPassword, hash)
+	if verifyErr != nil {
+		log.Printf("[AUTH] ERROR change-password hash format (user=%s): %v", userID, verifyErr)
+		return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
+	}
 	if !ok {
 		return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
 	}
 
 	newHash, err := auth.HashPassword(req.NewPassword, h.deps.Config.Auth.Argon2)
 	if err != nil {
-		return err
+		return internalError("[AUTH] hash new password", err)
 	}
 
 	_, err = h.deps.DB.Exec(c.Context(), `
@@ -166,9 +200,11 @@ func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
 		 WHERE id = $1::uuid
 	`, userID, newHash)
 	if err != nil {
-		return err
+		return internalError("[AUTH] change-password update", err)
 	}
 
-	_ = h.audit(c.Context(), userID, "password.change", nil, c.IP())
+	if auditErr := h.audit(c.Context(), userID, "password.change", nil, c.IP()); auditErr != nil {
+		log.Printf("[AUTH] WARNING audit password.change: %v", auditErr)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

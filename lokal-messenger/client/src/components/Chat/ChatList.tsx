@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore }  from "@/store/chatStore";
-import { wsClient }      from "@/api/ws";
 import ChatItem          from "./ChatItem";
 import s                 from "./ChatList.module.css";
 
@@ -23,7 +22,7 @@ export default function ChatList({ onMenuOpen }: Props) {
   const { token, username }           = useAuthStore();
   const {
     chats, activeChatId,
-    loadChats, selectChat, handleWsEvent,
+    loadChats, selectChat,
     userResults, userLoading,
     searchUsers, clearUserResults, createChat,
   } = useChatStore();
@@ -33,9 +32,7 @@ export default function ChatList({ onMenuOpen }: Props) {
   useEffect(() => {
     if (!token) return;
     loadChats(token);
-    // WS ulanish authStore.login ichida amalga oshiriladi — bu yerda faqat hodisa tinglanadi
-    const off = wsClient.on(handleWsEvent);
-    return off;
+    // WS handler chatStore.ts modul darajasida doimiy ro'yxatdan o'tgan — bu yerda takrorlanmaydi
   }, [token]);
 
   // Qidiruv matni o'zgarganda: mavjud suhbatlarni filtrlash + foydalanuvchi qidiruvi
