@@ -93,3 +93,130 @@
 .status { display: flex; align-items: center; margin-left: 1px; }
 .tick     { color: var(--text-3); }
 .tickRead { color: var(--accent); }
+
+/* ─── Media (rasm / hujjat) ─────────────────────────────────────────────── */
+
+.bubbleMedia {
+  padding: 6px 6px 4px !important;
+  min-width: 160px;
+}
+
+/* Rasm wrapper */
+.mediaImgWrap {
+  border-radius: calc(var(--r-lg) - 4px);
+  overflow: hidden;
+  max-width: 280px;
+  cursor: zoom-in;
+}
+.mediaImg {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: calc(var(--r-lg) - 4px);
+}
+
+/* Rasm yuklanmoqda */
+.mediaImgPlaceholder {
+  width: 200px;
+  height: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(120, 120, 140, 0.08);
+  border-radius: calc(var(--r-lg) - 4px);
+}
+.mediaLoadingText {
+  font-size: 12px;
+  color: var(--text-3);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.mediaSpinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+.mediaSpinnerSm {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+/* Xato holati */
+.mediaError {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  min-width: 140px;
+}
+.mediaErrorText { font-size: 11px; color: #e85d5d; }
+.mediaRetryBtn {
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+/* Hujjat qatori */
+.mediaDoc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  min-width: 200px;
+  max-width: 280px;
+}
+.mediaDocIcon {
+  width: 36px; height: 36px;
+  border-radius: var(--r-md);
+  background: var(--bg-hover);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+.mediaDocInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mediaDocName {
+  font-size: 13px;
+  color: var(--text-1);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mediaDocSize {
+  font-size: 11px;
+  color: var(--text-3);
+}
+.mediaDocBtn {
+  width: 34px; height: 34px;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: opacity var(--t-fast);
+}
+.mediaDocBtn:hover:not(:disabled) { opacity: 0.85; }
+.mediaDocBtn:disabled { opacity: 0.45; cursor: default; }

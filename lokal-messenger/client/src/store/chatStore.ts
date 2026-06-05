@@ -19,7 +19,8 @@ import {
   classifyDecryptError,
   logDecryptError,
 } from "@/crypto/adapter";
-import { chatApi, keysApi, userApi } from "@/api/http";
+import { chatApi, keysApi, userApi, mediaApi } from "@/api/http";
+import { encryptFile, parseMediaPayload, type MediaPayload } from "@/crypto/fileCrypto";
 import { wsClient } from "@/api/ws";
 import {
   persistLocalMessage,
@@ -57,6 +58,7 @@ interface ChatState {
   selectChat:       (chatId: string, token: string) => Promise<void>;
   createChat:       (peer: User, token: string) => Promise<void>;
   sendMessage:      (chatId: string, recipientId: string, plaintext: string, token: string) => Promise<void>;
+  sendFileMessage:  (chatId: string, recipientId: string, file: File, token: string) => Promise<void>;
   handleWsEvent:    (event: WsEvent) => void;
   searchUsers:      (query: string, token: string) => Promise<void>;
   clearUserResults: () => void;
@@ -85,6 +87,13 @@ function previewFromMessage(msg: Message): string {
   if (msg.plaintext?.startsWith("⚠ Yuborilmadi")) return msg.plaintext;
   if (isDecryptFailure(msg.plaintext)) return DECRYPT_ERROR_LABEL;
   if (isPendingDecrypt(msg.plaintext)) return PENDING_DECRYPT_LABEL;
+  // Media xabar uchun chiroyli preview
+  const media = parseMediaPayload(msg.plaintext);
+  if (media) {
+    return media.mime_type.startsWith("image/")
+      ? `🖼 ${media.file_name}`
+      : `📎 ${media.file_name}`;
+  }
   return msg.plaintext ?? "";
 }
 
@@ -249,12 +258,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
           // Mahalliy bazada ochiq matn mavjud bo'lsa → qayta deshifrlash kerak emas
           const hydrated = hydrateFromLocal(local, msg);
-          if (isReadablePlaintext(hydrated.plaintext)) return hydrated;
+          if (isReadablePlaintext(hydrated.plaintext)) {
+            // Media ekanligini to'g'ri belgilash
+            const mp = parseMediaPayload(hydrated.plaintext);
+            return mp ? { ...hydrated, msg_type: "file" as const } : hydrated;
+          }
           // Mahalliy bazada topilmadi — deshifrlashga urinib ko'ramiz
-          return {
-            ...msg,
-            plaintext: await decryptForHistory(chatId, msg.sender_id, msg.ciphertext),
-          };
+          const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+          const mp = parseMediaPayload(pt);
+          return { ...msg, plaintext: pt, msg_type: mp ? ("file" as const) : msg.msg_type };
         })
       );
 
@@ -421,6 +433,121 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  // ── Fayl / rasm yuborish ──────────────────────────────────────────────────
+  //
+  // 1. Client: fayl AES-256-GCM bilan shifrlanadi.
+  // 2. Client: shifrlangan blob Go serverga POST /api/v1/upload bilan yuklanadi.
+  // 3. Server: faylni /uploads/{uuid} ga saqlaydi, URL qaytaradi.
+  // 4. Client: { url, aes_key, iv, file_name, mime_type, size } JSON Signal bilan shifrlanadi.
+  // 5. Server: ciphertext-ni DB ga saqlaydi (hech narsani bilmaydi).
+  // 6. Qabul qiluvchi: Signal deshifrlaydi → JSON → AES kalit bilan faylni deshifrlaydi.
+  sendFileMessage: async (chatId, recipientId, file, token) => {
+    const localId = `local_${Date.now()}`;
+    const now     = new Date().toISOString();
+    const isImage = file.type.startsWith("image/");
+    const displayPreview = isImage ? `🖼 ${file.name}` : `📎 ${file.name}`;
+
+    // UI'da "yuklanmoqda" holati
+    const tempMsg: Message = {
+      id:         localId,
+      chat_id:    chatId,
+      sender_id:  "me",
+      ciphertext: "",
+      plaintext:  `⏳ ${displayPreview}`,
+      msg_type:   "file",
+      status:     "sending",
+      created_at: now,
+    };
+    set((s) => ({
+      messages: { ...s.messages, [chatId]: [...(s.messages[chatId] ?? []), tempMsg] },
+    }));
+
+    try {
+      // 1) AES-256-GCM bilan faylni shifrlash
+      const { blob: encBlob, key, iv, mimeType, fileName, size } = await encryptFile(file);
+      console.log(`[Media] 🔒 Shifrlandi: ${fileName} ${size}B`);
+
+      // 2) Shifrlangan blob'ni serverga yuklash
+      const { url } = await mediaApi.uploadFile(token, encBlob);
+      console.log(`[Media] ⬆ Yuklandi: ${url}`);
+
+      // 3) AES kalit + IV JSON payload ichida Signal bilan shifrlash
+      const { fcToB64 } = await import("@/crypto/fileCrypto");
+      const payload: MediaPayload = {
+        url,
+        aes_key:   fcToB64(key),
+        iv:        fcToB64(iv),
+        file_name: fileName,
+        mime_type: mimeType,
+        size,
+      };
+      const plaintext = JSON.stringify(payload);
+
+      // 4) Signal Protocol: sessiya bor → SignalMessage, yo'q → PreKeyMessage
+      const sessionExists = await hasSession(recipientId).catch(() => false);
+      let ciphertext: string;
+      let msgTypeNum: number;
+
+      if (!sessionExists) {
+        console.log(`[E2EE] 🔑 Media PreKeyMessage → ${recipientId}`);
+        const bundle = await keysApi.getBundle(token, recipientId);
+        ciphertext = await encryptFirstMessage(chatId, recipientId, JSON.stringify(bundle), plaintext);
+        msgTypeNum = 3;
+      } else {
+        ciphertext = await encryptMessage(chatId, recipientId, plaintext);
+        msgTypeNum = 1;
+      }
+
+      wsClient.send("msg.send", {
+        chat_id:       chatId,
+        recipient_id:  recipientId,
+        ciphertext,
+        msg_type:      msgTypeNum,
+        client_msg_id: localId,
+      });
+
+      const sentMsg: Message = {
+        ...tempMsg,
+        ciphertext,
+        plaintext,         // ochiq matn saqlanadiA
+        msg_type: "file",
+        status:   "sent",
+      };
+
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [chatId]: (s.messages[chatId] ?? []).map((m) => m.id === localId ? sentMsg : m),
+        },
+        chats: s.chats.map((c) =>
+          c.id === chatId
+            ? {
+                ...c,
+                last_message: { sender_id: "me", preview: displayPreview, created_at: now },
+                updated_at:   now,
+              }
+            : c
+        ),
+      }));
+
+      await persistLocalMessage(sentMsg).catch(() => {});
+      console.log(`[Media] ✅ Yuborildi: ${fileName}`);
+
+    } catch (e) {
+      console.error("[Media] sendFileMessage xatoligi:", e);
+      set((s) => ({
+        messages: {
+          ...s.messages,
+          [chatId]: (s.messages[chatId] ?? []).map((m) =>
+            m.id === localId
+              ? { ...m, status: "sent" as const, plaintext: `⚠ Yuborilmadi: ${e instanceof Error ? e.message : String(e)}` }
+              : m
+          ),
+        },
+      }));
+    }
+  },
+
   // ── WebSocket hodisalari ──────────────────────────────────────────────────
   handleWsEvent: (event) => {
     const authUserId = useAuthStore.getState().userId;
@@ -460,13 +587,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 : DECRYPT_ERROR_LABEL;
           }
 
+          // Media xabar ekanligini deshifrlangan plaintext JSON'dan aniqlaymiz
+          const mediaP = parseMediaPayload(plaintext);
           const newMsg: Message = {
             id:         m.msg_id,
             chat_id:    m.chat_id,
             sender_id:  m.sender_id,
             ciphertext: m.ciphertext,
             plaintext,
-            msg_type:   "text",
+            msg_type:   mediaP ? "file" : "text",
             status:     "delivered",
             created_at: new Date().toISOString(),
           };
@@ -508,12 +637,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           // ── Tauri OS bildirishnomasi ──────────────────────────────────────
           if (isReadablePlaintext(plaintext)) {
-            const chat = get().chats.find((c) => c.id === m.chat_id);
+            const chat         = get().chats.find((c) => c.id === m.chat_id);
+            const notifyText   = mediaP
+              ? (mediaP.mime_type.startsWith("image/") ? `🖼 ${mediaP.file_name}` : `📎 ${mediaP.file_name}`)
+              : plaintext;
             const show = await shouldNotifyIncoming(m.chat_id, get().activeChatId);
             if (show) {
               await notifyIncomingMessage(
                 chat?.title ?? m.sender_id,
-                plaintext,
+                notifyText,
                 m.chat_id,
               );
             }

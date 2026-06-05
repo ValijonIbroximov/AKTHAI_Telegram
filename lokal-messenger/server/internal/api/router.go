@@ -45,6 +45,11 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	// Foydalanuvchilar katalogi
 	v1.Get("/users", h.ListUsers)
 
+	// Shifrlangan media fayllar (AES-256-GCM blob)
+	// Server faylning mazmunini bilmaydi — faqat shifrlangan baytlar saqlanadi.
+	v1.Post("/upload", h.UploadFile)
+	v1.Get("/files/:id", h.GetFile)
+
 	// Faqat admin uchun marshrutlar (RBAC: "admin" roli talab qilinadi)
 	admin := v1.Group("/admin", middleware.RequireRole("admin"))
 	admin.Post("/users", h.AdminCreateUser)

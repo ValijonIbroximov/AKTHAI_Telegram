@@ -135,3 +135,56 @@ export const keysApi = {
   getBundle: (token: string, userId: string) =>
     request<KeyBundle>("GET", `/keys/${userId}/bundle`, token),
 };
+
+// ── Media (shifrlangan fayl yuklash / yuklab olish) ───────────────────────────
+//
+// Server faqat shifrlangan blob qabul qiladi/uzatadi.
+// AES kalit va IV Signal Protocol xabari orqali jo'natiladi.
+
+function mediaBaseUrl(): string {
+  // BASE_URL = "/api/v1"  (dev)  yoki  "https://server.lokal:8443/api/v1" (prod)
+  return BASE_URL.replace(/\/api\/v1$/, "");
+}
+
+export const mediaApi = {
+  /**
+   * Shifrlangan blob'ni serverga yuklaydi.
+   * Multipart/form-data bilan, JSON emas.
+   * Qaytariladi: { id: string, url: string }  (url = /api/v1/files/{id})
+   */
+  uploadFile: async (token: string, blob: Blob): Promise<{ id: string; url: string }> => {
+    const form = new FormData();
+    form.append("data", blob, "encrypted.bin");
+
+    const res = await fetch(`${BASE_URL}/upload`, {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body:    form,
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => String(res.status));
+      throw new Error(`Fayl yuklanmadi (${res.status}): ${txt}`);
+    }
+    return res.json() as Promise<{ id: string; url: string }>;
+  },
+
+  /**
+   * Serverdan shifrlangan blob'ni yuklab oladi.
+   * `filePath` = /api/v1/files/{id}  yoki to'liq https:// URL.
+   */
+  downloadFile: async (token: string, filePath: string): Promise<Blob> => {
+    const url = filePath.startsWith("http")
+      ? filePath
+      : `${mediaBaseUrl()}${filePath}`;
+
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      throw new Error(`Fayl yuklab olinmadi (${res.status})`);
+    }
+    return res.blob();
+  },
+};

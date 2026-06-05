@@ -22,7 +22,17 @@
   transition: color var(--t-fast), background var(--t-fast);
 }
 .sideBtn:hover:not(:disabled) { color: var(--text-1); background: var(--bg-hover); }
-.sideBtn:disabled { opacity: 0.25; cursor: default; }
+.sideBtn:disabled { opacity: 0.45; cursor: default; }
+
+.sideBtnLoading { color: var(--accent) !important; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  animation: spin 1s linear infinite;
+  transform-origin: center;
+}
 
 .inputWrap {
   flex: 1;

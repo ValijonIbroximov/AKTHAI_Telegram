@@ -1,10 +1,17 @@
 // Fayl: server/internal/api/chat_routes.go
-// Maqsad: Suhbatlar ro'yxati, yangi suhbat yaratish, shifrlangan xabarlar tarixi
+// Maqsad: Suhbatlar ro'yxati, yangi suhbat yaratish, shifrlangan xabarlar tarixi,
 //
-//	va foydalanuvchilar katalogi marshrutlari xizmatga qo'yiladi.
+//	foydalanuvchilar katalogi va shifrlangan media fayllari marshrutlari.
 package api
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -182,6 +189,103 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 		return err
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": chatID, "existing": false})
+}
+
+// UploadFile — mijozdan shifrlangan fayl blob'ini qabul qilib diskda saqlaydi.
+//
+// Server faylning nimaligini bilmaydi: u AES-256-GCM bilan shifrlangan.
+// AES kaliti Signal Protocol orqali xabar tanasida jo'natiladi.
+//
+// Muhim: multipart/form-data, fayl maydoni nomi — "data".
+// Qaytariladi: { id: string, url: string }
+func (h *Handlers) UploadFile(c *fiber.Ctx) error {
+	uploaderID, _ := c.Locals("user_id").(string)
+
+	file, err := c.FormFile("data")
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "fayl topilmadi (maydon nomi: 'data')")
+	}
+
+	const maxSize = 50 << 20 // 50 MB
+	if file.Size > maxSize {
+		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "fayl 50 MB dan oshmasligi kerak")
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		return internalError("UploadFile open", err)
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return internalError("UploadFile read", err)
+	}
+
+	hash := sha256.Sum256(data)
+
+	// DB ga meta yozuv qo'shamiz (storage_key hali bo'sh)
+	var fileID string
+	err = h.deps.DB.QueryRow(c.Context(), `
+        INSERT INTO files (uploader_id, storage_key, size_bytes, sha256)
+        VALUES ($1::uuid, '', $2, $3)
+        RETURNING id::text
+    `, uploaderID, file.Size, hash[:]).Scan(&fileID)
+	if err != nil {
+		return internalError("UploadFile insert", err)
+	}
+
+	// Uploads papkasini yaratish
+	uploadDir := "./uploads"
+	if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+		return internalError("UploadFile mkdir", err)
+	}
+
+	// Faylni UUID nom bilan saqlash
+	storagePath := filepath.Join(uploadDir, fileID)
+	if err := os.WriteFile(storagePath, data, 0o644); err != nil {
+		return internalError("UploadFile write", err)
+	}
+
+	// storage_key ni yangilash
+	_, err = h.deps.DB.Exec(c.Context(),
+		`UPDATE files SET storage_key = $1 WHERE id = $2::uuid`,
+		storagePath, fileID)
+	if err != nil {
+		return internalError("UploadFile update_key", err)
+	}
+
+	log.Printf("[Upload] fayl saqlandi: id=%s size=%d uploader=%s", fileID, file.Size, uploaderID)
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"id":  fileID,
+		"url": fmt.Sprintf("/api/v1/files/%s", fileID),
+	})
+}
+
+// GetFile — autentifikatsiyalangan foydalanuvchiga shifrlangan fayl blob'ini uzatadi.
+//
+// Fayl mijozda deshifrlashni talab qiladi (server mazmunni bilmaydi).
+func (h *Handlers) GetFile(c *fiber.Ctx) error {
+	fileID := c.Params("id")
+
+	var storagePath string
+	err := h.deps.DB.QueryRow(c.Context(),
+		`SELECT storage_key FROM files WHERE id = $1::uuid`,
+		fileID).Scan(&storagePath)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "fayl topilmadi")
+	}
+
+	if _, err := os.Stat(storagePath); os.IsNotExist(err) {
+		log.Printf("[GetFile] diskda fayl yo'q: %s", storagePath)
+		return fiber.NewError(fiber.StatusNotFound, "fayl diskda yo'q")
+	}
+
+	c.Set("Content-Type", "application/octet-stream")
+	c.Set("Cache-Control", "private, max-age=31536000, immutable")
+	c.Set("X-Content-Type-Options", "nosniff")
+	return c.SendFile(storagePath)
 }
 
 // ChatHistory — suhbatdagi xabarlar tarixi qaytariladi.
