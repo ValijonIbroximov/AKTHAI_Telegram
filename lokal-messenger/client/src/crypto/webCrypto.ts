@@ -6,6 +6,9 @@
 // Tauri muhitida ISHLATILMAYDI — faqat oddiy brauzer uchun.
 
 import { x25519 } from "@noble/curves/ed25519.js";
+import { peerBundleIkToX25519 } from "./ikConvert";
+import { DecryptError } from "./cryptoErrors";
+import { scopedIdbName, getActiveCryptoUserId } from "./userScope";
 
 // ── Yordamchi ──────────────────────────────────────────────────────────────
 
@@ -15,7 +18,28 @@ export function b64(buf: ArrayBuffer | Uint8Array): string {
 }
 
 export function fromb64(s: string): Uint8Array {
-  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const norm = s.replace(/-/g, "+").replace(/_/g, "/").replace(/\s/g, "");
+  const pad  = norm + "=".repeat((4 - (norm.length % 4)) % 4);
+  try {
+    return Uint8Array.from(atob(pad), (c) => c.charCodeAt(0));
+  } catch (e) {
+    throw new Error(`Base64 decode xatoligi: ${e instanceof Error ? e.message : e}`);
+  }
+}
+
+/** JSON ichidagi ciphertext (nonce12 + body) ni ajratadi */
+export function parseCipherBlob(cipherB64: string): {
+  iv: Uint8Array;
+  body: Uint8Array;
+  total: number;
+} {
+  const ct = fromb64(cipherB64);
+  if (ct.length < 28) {
+    throw new Error(
+      `IV/ciphertext juda qisqa: ${ct.length} bayt (min 28 = 12 nonce + 16 tag)`
+    );
+  }
+  return { iv: ct.slice(0, 12), body: ct.slice(12), total: ct.length };
 }
 
 function toAB(u: Uint8Array): ArrayBuffer {
@@ -128,6 +152,8 @@ interface WebSession {
   recvCk:     string;
   sendMsgNum: number;
   recvMsgNum: number;
+  /** key_exchange orqali o'rnatilgan qabul sessiyasi — sender X3DH bilan ustiga yozilmasin */
+  role?:      "sender" | "receiver";
 }
 
 interface WebIdentity {
@@ -135,11 +161,9 @@ interface WebIdentity {
   ikPkB64: string;  // X25519 ochiq kalit Base64
 }
 
-const IDB_NAME = "harbiy-signal";
-
 function openIdb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, 4);
+    const req = indexedDB.open(scopedIdbName(), 4);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("sessions"))
@@ -175,6 +199,26 @@ async function idbPut(store: string, value: object): Promise<void> {
   });
 }
 
+async function idbClearStore(store: string): Promise<void> {
+  const db = await openIdb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).clear();
+    tx.oncomplete = () => res();
+    tx.onerror    = () => rej(tx.error);
+  });
+}
+
+async function idbDelete(store: string, key: string): Promise<void> {
+  const db = await openIdb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, "readwrite");
+    tx.objectStore(store).delete(key);
+    tx.oncomplete = () => res();
+    tx.onerror    = () => rej(tx.error);
+  });
+}
+
 async function getSession(peerId: string): Promise<WebSession | null> {
   const raw = await idbGet<WebSession & { peerId?: string }>("sessions", peerId);
   if (!raw) return null;
@@ -192,6 +236,12 @@ async function saveSession(peerId: string, sess: WebSession): Promise<void> {
 
 /** Qabul zanjirini header.msg_num ga moslab oldinga surish (Tauri ratchet bilan mos) */
 async function advanceRecvChain(sess: WebSession, targetMsgNum: number): Promise<WebSession> {
+  if (targetMsgNum < sess.recvMsgNum) {
+    throw new DecryptError(
+      "OUT_OF_ORDER",
+      `Out-of-order: recvMsgNum=${sess.recvMsgNum}, kelgan msg_num=${targetMsgNum}`
+    );
+  }
   let { recvCk, recvMsgNum } = sess;
   while (recvMsgNum < targetMsgNum) {
     const ck = fromb64(recvCk);
@@ -213,16 +263,61 @@ export async function webHasSession(peerId: string): Promise<boolean> {
   return sess !== null;
 }
 
+/** Berilgan peer bilan Signal sessiyasini o'chirish */
+export async function webClearSession(peerId: string): Promise<void> {
+  await idbDelete("sessions", peerId);
+  console.log(`[WebCrypto] Sessiya tozalandi: peer=${peerId}`);
+}
+
+/** Barcha Signal sessiyalarini o'chirish (kalit qayta yaratilganda) */
+export async function webClearAllSessions(): Promise<void> {
+  await idbClearStore("sessions");
+  console.log("[WebCrypto] Barcha sessiyalar tozalandi");
+}
+
+/** IndexedDB dagi barcha Signal sessiya peerId lari (debug / bootstrap) */
+export async function webListSessionPeers(): Promise<string[]> {
+  const db = await openIdb();
+  return new Promise((res) => {
+    const req = db.transaction("sessions", "readonly").objectStore("sessions").getAllKeys();
+    req.onsuccess = () => res((req.result as string[]) ?? []);
+    req.onerror   = () => res([]);
+  });
+}
+
+/** Dastur yuklanganda: IDB ochiq, sessiyalar va identity mavjudligi */
+export async function webEnsureCryptoReady(): Promise<void> {
+  const peers = await webListSessionPeers();
+  const ident = await getIdentity();
+  console.log(
+    `[WebCrypto] ✅ user=${getActiveCryptoUserId()} idb=${scopedIdbName()} ` +
+    `identity=${ident ? "yes" : "no"} sessions=${peers.length}`,
+    peers.length ? peers : ""
+  );
+}
+
 // ── Kalit generatsiyasi va server yuklamasi ────────────────────────────────
 //
 // Login har safar chaqiriladi. IDB'da eski kalit bo'lsa ham server'ga
 // qayta yuklanadi (UPSERT) — bu server DB reset yoki birinchi upload
 // muvaffaqiyatsiz bo'lgan holatlarni qamrab oladi.
 //
-export async function webInitSignalKeys(token: string): Promise<void> {
+export interface KeyInitResult {
+  regenerated: boolean;
+}
+
+export async function webInitSignalKeys(token: string): Promise<KeyInitResult> {
   // ── Identity Key: IDB'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ──────
   let ikSk: Uint8Array, ikPk: Uint8Array;
   const existingIdent = await getIdentity();
+  const existingSpk = await idbGet<{ id: string; keyId?: number; skB64: string; pkB64: string }>("identity", "spk");
+  const regenerated = !existingIdent || !existingSpk;
+
+  if (regenerated) {
+    await webClearAllSessions();
+    console.warn("[WebCrypto] ⚠ Kalitlar qayta yaratilmoqda — barcha sessiyalar tozalandi");
+  }
+
   if (existingIdent) {
     ikSk = fromb64(existingIdent.ikSkB64);
     ikPk = fromb64(existingIdent.ikPkB64);
@@ -234,18 +329,19 @@ export async function webInitSignalKeys(token: string): Promise<void> {
     console.log("[WebCrypto] Yangi Identity Key yaratildi");
   }
 
-  // ── Signed PreKey: IDB'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ───
+  // ── Signed PreKey: qayta generatsiya yoki IDB'dan o'qish ───────────────
   let spkSk: Uint8Array, spkPk: Uint8Array;
-  const existingSpk = await idbGet<{ id: string; skB64: string; pkB64: string }>("identity", "spk");
-  if (existingSpk) {
+  let spkKeyId = existingSpk?.keyId ?? 1;
+  if (existingSpk && !regenerated) {
     spkSk = fromb64(existingSpk.skB64);
     spkPk = fromb64(existingSpk.pkB64);
   } else {
     const spk = genX25519();
     spkSk = spk.sk; spkPk = spk.pk;
-    await idbPut("identity", { id: "spk", skB64: b64(spkSk), pkB64: b64(spkPk) });
+    spkKeyId = regenerated ? ((Date.now() % 900_000) + 100_000) : (spkKeyId || 1);
+    await idbPut("identity", { id: "spk", keyId: spkKeyId, skB64: b64(spkSk), pkB64: b64(spkPk) });
+    console.log(`[WebCrypto] Yangi Signed PreKey yaratildi (key_id=${spkKeyId})`);
   }
-  // SPK private key kelgusida webEstablishSessionReceiver uchun kerak
   void spkSk;
 
   // ── One-Time PreKeys: doim yangi key_id bilan yuklanadi ────────────────
@@ -265,8 +361,10 @@ export async function webInitSignalKeys(token: string): Promise<void> {
   const dummySig = b64(new Uint8Array(64));
   const bundle = {
     registration_id: ((Math.random() * 16380) | 0) + 1,
-    identity_key:    b64(ikPk),
-    signed_prekey:   { key_id: 1, public_key: b64(spkPk), signature: dummySig },
+    identity_key:          b64(ikPk),
+    identity_key_x25519:   b64(ikPk),
+    force_overwrite:       regenerated,
+    signed_prekey:   { key_id: spkKeyId, public_key: b64(spkPk), signature: dummySig },
     one_time_prekeys: otpks,
   };
 
@@ -278,12 +376,17 @@ export async function webInitSignalKeys(token: string): Promise<void> {
   });
 
   if (resp.ok || resp.status === 204) {
-    console.log(`[WebCrypto] ✅ Kalit bundle serverga yuklandi (${otpks.length} OTPKs, baseId=${baseId})`);
+    console.log(
+      `[WebCrypto] ✅ Kalit bundle serverga yuklandi (${otpks.length} OTPKs, ` +
+      `baseId=${baseId}, force_overwrite=${regenerated})`
+    );
   } else {
     const errBody = await resp.text().catch(() => "");
     console.error(`[WebCrypto] ❌ Kalit yuklash xatoligi: HTTP ${resp.status} — ${errBody}`);
     throw new Error(`Kalit yuklash muvaffaqiyatsiz: ${resp.status}`);
   }
+
+  return { regenerated };
 }
 
 // ── Identifikatsiya ochiq kaliti ───────────────────────────────────────────
@@ -323,10 +426,27 @@ export async function webEstablishSession(
   peerId:     string,
   bundleJson: string
 ): Promise<WebEstablishResult> {
+  const hadSession = await getSession(peerId);
+  if (hadSession?.role === "receiver") {
+    console.warn(
+      `[WebCrypto] Qabul sessiyasi saqlanadi (receiver) — sender X3DH o'tkazib yuborildi: ${peerId}`
+    );
+    const ident = await getIdentity();
+    if (!ident) throw new Error("Identifikatsiya kaliti yo'q");
+    const ek = genX25519();
+    return {
+      ekPk:           b64(ek.pk),
+      senderIkX25519: ident.ikPkB64,
+      spkKeyId:       1,
+      otpkKeyId:      0,
+    };
+  }
+
   const bundle = JSON.parse(bundleJson) as {
-    identity_key:     string;
-    signed_prekey:    { key_id: number; public_key: string };
-    one_time_prekey?: { key_id: number; public_key: string };
+    identity_key:          string;
+    identity_key_x25519?:  string;
+    signed_prekey:         { key_id: number; public_key: string; signature?: string };
+    one_time_prekey?:      { key_id: number; public_key: string };
   };
 
   const ident = await getIdentity();
@@ -335,7 +455,15 @@ export async function webEstablishSession(
   const ourIkSk  = fromb64(ident.ikSkB64);
   const ourIkPk  = fromb64(ident.ikPkB64);
 
-  const peerIkPk  = fromb64(bundle.identity_key);
+  const peerIkPk  = bundle.identity_key_x25519
+    ? fromb64(bundle.identity_key_x25519)
+    : peerBundleIkToX25519(
+        bundle.identity_key,
+        bundle.signed_prekey.signature ?? b64(new Uint8Array(64))
+      );
+  if (peerIkPk.length !== 32) {
+    throw new Error(`Peer IK X25519 32 bayt bo'lishi kerak: ${peerIkPk.length}`);
+  }
   const peerSpkPk = fromb64(bundle.signed_prekey.public_key);
 
   // Efemer kalit juftligi
@@ -355,10 +483,10 @@ export async function webEstablishSession(
 
   const sk = await x3dhKdf(dh1, dh2, dh3, dh4);
   await saveSession(peerId, {
-    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0,
+    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0, role: "sender",
   });
 
-  console.log(`[WebCrypto] X3DH sender sessiya o'rnatildi: ${peerId}`);
+  console.log(`[WebCrypto] ✅ X3DH sender sessiya o'rnatildi (IDB): ${peerId}`);
 
   return {
     ekPk:           b64(ek.pk),
@@ -376,20 +504,32 @@ export async function webEstablishSessionReceiver(
   peerId:            string,
   peerEkPkB64:       string,
   senderIkX25519B64: string,
-  _spkKeyId:         number,
+  spkKeyId:          number,
   otpkKeyId:         number
 ): Promise<void> {
   const ident = await getIdentity();
   if (!ident) throw new Error("Identifikatsiya kaliti yo'q — avval webInitSignalKeys chaqiring");
 
-  const spkData = await idbGet<{ id: string; skB64: string; pkB64: string }>("identity", "spk");
+  const spkData = await idbGet<{ id: string; keyId?: number; skB64: string; pkB64: string }>("identity", "spk");
   if (!spkData) throw new Error("SPK kaliti yo'q IDB'da");
+  if (spkKeyId > 0 && spkData.keyId && spkData.keyId !== spkKeyId) {
+    console.warn(
+      `[WebCrypto] SPK key_id mos kelmaydi (idb=${spkData.keyId}, ke=${spkKeyId}) — mavjud SPK ishlatiladi`
+    );
+  }
 
   const ourIkSk  = fromb64(ident.ikSkB64);
   const ourSpkSk = fromb64(spkData.skB64);
 
+  // key_exchange: sender_ik_x25519 allaqachon X25519 (Tauri yoki brauzer)
   const senderIkPk = fromb64(senderIkX25519B64);
-  const peerEkPk   = fromb64(peerEkPkB64);
+  if (senderIkPk.length !== 32) {
+    throw new Error(`sender_ik_x25519 32 bayt bo'lishi kerak: ${senderIkPk.length}`);
+  }
+  const peerEkPk = fromb64(peerEkPkB64);
+  if (peerEkPk.length !== 32) {
+    throw new Error(`ek_pk 32 bayt bo'lishi kerak: ${peerEkPk.length}`);
+  }
 
   // Signal X3DH receiver DH zanjiri
   const dh1 = dhX25519(ourSpkSk, senderIkPk);   // DH(SPK_B, IK_A)
@@ -402,20 +542,21 @@ export async function webEstablishSessionReceiver(
     const otpkData = await idbGet<{ id: string; skB64: string; pkB64: string }>(
       "identity", `otpk_${otpkKeyId}`
     );
-    if (otpkData) {
-      dh4 = dhX25519(fromb64(otpkData.skB64), peerEkPk);  // DH(OTPK_B, EK_A)
-      console.log(`[WebCrypto] OTPK_${otpkKeyId} ishlatildi (DH4 hisoblandi)`);
-    } else {
-      console.warn(`[WebCrypto] OTPK_${otpkKeyId} IDB'da topilmadi — DH4 o'tkazib yuborildi`);
+    if (!otpkData) {
+      throw new Error(
+        `OTPK_${otpkKeyId} IDB'da topilmadi — X3DH kaliti noto'g'ri (login/refresh dan keyin qayta key_exchange kerak)`
+      );
     }
+    dh4 = dhX25519(fromb64(otpkData.skB64), peerEkPk);
+    console.log(`[WebCrypto] OTPK_${otpkKeyId} ishlatildi (DH4)`);
   }
 
   const sk = await x3dhKdf(dh1, dh2, dh3, dh4);
   await saveSession(peerId, {
-    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0,
+    sendCk: b64(sk), recvCk: b64(sk), sendMsgNum: 0, recvMsgNum: 0, role: "receiver",
   });
 
-  console.log(`[WebCrypto] ✅ X3DH receiver sessiya o'rnatildi: ${peerId}`);
+  console.log(`[WebCrypto] ✅ X3DH receiver sessiya o'rnatildi (IDB): ${peerId}`);
 }
 
 // Rust ratchet bilan bir xil header (AAD = serde JSON tartibida)
@@ -489,7 +630,11 @@ export async function webDecryptMessage(
   try {
     val = JSON.parse(payload);
   } catch (e) {
-    throw new Error(`Payload JSON noto'g'ri: ${e instanceof Error ? e.message : e}`);
+    throw new DecryptError(
+      "PAYLOAD_JSON",
+      `Payload JSON noto'g'ri: ${e instanceof Error ? e.message : e}`,
+      e
+    );
   }
 
   const header: DrHeader = val.header ?? {
@@ -498,31 +643,68 @@ export async function webDecryptMessage(
     prev_chain_len: 0,
   };
   const cipherB64 = val.ciphertext;
-  if (!cipherB64) throw new Error("ciphertext maydoni yo'q");
+  if (!cipherB64?.trim()) {
+    throw new DecryptError("CIPHERTEXT_MISSING", "ciphertext maydoni yo'q");
+  }
 
   let sess = await getSession(peerId);
-  if (!sess) throw new Error(`Sessiya yo'q (${peerId}) — avval X3DH bajaring`);
+  if (!sess) {
+    throw new DecryptError(
+      "SESSION_NOT_FOUND",
+      `Sessiya yo'q (${peerId}) — key_exchange kuting yoki xabar yuboring`
+    );
+  }
 
-  // Tauri yuboruvchi msg_num ni oshiradi — qabul zanjirini sinxronlashtiramiz
-  sess = await advanceRecvChain(sess, header.msg_num);
+  let iv: Uint8Array;
+  let body: Uint8Array;
+  let total: number;
+  try {
+    ({ iv, body, total } = parseCipherBlob(cipherB64));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = msg.toLowerCase().includes("base64") ? "BASE64_INVALID" : "IV_LENGTH";
+    throw new DecryptError(code as "BASE64_INVALID" | "IV_LENGTH", msg, e);
+  }
+  if (iv.length !== 12) {
+    throw new DecryptError("IV_LENGTH", `IV uzunligi noto'g'ri: ${iv.length} (kutilgan 12)`);
+  }
 
-  const ck          = fromb64(sess.recvCk);
+  try {
+    sess = await advanceRecvChain(sess, header.msg_num);
+  } catch (e) {
+    if (e instanceof DecryptError) throw e;
+    throw new DecryptError("OUT_OF_ORDER", e instanceof Error ? e.message : String(e), e);
+  }
+
+  const ck           = fromb64(sess.recvCk);
   const [mk, nextCk] = await kdfCk(ck);
 
-  const ct = fromb64(cipherB64);
+  const ct  = new Uint8Array(12 + body.length);
+  ct.set(iv);
+  ct.set(body, 12);
   const aad = headerAad(header);
 
   let pt: Uint8Array;
   try {
     pt = await aesDecrypt(mk, ct, aad);
   } catch (e) {
-    console.error("[WebCrypto] AES-GCM xato:", {
+    console.error("[WebCrypto] ❌ AES-GCM / Invalid MAC:", {
       peerId,
-      msg_num: header.msg_num,
-      ct_len:  ct.length,
-      aad_len: aad.length,
+      msg_num:      header.msg_num,
+      recvMsgNum:   sess.recvMsgNum,
+      session_role: sess.role ?? "unknown",
+      ct_len:       total,
+      iv_len:       iv.length,
+      body_len:     body.length,
+      iv_hex:       Array.from(iv).map((b) => b.toString(16).padStart(2, "0")).join(""),
+      dh_rk:        header.dh_ratchet_pk ? header.dh_ratchet_pk.slice(0, 16) + "…" : "(empty)",
+      aad_preview:  new TextDecoder().decode(aad).slice(0, 80),
     });
-    throw e;
+    throw new DecryptError(
+      "AES_GCM_FAILED",
+      `Invalid MAC yoki kalit mos emas (peer=${peerId}, msg_num=${header.msg_num})`,
+      e
+    );
   }
 
   await saveSession(peerId, {

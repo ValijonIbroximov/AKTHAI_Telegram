@@ -19,7 +19,7 @@ pub struct StoredMessage {
 
 #[tauri::command]
 pub async fn save_local_message(msg: StoredMessage, state: State<'_, AppState>) -> Result<(), String> {
-    let db = state.db.clone();
+    let db = state.db_conn();
     let c  = db.lock().unwrap();
     c.execute(
         "INSERT INTO local_messages (id, chat_id, sender_id, plaintext, ciphertext, msg_type, status, created_at)
@@ -48,7 +48,7 @@ pub async fn load_local_messages(
     chat_id: String,
     state:   State<'_, AppState>,
 ) -> Result<Vec<StoredMessage>, String> {
-    let db = state.db.clone();
+    let db = state.db_conn();
     let c  = db.lock().unwrap();
     let mut st = c
         .prepare(

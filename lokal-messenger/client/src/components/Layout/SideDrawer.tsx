@@ -1,5 +1,4 @@
 // Telegram Desktop uslubidagi slide-out navigatsiya paneli.
-// Sozlamalar ilovaning alohida sahifasiga yo'naltiradi (SideDrawer ichida emas).
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme }     from "@/contexts/ThemeContext";
@@ -26,13 +25,19 @@ const AVATAR_COLORS = [
   "#7c3aed","#dc2626","#d97706","#0d9488",
 ];
 
+function avatarColor(userId: string): string {
+  return AVATAR_COLORS[userId.charCodeAt(0) % AVATAR_COLORS.length]!;
+}
+
 export default function SideDrawer({ open, onClose, onSettings }: Props) {
-  const { username, role, userId, logout } = useAuthStore();
+  const {
+    username, role, userId, activeAccountId, accounts,
+    logout, beginAddAccount, beginSwitchAccount,
+  } = useAuthStore();
   const { mode, setMode } = useTheme();
   const drawerRef = useRef<HTMLDivElement>(null);
   const [author, setAuthor] = useState("Valijon Ibroximov tomonidan yaratilgan");
 
-  // Mualliflik matnini Rust qatlamidan olish
   useEffect(() => {
     if (isTauri) {
       import("@tauri-apps/api/core")
@@ -42,14 +47,12 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
     }
   }, []);
 
-  // ESC tugmasi bilan yopish
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     if (open) document.addEventListener("keydown", h);
     return () => document.removeEventListener("keydown", h);
   }, [open, onClose]);
 
-  // Ochilganda fokus
   useEffect(() => {
     if (open) drawerRef.current?.focus();
   }, [open]);
@@ -64,19 +67,28 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
     await logout();
   }, [onClose, logout]);
 
+  const handleAddAccount = useCallback(() => {
+    onClose();
+    beginAddAccount();
+  }, [onClose, beginAddAccount]);
+
+  const handleSwitch = useCallback((uid: string) => {
+    onClose();
+    if (uid === activeAccountId) return;
+    beginSwitchAccount(uid);
+  }, [onClose, activeAccountId, beginSwitchAccount]);
+
   const avatarInitial = (username ?? "?").charAt(0).toUpperCase();
-  const avatarBg      = AVATAR_COLORS[(userId ?? "a").charCodeAt(0) % AVATAR_COLORS.length]!;
+  const avatarBg      = avatarColor(userId ?? "a");
 
   return (
     <>
-      {/* Orqa fon */}
       <div
         className={`${s.overlay} ${open ? s.overlayVisible : ""}`}
         onClick={onClose}
         aria-hidden="true"
       />
 
-      {/* Drawer */}
       <div
         ref={drawerRef}
         className={`${s.drawer} ${open ? s.drawerOpen : ""}`}
@@ -85,7 +97,6 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
         aria-modal="true"
         tabIndex={-1}
       >
-        {/* ── Profil sarlavhasi ── */}
         <div className={s.profile}>
           <div
             className={s.profileBg}
@@ -100,7 +111,35 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
           </div>
         </div>
 
-        {/* ── Navigatsiya elementlari ── */}
+        {/* ── Akkauntlar (Telegram uslubi) ── */}
+        <div className={s.accounts}>
+          <div className={s.accountsTitle}>Akkauntlar</div>
+          <div className={s.accountList}>
+            {accounts.map((acc) => {
+              const bg = avatarColor(acc.userId);
+              const active = acc.userId === activeAccountId;
+              return (
+                <button
+                  key={acc.userId}
+                  type="button"
+                  className={`${s.accountItem} ${active ? s.accountItemActive : ""}`}
+                  onClick={() => handleSwitch(acc.userId)}
+                >
+                  <span className={s.accountAvatar} style={{ background: bg }}>
+                    {acc.username.charAt(0).toUpperCase()}
+                  </span>
+                  <span className={s.accountName}>{acc.username}</span>
+                  {active && <span className={s.accountCheck}>✓</span>}
+                </button>
+              );
+            })}
+            <button type="button" className={s.addAccountBtn} onClick={handleAddAccount}>
+              <span className={s.addAccountIcon}>+</span>
+              <span>Akkaunt qo'shish</span>
+            </button>
+          </div>
+        </div>
+
         <nav className={s.nav}>
           {NAV_ITEMS.map(item => (
             <button key={item.label} className={s.navItem} onClick={onClose}>
@@ -111,7 +150,6 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
 
           <div className={s.divider} />
 
-          {/* Sozlamalar — alohida sahifaga o'tish */}
           <button className={s.navItem} onClick={handleSettings}>
             <span className={s.navIcon}>⚙️</span>
             <span className={s.navLabel}>Sozlamalar</span>
@@ -119,7 +157,6 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
 
           <div className={s.divider} />
 
-          {/* Dark/Light toggle */}
           <div className={s.modeRow}>
             <span className={s.navIcon}>{mode === "dark" ? "🌙" : "☀️"}</span>
             <span className={s.navLabel} style={{ flex: 1 }}>
@@ -137,7 +174,6 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
           </div>
         </nav>
 
-        {/* ── Footer ── */}
         <div className={s.footer}>
           <div className={s.authorBadge}>{author}</div>
           <button className={s.logoutBtn} onClick={handleLogout}>

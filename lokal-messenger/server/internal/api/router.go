@@ -27,6 +27,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	v1 := app.Group("/api/v1", authMW)
 
 	// Joriy foydalanuvchi amallari
+	v1.Put("/auth/password", h.ChangePassword)
 	v1.Post("/auth/change-password", h.ChangePassword)
 	v1.Post("/auth/logout", h.Logout)
 	v1.Get("/me", h.Me)

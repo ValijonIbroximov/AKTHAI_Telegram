@@ -1,0 +1,68 @@
+/* Telegram Desktop uslubidagi ingichka titlebar */
+
+.bar {
+  display: flex;
+  align-items: stretch;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--panel-bg-real, var(--bg-panel));
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  z-index: 300;
+}
+
+.drag {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-width: 0;
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.controls {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.ctrl {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  transition: background 0.12s ease, color 0.12s ease;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: default;
+}
+
+.ctrl:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.close:hover {
+  background: #e81123;
+  color: #fff;
+}

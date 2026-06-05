@@ -13,6 +13,7 @@ import (
 type uploadIdentityRequest struct {
 	RegistrationID int    `json:"registration_id"`
 	IdentityKeyB64 string `json:"identity_key"`
+	ForceOverwrite bool   `json:"force_overwrite"`
 	SignedPreKey   struct {
 		KeyID     int    `json:"key_id"`
 		PublicKey string `json:"public_key"`
@@ -33,7 +34,8 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov noto'g'ri")
 	}
-	log.Printf("[KEYS] ↑ upload: user=%s  otpk_count=%d", userID, len(req.OneTimePreKeys))
+	log.Printf("[KEYS] ↑ upload: user=%s  otpk_count=%d  force_overwrite=%v",
+		userID, len(req.OneTimePreKeys), req.ForceOverwrite)
 
 	identityKey, err := base64.StdEncoding.DecodeString(req.IdentityKeyB64)
 	if err != nil {
@@ -73,13 +75,32 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 		return err
 	}
 
-	// Bir martalik oldindan-kalitlar partiya bilan kiritiladi
+	// Split-brain oldini olish: har upload da eski OTPK'lar tozalanadi.
+	// Aks holda serverda qolgan eski OTPK'lar mijozda SK yo'qligi sababli X3DH ni buzadi.
+	_, err = tx.Exec(c.Context(), `
+		DELETE FROM one_time_prekeys WHERE user_id = $1::uuid
+	`, userID)
+	if err != nil {
+		return err
+	}
+
+	// force_overwrite: eski SPK yozuvlari ham tozalanadi (faqat yangi SPK qoladi)
+	if req.ForceOverwrite {
+		_, err = tx.Exec(c.Context(), `
+			DELETE FROM signed_prekeys
+			 WHERE user_id = $1::uuid AND key_id != $2
+		`, userID, req.SignedPreKey.KeyID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Bir martalik oldindan-kalitlar yangi to'plam sifatida kiritiladi
 	for _, otpk := range req.OneTimePreKeys {
 		pub, _ := base64.StdEncoding.DecodeString(otpk.PublicKey)
 		_, err = tx.Exec(c.Context(), `
-			INSERT INTO one_time_prekeys (user_id, key_id, public_key)
-			VALUES ($1::uuid, $2, $3)
-			ON CONFLICT (user_id, key_id) DO NOTHING
+			INSERT INTO one_time_prekeys (user_id, key_id, public_key, used)
+			VALUES ($1::uuid, $2, $3, FALSE)
 		`, userID, otpk.KeyID, pub)
 		if err != nil {
 			return err

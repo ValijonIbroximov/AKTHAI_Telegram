@@ -1,7 +1,8 @@
 // O'ng panel — Telegram Desktop uslubidagi chat oynasi.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthStore }  from "@/store/authStore";
-import { useChatStore }  from "@/store/chatStore";
+import { useChatStore, PENDING_DECRYPT_LABEL } from "@/store/chatStore";
+import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
 import Avatar            from "@/components/Common/Avatar";
 import MessageBubble     from "./MessageBubble";
 import InputBar          from "./InputBar";
@@ -9,17 +10,34 @@ import s                 from "./MessageArea.module.css";
 
 export default function MessageArea() {
   const { userId, token } = useAuthStore();
-  const { activeChatId, chats, messages, presenceMap } = useChatStore();
+  const { activeChatId, chats, messages, presenceMap, resetSessionWithPeer } = useChatStore();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [resetting, setResetting] = useState(false);
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
   const peerId     = activeChat?.peer_user_id ?? null;
   const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
 
+  const hasSessionIssue = msgs.some(
+    (m) => m.plaintext === PENDING_DECRYPT_LABEL || m.plaintext === DECRYPT_ERROR_LABEL
+  );
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
+
+  const handleResetSession = async () => {
+    if (!activeChatId || !peerId || !token || resetting) return;
+    setResetting(true);
+    try {
+      await resetSessionWithPeer(activeChatId, peerId, token);
+    } catch (e) {
+      console.error("[X3DH] Sessiyani tiklash xatoligi:", e);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Suhbat tanlanmagan holat
   if (!activeChat) {
@@ -80,6 +98,22 @@ export default function MessageArea() {
           </button>
         </div>
       </div>
+
+      {hasSessionIssue && peerId && (
+        <div className={s.sessionBanner}>
+          <span className={s.sessionBannerText}>
+            Shifrlash sinxronizatsiyasi buzilgan. Yangi X3DH kalit almashinuvi kerak.
+          </span>
+          <button
+            type="button"
+            className={s.sessionBannerBtn}
+            onClick={handleResetSession}
+            disabled={resetting}
+          >
+            {resetting ? "Tiklanmoqda…" : "Sessiyani qayta tiklash"}
+          </button>
+        </div>
+      )}
 
       {/* Xabarlar maydoni */}
       <div className={s.messages}>

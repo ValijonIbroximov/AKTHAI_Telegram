@@ -56,6 +56,43 @@
 }
 .actionBtn:disabled { opacity: 0.30; cursor: not-allowed; }
 
+/* ── Sessiya tiklash banneri ── */
+.sessionBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--accent-xs, rgba(255, 180, 0, 0.08));
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sessionBannerText {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+.sessionBannerBtn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.sessionBannerBtn:hover:not(:disabled) {
+  background: var(--accent);
+  color: #fff;
+}
+.sessionBannerBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Xabarlar ── */
 .messages {
   flex: 1;

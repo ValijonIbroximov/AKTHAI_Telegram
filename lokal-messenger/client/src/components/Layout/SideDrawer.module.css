@@ -28,6 +28,103 @@
 }
 .drawerOpen { transform: translateX(0); }
 
+/* ── Akkauntlar ── */
+.accounts {
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.accountsTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  padding: 4px 8px 8px;
+}
+
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.accountItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  text-align: left;
+  color: var(--text-1);
+  transition: background var(--t-fast);
+}
+
+.accountItem:hover { background: var(--bg-hover); }
+
+.accountItemActive { background: var(--accent-xs); }
+
+.accountAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.accountName {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountCheck {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.addAccountBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+  border-radius: var(--r-md);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--t-fast);
+}
+
+.addAccountBtn:hover { background: var(--bg-hover); }
+
+.addAccountIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px dashed var(--border-med);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 /* ── Profil ── */
 .profile {
   position: relative;

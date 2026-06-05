@@ -8,12 +8,14 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
-  const { login, loading, error, clearError } = useAuthStore();
+  const { login, addAccount, loading, error, clearError, uiMode, cancelAuthUI } = useAuthStore();
+  const isAddMode = uiMode === "add_account";
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password) return;
-    await login(username.trim(), password);
+    if (isAddMode) await addAccount(username.trim(), password);
+    else await login(username.trim(), password);
   };
 
   return (
@@ -29,8 +31,12 @@ export default function LoginPage() {
               <path d="M2 12l10 5 10-5" opacity="0.85"/>
             </svg>
           </div>
-          <div className={s.logoTitle}>Harbiy Messenjer</div>
-          <div className={s.logoSub}>E2E Shifrlangan · Signal Protocol</div>
+          <div className={s.logoTitle}>
+            {isAddMode ? "Akkaunt qo'shish" : "Harbiy Messenjer"}
+          </div>
+          <div className={s.logoSub}>
+            {isAddMode ? "Yangi hisob bilan kiring" : "E2E Shifrlangan · Signal Protocol"}
+          </div>
         </div>
 
         {/* Xato xabari */}
@@ -118,10 +124,16 @@ export default function LoginPage() {
             {loading ? (
               <span className={s.spinner} />
             ) : (
-              "Kirish"
+              isAddMode ? "Qo'shish" : "Kirish"
             )}
           </button>
         </form>
+
+        {isAddMode && (
+          <button type="button" className={s.cancelLink} onClick={cancelAuthUI}>
+            Bekor qilish
+          </button>
+        )}
 
         <p className={s.hint}>
           Hisob yaratish taqiqlangan.{" "}

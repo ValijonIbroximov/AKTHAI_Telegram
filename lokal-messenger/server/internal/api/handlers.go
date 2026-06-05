@@ -61,11 +61,6 @@ func ifNil(p *string) string {
 	return *p
 }
 
-// ChangePassword — parol almashtirish (kelajakda to'liq yoziladi).
-func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
-	return fiber.NewError(fiber.StatusNotImplemented, "tez orada")
-}
-
 // Logout — JWT sessiyasi Redis'dan o'chiriladi.
 func (h *Handlers) Logout(c *fiber.Ctx) error {
 	jti, _ := c.Locals("jti").(string)

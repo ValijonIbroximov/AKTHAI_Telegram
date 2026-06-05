@@ -231,6 +231,19 @@ pub fn save_session(db: &DbConn, s: &SignalSession) -> Result<()> {
     Ok(())
 }
 
+pub fn clear_session(db: &DbConn, peer_id: &str) -> Result<()> {
+    db.lock().unwrap().execute(
+        "DELETE FROM sessions WHERE peer_id = ?1",
+        params![peer_id],
+    )?;
+    Ok(())
+}
+
+pub fn clear_all_sessions(db: &DbConn) -> Result<()> {
+    db.lock().unwrap().execute("DELETE FROM sessions", [])?;
+    Ok(())
+}
+
 pub fn get_session(db: &DbConn, peer_id: &str) -> Result<Option<SignalSession>> {
     let c = db.lock().unwrap();
     let mut st = c.prepare(

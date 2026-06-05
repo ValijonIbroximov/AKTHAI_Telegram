@@ -3,6 +3,7 @@
 
 import type { Message } from "@/types";
 import { isTauri } from "@/crypto/adapter";
+import { scopedIdbName } from "@/crypto/userScope";
 
 export interface StoredMessage {
   id:         string;
@@ -15,7 +16,6 @@ export interface StoredMessage {
   created_at: string;
 }
 
-const IDB_NAME    = "harbiy-signal";
 const IDB_VERSION = 4;
 const STORE       = "message_history";
 
@@ -51,7 +51,7 @@ function fromStored(s: StoredMessage): Message {
 
 function openHistoryDb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    const req = indexedDB.open(scopedIdbName(), IDB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("sessions"))

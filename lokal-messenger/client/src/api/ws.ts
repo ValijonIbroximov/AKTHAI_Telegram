@@ -1,86 +1,150 @@
 // WebSocket ulanishini boshqaruvchi singleton.
-// TLS aktiv bo'lgani uchun wss:// protokoli ishlatiladi.
+// Multi-account: har switch da eski ulanish to'liq yopiladi, yangi JWT bilan qayta ulanadi.
 import type { WsEvent } from "@/types";
 
-// Dev rejimida Vite proxy WS ulanishini ham yo'naltiradi (wss → ws).
-// Production build'da to'g'ridan-to'g'ri wss:// ishlatiladi.
 const WS_URL = import.meta.env.PROD
   ? "wss://server.lokal:8443/ws"
   : "ws://localhost:1420/ws";
-const PING_INTERVAL_MS  = 25_000;
+const PING_INTERVAL_MS   = 25_000;
 const RECONNECT_DELAY_MS = 3_000;
 const MAX_RECONNECTS     = 10;
+const DISCONNECT_TIMEOUT = 2_000;
 
 type EventHandler = (event: WsEvent) => void;
 
 class WsClient {
-  private socket:       WebSocket | null = null;
-  private token:        string = "";
-  private handlers:     Set<EventHandler> = new Set();
-  private pingTimer:    ReturnType<typeof setInterval> | null = null;
-  private reconnects:   number = 0;
-  private shouldRun:    boolean = false;
+  private socket:     WebSocket | null = null;
+  private token:      string = "";
+  private handlers:   Set<EventHandler> = new Set();
+  private pingTimer:  ReturnType<typeof setInterval> | null = null;
+  private reconnects: number = 0;
+  private shouldRun:  boolean = false;
+  /** Har reconnect/switch da oshadi — eski socket hodisalari e'tiborsiz qoldiriladi */
+  private epoch:      number = 0;
 
-  // Ulangan so'ng token bilan WebSocket ochiladi
+  /** @deprecated connectAsync ishlating */
   connect(token: string): void {
-    this.token    = token;
+    void this.connectAsync(token);
+  }
+
+  /** @deprecated disconnectAsync ishlating */
+  disconnect(): void {
+    void this.disconnectAsync();
+  }
+
+  /** Eski ulanishni to'liq yopadi (account switch uchun majburiy) */
+  disconnectAsync(): Promise<void> {
+    this.shouldRun = false;
+    this.epoch++;
+    this._stopPing();
+
+    const sock = this.socket;
+    this.socket = null;
+
+    if (!sock || sock.readyState === WebSocket.CLOSED) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, DISCONNECT_TIMEOUT);
+      sock.onopen    = null;
+      sock.onmessage = null;
+      sock.onerror   = null;
+      sock.onclose   = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      if (sock.readyState < WebSocket.CLOSING) {
+        sock.close(1000, "account_switch");
+      } else {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  }
+
+  /** Avval disconnect, keyin yangi token bilan ulanish */
+  async connectAsync(token: string): Promise<void> {
+    await this.disconnectAsync();
+    this.token     = token;
     this.shouldRun = true;
     this.reconnects = 0;
-    this._open();
+    await this._openAndWait();
   }
 
-  disconnect(): void {
-    this.shouldRun = false;
-    this._cleanup();
-  }
-
-  // Hub kutgan format: { type, payload }
   send(type: string, payload: object): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ type, payload }));
     }
   }
 
-  // Xom JSON jo'natish (ping kabi oddiy paketlar uchun)
   sendRaw(data: object): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(data));
     }
   }
 
-  // Hodisa tinglovchisi ro'yxatdan o'tkaziladi
   on(handler: EventHandler): () => void {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
   }
 
-  private _open(): void {
-    const url = `${WS_URL}?token=${encodeURIComponent(this.token)}`;
-    this.socket = new WebSocket(url);
+  isConnected(): boolean {
+    return this.socket?.readyState === WebSocket.OPEN;
+  }
 
-    this.socket.onopen = () => {
-      this.reconnects = 0;
-      this._startPing();
-    };
+  private _openAndWait(): Promise<void> {
+    const myEpoch = this.epoch;
+    const url     = `${WS_URL}?token=${encodeURIComponent(this.token)}`;
 
-    this.socket.onmessage = (e) => {
-      try {
-        const event = JSON.parse(e.data as string) as WsEvent;
-        this.handlers.forEach((h) => h(event));
-      } catch {
-        // Noto'g'ri formatli hodisalar jimlik bilan o'tkazib yuboriladi
-      }
-    };
+    return new Promise((resolve, reject) => {
+      const sock = new WebSocket(url);
+      this.socket = sock;
 
-    this.socket.onclose = () => {
-      this._cleanup();
-      if (this.shouldRun && this.reconnects < MAX_RECONNECTS) {
-        this.reconnects++;
-        setTimeout(() => this._open(), RECONNECT_DELAY_MS * this.reconnects);
-      }
-    };
+      const fail = (err: string) => {
+        if (myEpoch !== this.epoch) return;
+        reject(new Error(err));
+      };
 
-    this.socket.onerror = () => this.socket?.close();
+      sock.onopen = () => {
+        if (myEpoch !== this.epoch) {
+          sock.close();
+          return;
+        }
+        this.reconnects = 0;
+        this._startPing();
+        console.log("[WS] ✅ Ulandi (epoch=" + myEpoch + ")");
+        resolve();
+      };
+
+      sock.onmessage = (e) => {
+        if (myEpoch !== this.epoch) return;
+        try {
+          const event = JSON.parse(e.data as string) as WsEvent;
+          this.handlers.forEach((h) => h(event));
+        } catch {
+          /* noto'g'ri JSON */
+        }
+      };
+
+      sock.onclose = () => {
+        if (myEpoch !== this.epoch) return;
+        this._stopPing();
+        if (this.socket === sock) this.socket = null;
+        if (this.shouldRun && this.reconnects < MAX_RECONNECTS) {
+          this.reconnects++;
+          const delay = RECONNECT_DELAY_MS * this.reconnects;
+          console.log(`[WS] Qayta ulanish ${this.reconnects}/${MAX_RECONNECTS} (${delay}ms)`);
+          setTimeout(() => {
+            if (this.shouldRun && this.epoch === myEpoch) {
+              void this._openAndWait().catch(() => {});
+            }
+          }, delay);
+        }
+      };
+
+      sock.onerror = () => fail("WebSocket xatoligi");
+    });
   }
 
   private _startPing(): void {
@@ -96,21 +160,6 @@ class WsClient {
       this.pingTimer = null;
     }
   }
-
-  private _cleanup(): void {
-    this._stopPing();
-    if (this.socket) {
-      this.socket.onopen    = null;
-      this.socket.onmessage = null;
-      this.socket.onclose   = null;
-      this.socket.onerror   = null;
-      if (this.socket.readyState < WebSocket.CLOSING) {
-        this.socket.close();
-      }
-      this.socket = null;
-    }
-  }
 }
 
-// Yagona singleton misoli butun ilova bo'ylab ishlatiladi
 export const wsClient = new WsClient();

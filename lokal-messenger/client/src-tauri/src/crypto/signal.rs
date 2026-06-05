@@ -101,6 +101,12 @@ fn ed25519_pk_to_x25519(ed_pk: &[u8]) -> Result<[u8; 32]> {
     Ok(point.to_montgomery().to_bytes())
 }
 
+/// Ed25519 IK maxfiy kalitidan X25519 ochiq kalit (key_exchange / bundle uchun).
+pub fn identity_ed25519_to_x25519_pub(ed_sk: &[u8]) -> Result<Vec<u8>> {
+    let sk = ed25519_sk_to_x25519(ed_sk)?;
+    Ok(X25519Pub::from(&sk).as_bytes().to_vec())
+}
+
 /// Ed25519 maxfiy kalitining dastlabki 32 baytini X25519 StaticSecret ga aylantiradi.
 fn ed25519_sk_to_x25519(ed_sk: &[u8]) -> Result<StaticSecret> {
     // Ed25519 SK = 32 bayt seed.
@@ -139,13 +145,19 @@ pub fn hkdf_derive(ikm: &[u8], salt: Option<&[u8]>, info: &[u8], len: usize) -> 
 
 // ── X3DH ──────────────────────────────────────────────────────────────────
 
-/// Identifikatsiya ochiq kalitini X25519 ga o'tkazadi.
-/// Ed25519 Edwards nuqtasini sinab ko'radi, muvaffaqiyatsiz bo'lsa X25519 deb qabul qiladi.
-/// (Brauzer X25519 kalitlarini yuklaydi, Tauri Ed25519 → X25519 konvertatsiyasi kerak.)
-fn ik_pk_to_x25519(ik_pk: &[u8]) -> Result<X25519Pub> {
-    match ed25519_pk_to_x25519(ik_pk) {
-        Ok(x) => Ok(X25519Pub::from(x)),
-        Err(_) => x25519_pub(ik_pk), // allaqachon X25519 (brauzer kalit)
+/// Brauzer SPK imzosi (64 ta nol) — peer brauzer mijozi.
+fn is_dummy_spk_signature(sig: &[u8]) -> bool {
+    sig.len() < 64 || sig.iter().all(|&b| b == 0)
+}
+
+/// Bundle'dagi peer identity_key ni X3DH uchun X25519 ga keltiradi.
+fn peer_bundle_ik_to_x25519(ik_pk: &[u8], spk_sig: &[u8]) -> Result<X25519Pub> {
+    if is_dummy_spk_signature(spk_sig) {
+        // Brauzer: identity_key allaqachon X25519
+        x25519_pub(ik_pk)
+    } else {
+        // Tauri: Ed25519 → Montgomery
+        Ok(X25519Pub::from(ed25519_pk_to_x25519(ik_pk)?))
     }
 }
 
@@ -162,6 +174,7 @@ pub fn x3dh_sender(
     peer_spk_pk: &[u8],                 // Bob   SPK ochiq kalit (X25519)
     peer_spk_sig:&[u8],                 // Bob   SPK imzosi (0-filled bo'lsa tekshirilmaydi)
     peer_otpk:   Option<(&[u8], u32)>,  // Bob   OPK ochiq kalit + key_id (ixtiyoriy)
+    peer_ik_x25519_b64: Option<&str>,   // Bundle'dagi aniq X25519 IK (ixtiyoriy)
 ) -> Result<([u8; 32], Vec<u8>, Vec<u8>)> {
 
     // 1. SPK imzosi tekshiriladi — LEKIN imzo to'liq nol bo'lsa (brauzer rejimi) o'tkazib yuboriladi
@@ -180,8 +193,12 @@ pub fn x3dh_sender(
     // 4. Alice IK X25519 ochiq kalit (receiver ga yuboriladi)
     let our_ik_x25519 = X25519Pub::from(&ik_a_sk);
 
-    // 5. Bob IK ochiq kalitini X25519 ga (Ed25519 yoki to'g'ridan-to'g'ri X25519)
-    let ik_b_pub = ik_pk_to_x25519(peer_ik_pk)?;
+    // 5. Bob IK X25519: bundle.identity_key_x25519 yoki format aniqlash
+    let ik_b_pub = if let Some(b64) = peer_ik_x25519_b64 {
+        x25519_pub(&from_b64(b64)?)?
+    } else {
+        peer_bundle_ik_to_x25519(peer_ik_pk, peer_spk_sig)?
+    };
 
     // 6. Bob SPK ochiq kaliti
     let spk_b_pub = x25519_pub(peer_spk_pk)?;
@@ -229,8 +246,8 @@ pub fn x3dh_receiver(
     // Bob IK maxfiy kalitini X25519 ga konvertatsiya
     let ik_b_sk   = ed25519_sk_to_x25519(our_ik_sk)?;
 
-    // Alice IK ochiq kalitini X25519 ga (Ed25519 yoki to'g'ridan-to'g'ri X25519)
-    let ik_a_pub  = ik_pk_to_x25519(peer_ik_pk)?;
+    // key_exchange: sender_ik_x25519 allaqachon X25519 — konvertatsiya qilinmaydi
+    let ik_a_pub  = x25519_pub(peer_ik_pk)?;
 
     // Alice EK ochiq kaliti
     let ek_a_pub  = x25519_pub(peer_ek_pk)?;

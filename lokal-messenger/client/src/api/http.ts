@@ -41,7 +41,7 @@ export const authApi = {
     request<void>("POST", "/auth/logout", token),
 
   changePassword: (token: string, oldPwd: string, newPwd: string) =>
-    request<void>("POST", "/auth/change-password", token, {
+    request<void>("PUT", "/auth/password", token, {
       old_password: oldPwd,
       new_password: newPwd,
     }),

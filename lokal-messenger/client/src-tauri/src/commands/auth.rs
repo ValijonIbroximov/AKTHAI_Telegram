@@ -8,13 +8,23 @@ use tauri::State;
 use crate::{
     AppState,
     crypto::{
+        store::open_db,
         signal::{
             generate_dh_keypair, generate_identity_keypair,
             sign_prekey, to_b64,
         },
-        store::{get_identity, get_signed_prekey, save_identity, save_one_time_prekeys, save_signed_prekey},
+        store::{
+            clear_all_sessions, get_identity, get_signed_prekey,
+            save_identity, save_one_time_prekeys, save_signed_prekey,
+        },
     },
 };
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyInitResult {
+    pub regenerated: bool,
+}
 
 const OTPK_COUNT: u32 = 10;  // Bir martalik prekey miqdori (har loginда yangilari yuklanadi)
 
@@ -44,8 +54,17 @@ pub async fn init_signal_keys(
     token:    String,
     _user_id: String,
     state:    State<'_, AppState>,
-) -> Result<(), String> {
-    let db = state.db.clone();
+) -> Result<KeyInitResult, String> {
+    let db = state.db_conn();
+
+    let had_identity = get_identity(&db).map_err(|e| e.to_string())?.is_some();
+    let had_spk = get_signed_prekey(&db).map_err(|e| e.to_string())?.is_some();
+    let regenerated = !had_identity || !had_spk;
+
+    if regenerated {
+        clear_all_sessions(&db).map_err(|e| e.to_string())?;
+        log::warn!("[KEYS] Tauri: kalitlar qayta yaratilmoqda — barcha sessiyalar tozalandi");
+    }
 
     // ── Identity Key: SQLite'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ───
     let (reg_id, identity) = match get_identity(&db).map_err(|e| e.to_string())? {
@@ -64,15 +83,29 @@ pub async fn init_signal_keys(
         }
     };
 
-    // ── Signed PreKey: SQLite'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ─
-    let (spk, spk_sig) = match get_signed_prekey(&db).map_err(|e| e.to_string())? {
-        Some((k, sig)) => (k, sig),
-        None => {
-            let k = generate_dh_keypair(1);
-            let sig = sign_prekey(&identity.private_key, &k.public_key)
-                .map_err(|e| e.to_string())?;
-            save_signed_prekey(&db, &k, &sig).map_err(|e| e.to_string())?;
-            (k, sig)
+    // ── Signed PreKey: qayta generatsiya yoki SQLite'dan o'qish ─────────────
+    let (spk, spk_sig) = if regenerated {
+        let base_id = (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            % 900_000) as u32 + 100_000;
+        let k = generate_dh_keypair(base_id);
+        let sig = sign_prekey(&identity.private_key, &k.public_key)
+            .map_err(|e| e.to_string())?;
+        save_signed_prekey(&db, &k, &sig).map_err(|e| e.to_string())?;
+        log::info!("[KEYS] Tauri: yangi SPK yaratildi (key_id={})", k.key_id);
+        (k, sig)
+    } else {
+        match get_signed_prekey(&db).map_err(|e| e.to_string())? {
+            Some((k, sig)) => (k, sig),
+            None => {
+                let k = generate_dh_keypair(1);
+                let sig = sign_prekey(&identity.private_key, &k.public_key)
+                    .map_err(|e| e.to_string())?;
+                save_signed_prekey(&db, &k, &sig).map_err(|e| e.to_string())?;
+                (k, sig)
+            }
         }
     };
 
@@ -90,9 +123,15 @@ pub async fn init_signal_keys(
     log::info!("[KEYS] Tauri: {} OTPK yaratildi, base_id={}", OTPK_COUNT, base_id);
 
     // ── Serverga UPSERT (identity + spk doim yangilanadi, OTPK'lar qo'shiladi) ─
+    // X3DH uchun X25519 shaklidagi IK (brauzer mijozlari bundle'dan o'qiydi)
+    let ik_x25519 = crate::crypto::signal::identity_ed25519_to_x25519_pub(&identity.private_key)
+        .map_err(|e| e.to_string())?;
+
     let bundle = json!({
         "registration_id": reg_id,
         "identity_key":    to_b64(&identity.public_key),
+        "identity_key_x25519": to_b64(&ik_x25519),
+        "force_overwrite": regenerated,
         "signed_prekey": {
             "key_id":     spk.key_id,
             "public_key": to_b64(&spk.public_key),
@@ -126,5 +165,22 @@ pub async fn init_signal_keys(
         return Err(format!("Kalit yuklash muvaffaqiyatsiz: {status}"));
     }
 
+    Ok(KeyInitResult { regenerated })
+}
+
+/// Multi-account: har bir foydalanuvchi uchun alohida signal_{user_id}.db ochiladi.
+#[tauri::command]
+pub async fn set_active_user(user_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let safe_id: String = user_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if safe_id.is_empty() {
+        return Err("user_id noto'g'ri".into());
+    }
+    let path = state.data_dir.join(format!("signal_{safe_id}.db"));
+    let new_db = open_db(path.to_str().unwrap()).map_err(|e| e.to_string())?;
+    *state.db.lock().map_err(|e| e.to_string())? = new_db;
+    log::info!("[Crypto] Faol foydalanuvchi DB: signal_{safe_id}.db");
     Ok(())
 }

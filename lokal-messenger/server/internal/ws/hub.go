@@ -109,6 +109,8 @@ func (h *Hub) handleInbound(ctx context.Context, env inboundEnvelope) {
 		h.routeMessage(ctx, env)
 	case "key_exchange":
 		h.handleKeyExchange(ctx, env)
+	case "session.rekey_request":
+		h.handleSessionRekeyRequest(ctx, env)
 	case "msg.delivered":
 		h.markDelivered(ctx, env)
 	case "msg.read":
@@ -210,6 +212,32 @@ func (h *Hub) handleKeyExchange(ctx context.Context, env inboundEnvelope) {
 		log.Printf("[WS] ✓ key_exchange yetkazildi: to=%s", p.RecipientID)
 	} else {
 		log.Printf("[WS] ⚠ Adresat offline — key_exchange yo'qoldi: to=%s", p.RecipientID)
+	}
+}
+
+// handleSessionRekeyRequest — qabul qiluvchi sessiya yo'qligida sherikdan yangi key_exchange so'raydi.
+func (h *Hub) handleSessionRekeyRequest(ctx context.Context, env inboundEnvelope) {
+	var p struct {
+		ChatID      string `json:"chat_id"`
+		RecipientID string `json:"recipient_id"`
+	}
+	if err := json.Unmarshal(env.Payload, &p); err != nil {
+		log.Printf("[WS] ✗ session.rekey_request JSON parse xatoligi (from=%s): %v", env.From, err)
+		return
+	}
+
+	log.Printf("[WS] 🔄 session.rekey_request: from=%s → to=%s | chat=%s",
+		env.From, p.RecipientID, p.ChatID)
+
+	delivered := h.sendTo(p.RecipientID, "session.rekey_request", map[string]any{
+		"chat_id":      p.ChatID,
+		"requester_id": env.From,
+	})
+
+	if delivered {
+		log.Printf("[WS] ✓ session.rekey_request yetkazildi: to=%s", p.RecipientID)
+	} else {
+		log.Printf("[WS] ⚠ Adresat offline — session.rekey_request yo'qoldi: to=%s", p.RecipientID)
 	}
 }
 

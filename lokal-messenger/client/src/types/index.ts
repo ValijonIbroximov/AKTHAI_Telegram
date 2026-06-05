@@ -44,11 +44,17 @@ export interface Message {
 // Server hub.go dan keluvchi/ketuvchi hodisalar
 
 // Server → Client
+export interface WsSessionRekeyRequest {
+  chat_id:      string;
+  requester_id: string;
+}
+
 export type WsEvent =
-  | { type: "msg.recv";     payload: WsMsgRecv }
-  | { type: "msg.ack";      payload: WsMsgAck }
-  | { type: "key_exchange"; payload: WsKeyExchange }
-  | { type: "presence";     payload: WsPresence };
+  | { type: "msg.recv";              payload: WsMsgRecv }
+  | { type: "msg.ack";               payload: WsMsgAck }
+  | { type: "key_exchange";         payload: WsKeyExchange }
+  | { type: "session.rekey_request"; payload: WsSessionRekeyRequest }
+  | { type: "presence";             payload: WsPresence };
 
 // Client → Server (wsClient.sendMsg orqali yuboriladi)
 export interface WsSendPayload {
@@ -109,7 +115,8 @@ export interface LoginResponse {
 export interface KeyBundle {
   user_id?:         string;
   registration_id:  number;
-  identity_key:     string;    // Base64
+  identity_key:          string;    // Base64 (Ed25519 yoki X25519)
+  identity_key_x25519?:  string;    // Base64 — Tauri mijozlari uchun ixtiyoriy
   signed_prekey: {
     key_id:     number;
     public_key: string;        // Base64

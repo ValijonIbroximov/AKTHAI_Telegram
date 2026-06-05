@@ -164,6 +164,18 @@
   animation: spin 0.6s linear infinite;
 }
 
+.cancelLink {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+  background: none;
+  border: none;
+}
+.cancelLink:hover { color: var(--accent); }
+
 /* ── Izoh ── */
 .hint { margin-top: 20px; text-align: center; font-size: 13px; color: var(--text-3); line-height: 1.5; }
 .hintAccent { color: var(--accent); font-weight: 500; }

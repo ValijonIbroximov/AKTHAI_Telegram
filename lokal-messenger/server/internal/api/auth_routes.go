@@ -109,3 +109,66 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 		MustChangePassword: mustChange,
 	})
 }
+
+type changePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+// ChangePassword — eski parol tekshiriladi, yangi parol Argon2id bilan saqlanadi.
+func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return fiber.NewError(fiber.StatusUnauthorized, "autentifikatsiya talab qilinadi")
+	}
+
+	var req changePasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "so'rov tanasi noto'g'ri")
+	}
+	if len(req.OldPassword) < 1 {
+		return fiber.NewError(fiber.StatusBadRequest, "eski parol ko'rsatilmagan")
+	}
+	if len(req.NewPassword) < 8 {
+		return fiber.NewError(fiber.StatusBadRequest, "yangi parol kamida 8 belgidan iborat bo'lishi kerak")
+	}
+	if req.OldPassword == req.NewPassword {
+		return fiber.NewError(fiber.StatusBadRequest, "yangi parol eskisidan farq qilishi kerak")
+	}
+
+	var hash string
+	err := h.deps.DB.QueryRow(c.Context(), `
+		SELECT password_hash FROM users WHERE id = $1::uuid AND is_active = TRUE
+	`, userID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi topilmadi")
+	}
+	if err != nil {
+		return err
+	}
+
+	ok, _ := auth.VerifyPassword(req.OldPassword, hash)
+	if !ok {
+		return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
+	}
+
+	newHash, err := auth.HashPassword(req.NewPassword, h.deps.Config.Auth.Argon2)
+	if err != nil {
+		return err
+	}
+
+	_, err = h.deps.DB.Exec(c.Context(), `
+		UPDATE users
+		   SET password_hash = $2,
+		       must_change_password = FALSE,
+		       failed_login_attempts = 0,
+		       locked_until = NULL
+		 WHERE id = $1::uuid
+	`, userID, newHash)
+	if err != nil {
+		return err
+	}
+
+	_ = h.audit(c.Context(), userID, "password.change", nil, c.IP())
+	return c.SendStatus(fiber.StatusNoContent)
+}

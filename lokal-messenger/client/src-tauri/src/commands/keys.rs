@@ -31,10 +31,11 @@ pub struct RemoteOtpk {
 
 #[derive(Debug, Deserialize)]
 pub struct RemoteKeyBundle {
-    pub registration_id: u32,
-    pub identity_key:    String,
-    pub signed_prekey:   RemoteSpk,
-    pub one_time_prekey: Option<RemoteOtpk>,
+    pub registration_id:      u32,
+    pub identity_key:         String,
+    pub identity_key_x25519:  Option<String>,
+    pub signed_prekey:        RemoteSpk,
+    pub one_time_prekey:      Option<RemoteOtpk>,
 }
 
 /// establish_session natijasi — frontend key_exchange WS xabarini yuborish uchun ishlatadi.
@@ -61,13 +62,13 @@ pub async fn establish_session(
 ) -> Result<EstablishResult, String> {
     let bundle: RemoteKeyBundle = serde_json::from_str(&bundle_json)
         .map_err(|e| format!("Bundle JSON formati noto'g'ri: {e}"))?;
-    let db = state.db.clone();
+    let db = state.db_conn();
 
     let (_, our_ik) = get_identity(&db)
         .map_err(|e| e.to_string())?
         .ok_or("Identifikatsiya kaliti topilmadi — avval init_signal_keys chaqiring")?;
 
-    let peer_ik_pk   = from_b64(&bundle.identity_key).map_err(|e| e.to_string())?;
+    let peer_ik_raw  = from_b64(&bundle.identity_key).map_err(|e| e.to_string())?;
     let peer_spk_pk  = from_b64(&bundle.signed_prekey.public_key).map_err(|e| e.to_string())?;
     let peer_spk_sig = from_b64(&bundle.signed_prekey.signature).map_err(|e| e.to_string())?;
 
@@ -83,10 +84,11 @@ pub async fn establish_session(
     let (shared_key, ek_pk_raw, our_ik_x25519_raw) = x3dh_sender(
         &our_ik.private_key,
         &our_ik.public_key,
-        &peer_ik_pk,
+        &peer_ik_raw,
         &peer_spk_pk,
         &peer_spk_sig,
         otpk_ref,
+        bundle.identity_key_x25519.as_deref(),
     ).map_err(|e| e.to_string())?;
 
     let (ratchet_pk, ratchet_sk) = generate_ratchet_keypair();
@@ -125,7 +127,7 @@ pub async fn establish_session_receiver(
     otpk_key_id:      u32,        // Qaysi OPK ishlatilganini bilish uchun (0=yo'q)
     state:            State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = state.db.clone();
+    let db = state.db_conn();
 
     // Bizning identifikatsiya kalitimiz
     let (_, our_ik) = get_identity(&db)
@@ -185,7 +187,37 @@ pub async fn establish_session_receiver(
 /// sendMessage dan oldin chaqiriladi — agar false bo'lsa, X3DH qayta ishlatiladi.
 #[tauri::command]
 pub async fn has_session(peer_id: String, state: State<'_, AppState>) -> Result<bool, String> {
-    get_session(&state.db, &peer_id)
+    get_session(&state.db_conn(), &peer_id)
         .map(|s| s.is_some())
         .map_err(|e| e.to_string())
+}
+
+/// Berilgan peer bilan Signal sessiyasini o'chirish.
+#[tauri::command]
+pub async fn clear_peer_session(peer_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    crate::crypto::store::clear_session(&state.db_conn(), &peer_id).map_err(|e| e.to_string())
+}
+
+/// Barcha Signal sessiyalarini o'chirish.
+#[tauri::command]
+pub async fn clear_all_sessions(state: State<'_, AppState>) -> Result<(), String> {
+    crate::crypto::store::clear_all_sessions(&state.db_conn()).map_err(|e| e.to_string())
+}
+
+/// SQLite dagi barcha Signal sessiya peer_id lari (bootstrap / debug).
+#[tauri::command]
+pub async fn list_session_peers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let c = state.db_conn();
+    let db = c.lock().unwrap();
+    let mut st = db
+        .prepare("SELECT peer_id FROM sessions ORDER BY peer_id")
+        .map_err(|e| e.to_string())?;
+    let rows = st
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
 }

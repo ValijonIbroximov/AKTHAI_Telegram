@@ -2,6 +2,7 @@
 // MessageArea o'rnida ko'rsatiladi; ichki navigatsiya bilan bo'limlarga kirish mumkin.
 import { useState, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
+import ChangePasswordModal from "./ChangePasswordModal";
 import { useTheme, FONT_LABELS, RADIUS_LABELS, type FontChoice, type RadiusPreset } from "@/contexts/ThemeContext";
 import { THEMES } from "@/themes";
 import type { ThemeId } from "@/themes";
@@ -117,7 +118,9 @@ export default function SettingsPage({ onBack }: Props) {
         {section === "about" && <AboutSection />}
 
         {/* ═══ PLACEHOLDER BO'LIMLAR ═══ */}
-        {(section === "account" || section === "notifications" || section === "privacy" || section === "language") && (
+        {section === "privacy" && <PrivacySection />}
+
+        {(section === "account" || section === "notifications" || section === "language") && (
           <PlaceholderSection label={MAIN_SECTIONS.find(s => s.id === section)?.label ?? ""} />
         )}
 
@@ -313,6 +316,76 @@ function AboutSection() {
         <p className={s.authorText}>Valijon Ibroximov tomonidan yaratilgan</p>
         <p className={s.authorSub}>Yopiq tarmoq uchun mo'ljallangan. Barcha huquqlar himoyalangan.</p>
       </div>
+    </div>
+  );
+}
+
+/* ─── Maxfiylik va xavfsizlik ──────────────────────────────── */
+function PrivacySection() {
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const [pin, setPin]         = useState("");
+  const [pinMsg, setPinMsg]   = useState<string | null>(null);
+  const setAccountPin         = useAuthStore((st) => st.setAccountPin);
+  const active                = useAuthStore((st) => st.accounts.find((a) => a.userId === st.activeAccountId));
+
+  const savePin = async () => {
+    setPinMsg(null);
+    try {
+      await setAccountPin(pin);
+      setPin("");
+      setPinMsg("PIN saqlandi — akkaunt almashishda ishlatiladi");
+    } catch (e) {
+      setPinMsg(e instanceof Error ? e.message : "PIN saqlanmadi");
+    }
+  };
+
+  return (
+    <div className={s.privacySection}>
+      <div className={s.groupBox}>
+        <div className={s.groupTitle}>Parol</div>
+        <p className={s.groupDesc}>Hisob parolini xavfsiz tarzda yangilang (Argon2id)</p>
+        <button type="button" className={s.actionRow} onClick={() => setPwdOpen(true)}>
+          <span className={s.actionIcon}>🔑</span>
+          <span className={s.actionText}>
+            <span className={s.actionLabel}>Parolni o'zgartirish</span>
+            <span className={s.actionSub}>Eski va yangi parol talab qilinadi</span>
+          </span>
+          <svg className={s.sectionChevron} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M9 18l6-6-6-6" strokeLinecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div className={s.groupBox}>
+        <div className={s.groupTitle}>Tez qulf (PIN)</div>
+        <p className={s.groupDesc}>Akkaunt almashishda 4–6 raqamli PIN (ixtiyoriy)</p>
+        <div className={s.pinRow}>
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            className={s.pinInput}
+            placeholder="••••"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          />
+          <button type="button" className={s.pinSaveBtn} onClick={savePin} disabled={pin.length < 4}>
+            Saqlash
+          </button>
+        </div>
+        {active?.pinHash && <p className={s.pinOk}>✓ PIN o'rnatilgan</p>}
+        {pinMsg && <p className={s.pinMsg}>{pinMsg}</p>}
+      </div>
+
+      <div className={s.groupBox}>
+        <div className={s.groupTitle}>E2EE</div>
+        <p className={s.groupDesc}>
+          Barcha xabarlar Signal Protocol (X3DH + Double Ratchet) bilan shifrlanadi.
+          Kalitlar faqat qurilmangizda saqlanadi.
+        </p>
+      </div>
+
+      <ChangePasswordModal open={pwdOpen} onClose={() => setPwdOpen(false)} />
     </div>
   );
 }

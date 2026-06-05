@@ -1,6 +1,7 @@
 // Tauri ilovasi kutubxona kiritish nuqtasi.
 // AppState — barcha buyruqlar orasida umumlashtirilgan holat.
 
+use std::path::PathBuf;
 use std::sync::{
     atomic::AtomicBool,
     Arc, Mutex,
@@ -14,10 +15,19 @@ use crypto::store::{open_db, DbConn};
 
 /// Ilova umumiy holati — barcha Tauri buyruqlariga State<AppState> orqali beriladi.
 pub struct AppState {
-    pub db:       DbConn,
+    /// Har bir foydalanuvchi uchun alohida signal_{user_id}.db
+    pub db:       Mutex<DbConn>,
+    pub data_dir: PathBuf,
     pub token:    Arc<Mutex<Option<String>>>,
     /// Mualliflik tekshiruvi o'tmasa true bo'ladi — barcha kripto buyruqlar bloklanadi.
     pub poisoned: Arc<AtomicBool>,
+}
+
+impl AppState {
+    /// Thread-safe SQLite ulanish nusxasi (har bir buyruq uchun).
+    pub fn db_conn(&self) -> DbConn {
+        self.db.lock().unwrap().clone()
+    }
 }
 
 /// Tauri ilovasini sozlash va ishga tushirish.
@@ -31,14 +41,15 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()
                 .expect("App data dir aniqlanmadi");
             std::fs::create_dir_all(&data_dir)?;
-            let db_path = data_dir.join("signal.db");
+            let db_path = data_dir.join("signal_default.db");
 
             let db = open_db(db_path.to_str().unwrap())
                 .expect("Signal bazasini ochib bo'lmadi");
 
             // poisoned = true: React mualliflik tekshiruvini o'tkazguncha kripto bloklanadi
             app.manage(AppState {
-                db,
+                db:       Mutex::new(db),
+                data_dir,
                 token:    Arc::new(Mutex::new(None)),
                 poisoned: Arc::new(AtomicBool::new(true)),
             });
@@ -53,10 +64,14 @@ pub fn run() {
             commands::auth::store_token,
             commands::auth::clear_token,
             commands::auth::init_signal_keys,
+            commands::auth::set_active_user,
             // Kalit almashish
             commands::keys::establish_session,
             commands::keys::establish_session_receiver,
             commands::keys::has_session,
+            commands::keys::list_session_peers,
+            commands::keys::clear_peer_session,
+            commands::keys::clear_all_sessions,
             // E2EE xabar
             commands::messages::encrypt_message,
             commands::messages::decrypt_message,

@@ -31,7 +31,7 @@ pub async fn encrypt_message(
     state:        State<'_, AppState>,
 ) -> Result<String, String> {
     guard_integrity!(state);
-    ratchet_encrypt(&state.db, &recipient_id, plaintext.as_bytes())
+    ratchet_encrypt(&state.db_conn(), &recipient_id, plaintext.as_bytes())
         .map_err(|e| e.to_string())
 }
 
@@ -45,7 +45,7 @@ pub async fn decrypt_message(
     state:      State<'_, AppState>,
 ) -> Result<String, String> {
     guard_integrity!(state);
-    let bytes = ratchet_decrypt(&state.db, &sender_id, &ciphertext)
+    let bytes = ratchet_decrypt(&state.db_conn(), &sender_id, &ciphertext)
         .map_err(|e| e.to_string())?;
     String::from_utf8(bytes)
         .map_err(|e| format!("UTF-8 xatoligi: {e}"))
