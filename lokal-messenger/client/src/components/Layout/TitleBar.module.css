@@ -66,3 +66,13 @@
   background: #e81123;
   color: #fff;
 }
+
+/* Brauzerda oyna tugmalari — ko'rinadi lekin mock (ishlamaydi) */
+.ctrlBrowser {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ctrlBrowser:hover {
+  background: transparent;
+  color: var(--text-2);
+}

@@ -112,12 +112,13 @@ function schedulePendingRetries(
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   timers.push(setTimeout(async () => {
-    console.log(`[X3DH] Retry #1 (1.5s): pending decrypt peer=${peerId}`);
+    console.log(`[X3DH] Retry #1 (2s): pending decrypt peer=${peerId}`);
     await flushPendingForPeer(peerId, set, get);
     if ((pendingDecryptQueue.get(peerId)?.length ?? 0) > 0) {
+      console.log(`[X3DH] Retry #1 muvaffaqiyatsiz — rekey_request yuborilmoqda peer=${peerId}`);
       requestPeerRekey(chatId, peerId);
     }
-  }, 1500));
+  }, 2000));
 
   timers.push(setTimeout(async () => {
     console.log(`[X3DH] Retry #2 (3s): pending decrypt peer=${peerId}`);
@@ -586,9 +587,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           throw new Error("X3DH muvaffaqiyatsiz: peer kalit to'plamini ololmadi yoki sessiya o'rnatilmadi");
         }
         sendKeyExchangeWs(chatId, recipientId, result.ekPk, result.senderIkX25519, result.spkKeyId, result.otpkKeyId);
-        // Qabul qiluvchi key_exchange ni qayta ishlashi uchun kutish (race oldini olish)
-        await new Promise<void>((res) => setTimeout(res, 800));
-        console.log(`[X3DH] sendMessage: sessiya o'rnatildi → ${recipientId}`);
+        // Race condition oldini olish: qabul qiluvchi key_exchange ni qayta ishlashi uchun kutamiz.
+        // 1500ms — key_exchange WS → establishSessionReceiver → SQLite/IDB yozish uchun yetarli.
+        console.log(`[X3DH] sendMessage: key_exchange yuborildi, 1500ms kutilmoqda…`);
+        await new Promise<void>((res) => setTimeout(res, 1500));
+        console.log(`[X3DH] sendMessage: ✅ sessiya o'rnatildi → ${recipientId}`);
       }
     } catch (setupErr) {
       console.error("[X3DH] Sessiya o'rnatishda xatolik:", setupErr);
