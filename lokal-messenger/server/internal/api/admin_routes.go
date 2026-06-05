@@ -67,6 +67,47 @@ func (h *Handlers) AdminCreateUser(c *fiber.Ctx) error {
 	})
 }
 
+// AdminListUsers — admin barcha foydalanuvchilar ro'yxatini ko'radi.
+func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
+	rows, err := h.deps.DB.Query(c.Context(), `
+		SELECT id::text, username, display_name, role,
+		       COALESCE(rank_title, ''), COALESCE(unit_code, ''),
+		       is_active
+		FROM users
+		ORDER BY created_at ASC
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type userRow struct {
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Role        string `json:"role"`
+		RankTitle   string `json:"rank_title"`
+		UnitCode    string `json:"unit_code"`
+		IsActive    bool   `json:"is_active"`
+	}
+
+	var result []userRow
+	for rows.Next() {
+		var u userRow
+		if err := rows.Scan(
+			&u.ID, &u.Username, &u.DisplayName, &u.Role,
+			&u.RankTitle, &u.UnitCode, &u.IsActive,
+		); err != nil {
+			return err
+		}
+		result = append(result, u)
+	}
+	if result == nil {
+		result = []userRow{}
+	}
+	return c.JSON(result)
+}
+
 // AdminSetActive — admin foydalanuvchini bloklashi yoki faollashtirishi mumkin.
 // is_active=false qilingan foydalanuvchi tizimga kira olmaydi.
 func (h *Handlers) AdminSetActive(c *fiber.Ctx) error {

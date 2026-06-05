@@ -224,8 +224,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const local = await loadLocalMessages(chatId);
       if (local.length) {
-        set((s) => ({ messages: { ...s.messages, [chatId]: local } }));
-        const lastLocal = local[local.length - 1];
+        const localSorted = [...local].sort((a, b) => a.created_at.localeCompare(b.created_at));
+        set((s) => ({ messages: { ...s.messages, [chatId]: localSorted } }));
+        const lastLocal = localSorted[localSorted.length - 1];
         if (lastLocal.plaintext) {
           set((s) => ({
             chats: s.chats.map((c) =>
@@ -276,7 +277,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         })
       );
 
-      const merged = mergeMessages(local, decrypted);
+      const merged = mergeMessages(local, decrypted)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
       const last = merged[merged.length - 1];
 
       set((s) => ({

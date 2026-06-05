@@ -11,6 +11,7 @@ interface Props {
   open:        boolean;
   onClose:     () => void;
   onSettings:  () => void;
+  onAdmin?:    () => void;
 }
 
 const NAV_ITEMS = [
@@ -29,7 +30,7 @@ function avatarColor(userId: string): string {
   return AVATAR_COLORS[userId.charCodeAt(0) % AVATAR_COLORS.length]!;
 }
 
-export default function SideDrawer({ open, onClose, onSettings }: Props) {
+export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props) {
   const {
     username, role, userId, activeAccountId, accounts,
     logout, beginAddAccount, beginSwitchAccount,
@@ -61,6 +62,11 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
     onClose();
     onSettings();
   }, [onClose, onSettings]);
+
+  const handleAdmin = useCallback(() => {
+    onClose();
+    onAdmin?.();
+  }, [onClose, onAdmin]);
 
   const handleLogout = useCallback(async () => {
     onClose();
@@ -154,6 +160,13 @@ export default function SideDrawer({ open, onClose, onSettings }: Props) {
             <span className={s.navIcon}>⚙️</span>
             <span className={s.navLabel}>Sozlamalar</span>
           </button>
+
+          {role === "admin" && (
+            <button className={s.navItem} onClick={handleAdmin}>
+              <span className={s.navIcon}>🛡</span>
+              <span className={s.navLabel}>Admin Panel</span>
+            </button>
+          )}
 
           <div className={s.divider} />
 

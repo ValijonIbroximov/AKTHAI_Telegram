@@ -52,6 +52,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 
 	// Faqat admin uchun marshrutlar (RBAC: "admin" roli talab qilinadi)
 	admin := v1.Group("/admin", middleware.RequireRole("admin"))
+	admin.Get("/users", h.AdminListUsers)
 	admin.Post("/users", h.AdminCreateUser)
 	admin.Patch("/users/:id/active", h.AdminSetActive)
 	admin.Get("/audit-log", h.AdminAuditLog)

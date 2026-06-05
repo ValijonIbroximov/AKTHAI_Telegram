@@ -1,9 +1,11 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
 import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
+import { getApiBase } from "@/config/serverConfig";
 
-const BASE_URL = import.meta.env.PROD
-  ? "https://server.lokal:8443/api/v1"
-  : "/api/v1";
+function getBaseUrl(): string {
+  if (import.meta.env.PROD) return getApiBase();
+  return "/api/v1";
+}
 
 function headers(token?: string): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -17,7 +19,7 @@ async function request<T>(
   token?: string,
   body?:  unknown
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
     method,
     headers: headers(token),
     body:    body ? JSON.stringify(body) : undefined,
@@ -143,18 +145,13 @@ export const keysApi = {
 
 // ── Media URL yordamchisi ──────────────────────────────────────────────────
 //
-// Dev:  BASE_URL = "/api/v1"  → prefix = ""  → URL = "/api/v1/files/{id}"
-//       Vite proxy /api/* → https://server.lokal:8443 orqali proxylaydi.
-//
-// Prod: BASE_URL = "https://server.lokal:8443/api/v1"
-//       → prefix = "https://server.lokal:8443"
-//       → URL = "https://server.lokal:8443/api/v1/files/{id}"
 function mediaOrigin(): string {
-  if (!BASE_URL.startsWith("http")) return ""; // dev — relative URL (Vite proxy)
+  const base = getBaseUrl();
+  if (!base.startsWith("http")) return "";
   try {
-    return new URL(BASE_URL).origin;           // prod — "https://server.lokal:8443"
+    return new URL(base).origin;
   } catch {
-    return BASE_URL.replace(/\/api\/v1.*$/, "");
+    return base.replace(/\/api\/v1.*$/, "");
   }
 }
 
@@ -169,7 +166,7 @@ export const mediaApi = {
     const form = new FormData();
     form.append("data", blob, "encrypted.bin");
 
-    const res = await fetch(`${BASE_URL}/upload`, {
+    const res = await fetch(`${getBaseUrl()}/upload`, {
       method:  "POST",
       headers: { Authorization: `Bearer ${token}` },
       body:    form,

@@ -9,10 +9,13 @@ import MessageArea       from "@/components/Chat/MessageArea";
 import SideDrawer        from "@/components/Layout/SideDrawer";
 import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
+import ServerSetup       from "@/components/Setup/ServerSetup";
+import AdminDashboard    from "@/components/Admin/AdminDashboard";
 import styles            from "./App.module.css";
 import { initNotifications } from "@/utils/notifications";
+import { hasServerUrl }  from "@/config/serverConfig";
 
-type MainView = "chat" | "settings";
+type MainView = "chat" | "settings" | "admin";
 
 export default function App() {
   const token    = useAuthStore((s) => s.token);
@@ -22,6 +25,7 @@ export default function App() {
   const loadChats = useChatStore((s) => s.loadChats);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mainView, setMainView]     = useState<MainView>("chat");
+  const [serverReady, setServerReady] = useState(hasServerUrl);
 
   useEffect(() => {
     void initNotifications();
@@ -48,7 +52,16 @@ export default function App() {
     setMainView("chat");
   }, []);
 
+  const openAdmin = useCallback(() => {
+    setDrawerOpen(false);
+    setMainView("admin");
+  }, []);
+
   const showLogin = !token || uiMode === "add_account";
+
+  if (!serverReady) {
+    return <ServerSetup onDone={() => setServerReady(true)} />;
+  }
 
   if (showLogin) {
     return (
@@ -70,10 +83,13 @@ export default function App() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           onSettings={openSettings}
+          onAdmin={openAdmin}
         />
         <ChatList onMenuOpen={() => setDrawerOpen(true)} />
         {mainView === "settings" ? (
           <SettingsPage onBack={closeSettings} />
+        ) : mainView === "admin" ? (
+          <AdminDashboard onBack={() => setMainView("chat")} />
         ) : (
           <MessageArea />
         )}

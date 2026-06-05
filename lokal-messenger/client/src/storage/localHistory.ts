@@ -272,7 +272,9 @@ export async function loadLocalMessages(chatId: string): Promise<Message[]> {
         chatId,
         userId: userId ?? "",
       });
-      return (rows ?? []).map(fromStored);
+      return (rows ?? [])
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map(fromStored);
     }
     const rows = await idbLoadByChat(chatId);
     return rows.map(fromStored);
