@@ -663,17 +663,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
     switch (event.type) {
       case "msg.recv": {
         const m = event.payload as WsMsgRecv;
-        console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id}`);
+        console.log(`[WS] msg.recv: from=${m.sender_id} chat=${m.chat_id} id=${m.msg_id}`);
 
         void (async () => {
-          if (get().messages[m.chat_id]?.some((x) => x.id === m.msg_id)) return;
+          // Takroriy xabar tekshiruvi
+          if (get().messages[m.chat_id]?.some((x) => x.id === m.msg_id)) {
+            console.log(`[WS] msg.recv: takroriy xabar id=${m.msg_id}, o'tkazib yuborildi`);
+            return;
+          }
 
-          // a) E2EE deshifrlash
+          // a) E2EE — BIR MARTA deshifrlash
           let plaintext: string;
           try {
             plaintext = await decryptPlaintext(m.chat_id, m.sender_id, m.ciphertext);
+            console.log(`[WS] ✅ Deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
           } catch (e) {
             const err = classifyDecryptError(e);
+            console.warn(`[WS] Deshifrlash xatosi: id=${m.msg_id} code=${err.code}`);
             plaintext =
               err.code !== "SESSION_NOT_FOUND"
                 ? DECRYPT_ERROR_LABEL
@@ -692,17 +698,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           };
 
           if (isPendingDecrypt(plaintext)) {
+            // Sessiya hali yo'q — keyinroq retry qilinadi
             queuePendingDecrypt(m.sender_id, newMsg, set, get);
           } else if (isReadablePlaintext(plaintext)) {
-            // b) Mahalliy bazaga yozish (UI dan oldin)
+            // b) OCHIQ MATNNI DARHOL saqlash — qayta deshifrlash oldini olish
             try {
               await persistLocalMessage(newMsg);
+              console.log(`[WS] 💾 Saqlandi: id=${m.msg_id}`);
             } catch (e) {
-              console.error("[WS] persistLocalMessage xatoligi:", e);
+              // MISMATCH xatosi: boshqa akkaunt konteksti — xabarni tashlamaymiz, faqat log
+              console.error("[WS] persistLocalMessage xatoligi (davom etadi):", e);
             }
           }
+          // DECRYPT_ERROR_LABEL holati: ratchet xatosi — saqlanmaydi, pending ham qilinmaydi
 
-          // c) Store / UI yangilash
+          // c) Store / UI yangilash (persist dan SO'NG)
           set((s) => ({
             messages: {
               ...s.messages,
@@ -713,9 +723,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 ? {
                     ...c,
                     last_message: {
-                      sender_id: m.sender_id,
-                      preview:     previewFromMessage(newMsg),
-                      created_at:  newMsg.created_at,
+                      sender_id:  m.sender_id,
+                      preview:    previewFromMessage(newMsg),
+                      created_at: newMsg.created_at,
                     },
                     unread_count:
                       c.id === get().activeChatId ? c.unread_count : c.unread_count + 1,
@@ -725,7 +735,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ),
           }));
 
-          // Tauri OS bildirishnomasi
+          // d) Tauri OS bildirishnomasi (faqat muvaffaqiyatli deshifrlanganda)
           if (isReadablePlaintext(plaintext)) {
             const chat = get().chats.find((c) => c.id === m.chat_id);
             const show = await shouldNotifyIncoming(m.chat_id, get().activeChatId);

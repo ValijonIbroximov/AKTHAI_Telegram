@@ -16,17 +16,24 @@ use crypto::store::{open_db, DbConn};
 /// Ilova umumiy holati — barcha Tauri buyruqlariga State<AppState> orqali beriladi.
 pub struct AppState {
     /// Har bir foydalanuvchi uchun alohida signal_{user_id}.db
-    pub db:       Mutex<DbConn>,
-    pub data_dir: PathBuf,
-    pub token:    Arc<Mutex<Option<String>>>,
+    pub db:             Mutex<DbConn>,
+    pub data_dir:       PathBuf,
+    pub token:          Arc<Mutex<Option<String>>>,
+    /// Joriy faol foydalanuvchi ID — set_active_user paytida o'rnatiladi.
+    /// save_local_message / load_local_messages shu bilan validatsiya qilinadi.
+    pub active_user_id: Mutex<String>,
     /// Mualliflik tekshiruvi o'tmasa true bo'ladi — barcha kripto buyruqlar bloklanadi.
-    pub poisoned: Arc<AtomicBool>,
+    pub poisoned:       Arc<AtomicBool>,
 }
 
 impl AppState {
     /// Thread-safe SQLite ulanish nusxasi (har bir buyruq uchun).
     pub fn db_conn(&self) -> DbConn {
         self.db.lock().unwrap().clone()
+    }
+    /// Joriy faol foydalanuvchi ID ni olish.
+    pub fn get_active_user_id(&self) -> String {
+        self.active_user_id.lock().unwrap().clone()
     }
 }
 
@@ -49,10 +56,11 @@ pub fn run() {
 
             // poisoned = true: React mualliflik tekshiruvini o'tkazguncha kripto bloklanadi
             app.manage(AppState {
-                db:       Mutex::new(db),
+                db:             Mutex::new(db),
                 data_dir,
-                token:    Arc::new(Mutex::new(None)),
-                poisoned: Arc::new(AtomicBool::new(true)),
+                token:          Arc::new(Mutex::new(None)),
+                active_user_id: Mutex::new(String::new()),
+                poisoned:       Arc::new(AtomicBool::new(true)),
             });
 
             Ok(())

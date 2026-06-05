@@ -169,6 +169,7 @@ pub async fn init_signal_keys(
 }
 
 /// Multi-account: har bir foydalanuvchi uchun alohida signal_{user_id}.db ochiladi.
+/// AppState.active_user_id ham yangilanadi — history buyruqlari shu bilan validatsiya qiladi.
 #[tauri::command]
 pub async fn set_active_user(user_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let safe_id: String = user_id
@@ -180,7 +181,17 @@ pub async fn set_active_user(user_id: String, state: State<'_, AppState>) -> Res
     }
     let path = state.data_dir.join(format!("signal_{safe_id}.db"));
     let new_db = open_db(path.to_str().unwrap()).map_err(|e| e.to_string())?;
-    *state.db.lock().map_err(|e| e.to_string())? = new_db;
-    log::info!("[Crypto] Faol foydalanuvchi DB: signal_{safe_id}.db");
+
+    // DB va active_user_id ni atomik almashtirish
+    {
+        let mut db_guard = state.db.lock().map_err(|e| e.to_string())?;
+        *db_guard = new_db;
+    }
+    {
+        let mut uid_guard = state.active_user_id.lock().map_err(|e| e.to_string())?;
+        *uid_guard = safe_id.clone();
+    }
+
+    log::info!("[Crypto] ✅ Faol foydalanuvchi: signal_{safe_id}.db");
     Ok(())
 }
