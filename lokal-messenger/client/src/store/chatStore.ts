@@ -147,14 +147,19 @@ async function redDecryptChatMessages(
   const msgs = get().messages[chatId];
   if (!msgs?.length) return;
 
-  const updated = await Promise.all(
-    msgs.map(async (msg) => {
-      if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
-      if (isReadablePlaintext(msg.plaintext)) return msg;
-      const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
-      return { ...msg, plaintext: pt };
-    })
-  );
+  const updated: Message[] = [];
+  for (const msg of msgs) {
+    if (msg.msg_type !== "text" || !msg.ciphertext) {
+      updated.push(msg);
+      continue;
+    }
+    if (isReadablePlaintext(msg.plaintext)) {
+      updated.push(msg);
+      continue;
+    }
+    const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+    updated.push({ ...msg, plaintext: pt });
+  }
 
   const last = updated[updated.length - 1];
   set((s) => ({
@@ -254,28 +259,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const local = await loadLocalMessages(chatId);
       const rawMsgs = await chatApi.history(token, chatId);
 
-      const decrypted = await Promise.all(
-        rawMsgs.map(async (msg) => {
-          if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
-          // Mahalliy bazada ochiq matn mavjud bo'lsa → qayta deshifrlash kerak emas
-          const hydrated = hydrateFromLocal(local, msg);
-          if (isReadablePlaintext(hydrated.plaintext)) {
-            const mp = parseMediaPayload(hydrated.plaintext);
-            if (mp) {
-              const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
-              return { ...hydrated, msg_type: mt };
-            }
-            return hydrated;
+      const decrypted: Message[] = [];
+      for (const msg of rawMsgs) {
+        if (msg.msg_type !== "text" || !msg.ciphertext) {
+          decrypted.push(msg);
+          continue;
+        }
+        const hydrated = hydrateFromLocal(local, msg);
+        if (isReadablePlaintext(hydrated.plaintext)) {
+          const mp = parseMediaPayload(hydrated.plaintext);
+          if (mp) {
+            const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
+            decrypted.push({ ...hydrated, msg_type: mt });
+          } else {
+            decrypted.push(hydrated);
           }
-          // Mahalliy bazada topilmadi — deshifrlashga urinib ko'ramiz
-          const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
-          const mp = parseMediaPayload(pt);
-          const finalType: Message["msg_type"] = mp
-            ? (mp.mime_type.startsWith("image/") ? "image" : "file")
-            : msg.msg_type;
-          return { ...msg, plaintext: pt, msg_type: finalType };
-        })
-      );
+          continue;
+        }
+        const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+        const mp = parseMediaPayload(pt);
+        const finalType: Message["msg_type"] = mp
+          ? (mp.mime_type.startsWith("image/") ? "image" : "file")
+          : msg.msg_type;
+        decrypted.push({ ...msg, plaintext: pt, msg_type: finalType });
+      }
 
       const merged = mergeMessages(local, decrypted)
         .sort((a, b) => a.created_at.localeCompare(b.created_at));

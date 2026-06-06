@@ -9,6 +9,7 @@ import { x25519 } from "@noble/curves/ed25519.js";
 import { peerBundleIkToX25519 } from "./ikConvert";
 import { DecryptError } from "./cryptoErrors";
 import { scopedIdbName, getActiveCryptoUserId } from "./userScope";
+import { getApiBaseUrl } from "@/api/http";
 
 // ── Yordamchi ──────────────────────────────────────────────────────────────
 
@@ -227,7 +228,25 @@ async function getSession(peerId: string): Promise<WebSession | null> {
     recvCk:     raw.recvCk,
     sendMsgNum: raw.sendMsgNum ?? 0,
     recvMsgNum: raw.recvMsgNum ?? 0,
+    role:       raw.role,
   };
+}
+
+/** Bir peer uchun deshifrlashni ketma-ketlashtiradi (WS + tarix race oldini olish) */
+const peerDecryptChains = new Map<string, Promise<unknown>>();
+
+export function withPeerDecryptLock<T>(peerId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = peerDecryptChains.get(peerId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((res) => { release = res; });
+  const chain = prev.then(() => gate);
+  peerDecryptChains.set(peerId, chain);
+  return prev
+    .then(() => fn())
+    .finally(() => {
+      release();
+      if (peerDecryptChains.get(peerId) === chain) peerDecryptChains.delete(peerId);
+    });
 }
 
 async function saveSession(peerId: string, sess: WebSession): Promise<void> {
@@ -313,6 +332,13 @@ export async function webInitSignalKeys(token: string): Promise<KeyInitResult> {
   const existingSpk = await idbGet<{ id: string; keyId?: number; skB64: string; pkB64: string }>("identity", "spk");
   const regenerated = !existingIdent || !existingSpk;
 
+  // Mavjud kalitlar IDB'da — har login'da qayta yuklash OTPK'larni serverda
+  // almashtirib, in-flight PreKey xabarlarini buzadi.
+  if (existingIdent && existingSpk) {
+    console.log("[WebCrypto] Kalitlar IDB'da mavjud — serverga qayta yuklash o'tkazildi");
+    return { regenerated: false };
+  }
+
   if (regenerated) {
     await webClearAllSessions();
     console.warn("[WebCrypto] ⚠ Kalitlar qayta yaratilmoqda — barcha sessiyalar tozalandi");
@@ -368,7 +394,7 @@ export async function webInitSignalKeys(token: string): Promise<KeyInitResult> {
     one_time_prekeys: otpks,
   };
 
-  const BASE = import.meta.env.PROD ? "https://server.lokal:8443/api/v1" : "/api/v1";
+  const BASE = getApiBaseUrl();
   const resp = await fetch(`${BASE}/keys/upload`, {
     method:  "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -557,6 +583,12 @@ export async function webEstablishSessionReceiver(
   spkKeyId:          number,
   otpkKeyId:         number
 ): Promise<void> {
+  const existing = await getSession(peerId);
+  if (existing?.role === "receiver" && existing.recvMsgNum > 0) {
+    console.log(`[WebCrypto] Receiver sessiya faol — X3DH o'tkazib yuborildi: ${peerId}`);
+    return;
+  }
+
   const ident = await getIdentity();
   if (!ident) throw new Error("Identifikatsiya kaliti yo'q — avval webInitSignalKeys chaqiring");
 
@@ -775,6 +807,9 @@ export async function webDecryptMessage(
       dh_rk:        header.dh_ratchet_pk ? header.dh_ratchet_pk.slice(0, 16) + "…" : "(empty)",
       aad_preview:  new TextDecoder().decode(aad).slice(0, 80),
     });
+    if (header.msg_num === 0) {
+      await webClearSession(peerId);
+    }
     throw new DecryptError(
       "AES_GCM_FAILED",
       `Invalid MAC yoki kalit mos emas (peer=${peerId}, msg_num=${header.msg_num})`,

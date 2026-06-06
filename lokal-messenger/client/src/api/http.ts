@@ -1,7 +1,7 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
 import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
 
-function getBaseUrl(): string {
+export function getApiBaseUrl(): string {
   // Dev yoki SPA Go server bilan bir xil portda — Vite proxy / relative yo'l
   if (import.meta.env.DEV || window.location.port === "8443") {
     return "/api/v1";
@@ -21,7 +21,7 @@ async function request<T>(
   token?: string,
   body?:  unknown
 ): Promise<T> {
-  const res = await fetch(`${getBaseUrl()}${path}`, {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
     method,
     headers: headers(token),
     body:    body ? JSON.stringify(body) : undefined,
@@ -148,7 +148,7 @@ export const keysApi = {
 // ── Media URL yordamchisi ──────────────────────────────────────────────────
 //
 function mediaOrigin(): string {
-  const base = getBaseUrl();
+  const base = getApiBaseUrl();
   if (!base.startsWith("http")) return "";
   try {
     return new URL(base).origin;
@@ -168,7 +168,7 @@ export const mediaApi = {
     const form = new FormData();
     form.append("data", blob, "encrypted.bin");
 
-    const res = await fetch(`${getBaseUrl()}/upload`, {
+    const res = await fetch(`${getApiBaseUrl()}/upload`, {
       method:  "POST",
       headers: { Authorization: `Bearer ${token}` },
       body:    form,

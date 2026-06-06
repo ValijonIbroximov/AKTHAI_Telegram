@@ -13,6 +13,7 @@ import {
   webListSessionPeers,
   getWebIdentityPublicKeyB64,
   normalizePayload,
+  withPeerDecryptLock,
   type WebEstablishResult,
   type KeyInitResult,
 } from "./webCrypto";
@@ -132,6 +133,16 @@ export async function decryptMessage(
   senderId:   string,
   ciphertext: string
 ): Promise<string> {
+  return withPeerDecryptLock(senderId, () =>
+    decryptMessageImpl(chatId, senderId, ciphertext)
+  );
+}
+
+async function decryptMessageImpl(
+  chatId:     string,
+  senderId:   string,
+  ciphertext: string
+): Promise<string> {
   const raw = ciphertext?.trim() ?? "";
   if (!raw) {
     const err = new DecryptError("CIPHERTEXT_MISSING", "Bo'sh ciphertext");
@@ -141,40 +152,41 @@ export async function decryptMessage(
 
   const payload = normalizePayload(raw);
 
-  // ── PreKeyMessage (Type 3) tekshiruvi ───────────────────────────────────
-  // JSON bo'lsa va type=3 ko'rsatilgan bo'lsa, X3DH sessiyasini o'rnatib deshifraymiz.
-  // Bu Tauri va brauzer uchun adapter darajasida bir xil ishlaydi.
-  try {
-    const parsed = JSON.parse(payload) as {
-      type?: number;
-      prekey?: { ek_pk: string; sender_ik: string; spk_key_id?: number; otpk_key_id?: number };
-      inner?: string;
-    };
-    if (parsed.type === 3 && parsed.prekey && parsed.inner) {
-      const pk = parsed.prekey;
-      await establishSessionReceiver(
-        senderId,
-        pk.ek_pk,
-        pk.sender_ik,
-        pk.spk_key_id  ?? 0,
-        pk.otpk_key_id ?? 0,
-      );
-      // Ichki xabarni deshifrlash (rekursiv → oddiy SignalMessage kabi)
-      return await decryptMessage(chatId, senderId, parsed.inner);
+  // Tauri: PreKeyMessage (Type 3) adapter darajasida (Rust faqat ichki formatni ochadi)
+  if (isTauri) {
+    try {
+      const parsed = JSON.parse(payload) as {
+        type?: number;
+        prekey?: { ek_pk: string; sender_ik: string; spk_key_id?: number; otpk_key_id?: number };
+        inner?: string;
+      };
+      if (parsed.type === 3 && parsed.prekey && parsed.inner) {
+        const pk = parsed.prekey;
+        await establishSessionReceiver(
+          senderId,
+          pk.ek_pk,
+          pk.sender_ik,
+          pk.spk_key_id  ?? 0,
+          pk.otpk_key_id ?? 0,
+        );
+        return await decryptMessageImpl(chatId, senderId, parsed.inner);
+      }
+    } catch (e) {
+      if (e instanceof DecryptError) throw e;
     }
-  } catch (e) {
-    // DecryptError bo'lsa qayta throw qilamiz (genuine xato)
-    if (e instanceof DecryptError) throw e;
-    // JSON parse xatosi yoki boshqa — oddiy deshifrlashga o'tamiz
-  }
-  // ────────────────────────────────────────────────────────────────────────
 
-  // Oddiy SignalMessage (Type 1 yoki legacy format)
-  try {
-    if (isTauri) {
+    try {
       const { invoke } = await import("@tauri-apps/api/core");
       return await invoke<string>("decrypt_message", { chatId, senderId, ciphertext: payload });
+    } catch (e) {
+      const err = classifyDecryptError(e);
+      logDecryptError({ peerId: senderId, chatId }, err);
+      throw err;
     }
+  }
+
+  // Brauzer: webDecryptMessage Type 3 ni ham qo'llab-quvvatlaydi
+  try {
     return await webDecryptMessage(senderId, payload);
   } catch (e) {
     const err = classifyDecryptError(e);
