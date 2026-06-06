@@ -1,0 +1,8 @@
+{
+  "name": "lokal-messenger-root",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix lokal-messenger/client",
+    "build": "npm run build --prefix lokal-messenger/client"
+  }
+}

@@ -1,7 +1,6 @@
 // Harbiy Messenjer — universal titlebar.
-// Tauri desktop va brauzerda bir xil ko'rinadi.
-// Tauri: oyna tugmalari (minimize / maximize / close) to'liq ishlaydi + drag-region.
-// Brauzer: tugmalar ko'rinadi, click ishlamaydi (mock), dastur crash bo'lmaydi.
+// Tauri: oyna tugmalari (minimize / maximize / close) to'liq ishlaydi.
+// Brauzer: alohida oyna, fullscreen (F11), vkladka yopish.
 import { useCallback, useEffect, useRef, useState } from "react";
 import s from "./TitleBar.module.css";
 
@@ -47,8 +46,87 @@ function getTauriWindow(): Promise<typeof _tauriWinCache> {
 
 export default function TitleBar() {
   const [maximized, setMaximized]     = useState(false);
+  const [minimized, setMinimized]     = useState(false);
   const [isTauriEnv, setIsTauriEnv]   = useState(false);
   const unlistenRef = useRef<(() => void) | null>(null);
+
+  // Brauzer: URL dan minimized holatini tiklash
+  useEffect(() => {
+    if (isTauriEnv) return;
+    const params = new URLSearchParams(window.location.search);
+    const isMin = params.get("minimized") === "1"
+      || document.documentElement.dataset.appMinimized === "true";
+    if (isMin) applyBrowserMinimized(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTauriEnv]);
+
+  useEffect(() => {
+    if (isTauriEnv) return;
+    const onFs = () => setMaximized(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, [isTauriEnv]);
+
+  function applyBrowserMinimized(on: boolean) {
+    setMinimized(on);
+    document.documentElement.dataset.appMinimized = on ? "true" : "false";
+    if (on) {
+      try { window.resizeTo(Math.min(420, screen.availWidth), 32); } catch { /* popup emas */ }
+    } else {
+      try { window.resizeTo(900, 700); } catch { /* */ }
+    }
+  }
+
+  const browserMinimize = useCallback(() => {
+    const url = new URL(window.location.href);
+    const isPopup = url.searchParams.get("popup") === "1" || !!window.opener;
+
+    if (isPopup) {
+      url.searchParams.set("minimized", "1");
+      url.searchParams.set("popup", "1");
+      window.history.replaceState({}, "", url);
+      applyBrowserMinimized(true);
+      return;
+    }
+
+    url.searchParams.set("popup", "1");
+    const features = [
+      "popup=yes",
+      "width=900",
+      "height=700",
+      "menubar=no",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "resizable=yes",
+    ].join(",");
+    const w = window.open(url.toString(), "HarbiyMessenjer", features);
+    w?.focus();
+  }, []);
+
+  const browserToggleMaximize = useCallback(() => {
+    if (minimized) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("minimized");
+      window.history.replaceState({}, "", url);
+      applyBrowserMinimized(false);
+      return;
+    }
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      void document.exitFullscreen().catch(() => {});
+    }
+  }, [minimized]);
+
+  const browserClose = useCallback(() => {
+    window.close();
+    setTimeout(() => {
+      if (!window.closed) {
+        window.location.replace("about:blank");
+      }
+    }, 150);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -79,16 +157,28 @@ export default function TitleBar() {
   }, []);
 
   const minimize = useCallback(() => {
-    getTauriWindow().then((win) => win?.minimize()).catch(() => {});
-  }, []);
+    if (isTauriEnv) {
+      getTauriWindow().then((win) => win?.minimize()).catch(() => {});
+    } else {
+      browserMinimize();
+    }
+  }, [isTauriEnv, browserMinimize]);
 
   const toggleMaximize = useCallback(() => {
-    getTauriWindow().then((win) => win?.toggleMaximize()).catch(() => {});
-  }, []);
+    if (isTauriEnv) {
+      getTauriWindow().then((win) => win?.toggleMaximize()).catch(() => {});
+    } else {
+      browserToggleMaximize();
+    }
+  }, [isTauriEnv, browserToggleMaximize]);
 
   const close = useCallback(() => {
-    getTauriWindow().then((win) => win?.close()).catch(() => {});
-  }, []);
+    if (isTauriEnv) {
+      getTauriWindow().then((win) => win?.close()).catch(() => {});
+    } else {
+      browserClose();
+    }
+  }, [isTauriEnv, browserClose]);
 
   return (
     <header className={s.bar}>
@@ -122,10 +212,10 @@ export default function TitleBar() {
           type="button"
           className={`${s.ctrl} ${!isTauriEnv ? s.ctrlBrowser : ""}`}
           onClick={toggleMaximize}
-          aria-label={maximized ? "Qayta tiklash" : "Kattalashtirish"}
-          title={maximized ? "Qayta tiklash" : "Kattalashtirish"}
+          aria-label={minimized ? "Qayta tiklash" : maximized ? "Qayta tiklash" : "Kattalashtirish"}
+          title={minimized ? "Qayta tiklash" : maximized ? "Qayta tiklash" : "Kattalashtirish"}
         >
-          {maximized ? (
+          {(maximized || minimized) ? (
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"
                  stroke="currentColor" strokeWidth="1">
               <rect x="2.5" y="0.5" width="7" height="7"/>

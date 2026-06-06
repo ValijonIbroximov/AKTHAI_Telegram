@@ -76,12 +76,12 @@
   color: #fff;
 }
 
-/* Brauzerda oyna tugmalari — ko'rinadi, mock (ish qilmaydi), crash qilmaydi */
+/* Brauzerda oyna tugmalari — ishlaydi */
 .ctrlBrowser {
-  opacity: 0.4;
-  cursor: not-allowed;
+  cursor: pointer;
+  opacity: 1;
 }
 .ctrlBrowser:hover {
-  background: transparent;
-  color: var(--text-2);
+  background: var(--bg-hover);
+  color: var(--text-1);
 }

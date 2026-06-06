@@ -2,6 +2,10 @@
 import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
 
 function getBaseUrl(): string {
+  // Dev yoki SPA Go server bilan bir xil portda — Vite proxy / relative yo'l
+  if (import.meta.env.DEV || window.location.port === "8443") {
+    return "/api/v1";
+  }
   return `https://${window.location.hostname}:8443/api/v1`;
 }
 

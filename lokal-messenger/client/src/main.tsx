@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { launchStandaloneIfNeeded } from "./launchStandalone";
 
 // Tauri muhitida ekanligimizni aniqlash
 const isTauri =
@@ -27,6 +28,8 @@ async function initIntegrity() {
 }
 
 // Yaxlitlik tekshiruvi React render'dan AVVAL bajariladi
+launchStandaloneIfNeeded();
+
 initIntegrity().finally(() => {
   const root = document.getElementById("root");
   if (!root) throw new Error("#root elementi topilmadi");

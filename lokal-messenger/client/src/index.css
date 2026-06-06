@@ -612,3 +612,20 @@ body::after {
 /* ── Yordamchilar ── */
 .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mono     { font-family: var(--font-mono); }
+
+/* Brauzer: titlebar minimize — faqat sarlavha qoladi */
+html[data-app-minimized="true"],
+html[data-app-minimized="true"] body {
+  overflow: hidden;
+  height: 32px;
+}
+html[data-app-minimized="true"] #root,
+html[data-app-minimized="true"] .appShell {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  overflow: hidden;
+}
+html[data-app-minimized="true"] .appShell > *:not(header) {
+  display: none !important;
+}

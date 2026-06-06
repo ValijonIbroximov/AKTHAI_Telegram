@@ -16,18 +16,18 @@ export default defineConfig({
     host: true,
     port:       1420,
     strictPort: true,
+    open:       true,
     // Dev rejimida barcha /api so'rovlari Go serverga yo'naltiriladi.
     // secure: false — o'z-o'zini imzolagan TLS sertifikatni qabul qiladi.
     proxy: {
       // REST so'rovlari
       "/api": {
-        target:       "https://server.lokal:8443",
+        target:       "https://127.0.0.1:8443",
         changeOrigin: true,
         secure:       false,
       },
-      // WebSocket ulanishi (wss → ws orqali tunnel)
       "/ws": {
-        target:   "https://server.lokal:8443",
+        target:       "https://127.0.0.1:8443",
         changeOrigin: true,
         secure:   false,
         ws:       true,
