@@ -7,13 +7,12 @@ import AccountUnlockModal from "@/components/Auth/AccountUnlockModal";
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
 import SideDrawer        from "@/components/Layout/SideDrawer";
+import ChatFolders, { type FolderId } from "@/components/Layout/ChatFolders";
 import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
-import ServerSetup       from "@/components/Setup/ServerSetup";
 import AdminDashboard    from "@/components/Admin/AdminDashboard";
 import styles            from "./App.module.css";
 import { initNotifications } from "@/utils/notifications";
-import { hasServerUrl }  from "@/config/serverConfig";
 
 type MainView = "chat" | "settings" | "admin";
 
@@ -23,9 +22,9 @@ export default function App() {
   const uiMode   = useAuthStore((s) => s.uiMode);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const loadChats = useChatStore((s) => s.loadChats);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [mainView, setMainView]     = useState<MainView>("chat");
-  const [serverReady, setServerReady] = useState(hasServerUrl);
+  const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [mainView, setMainView]         = useState<MainView>("chat");
+  const [activeFolder, setActiveFolder] = useState<FolderId>("all");
 
   useEffect(() => {
     void initNotifications();
@@ -59,10 +58,6 @@ export default function App() {
 
   const showLogin = !token || uiMode === "add_account";
 
-  if (!serverReady) {
-    return <ServerSetup onDone={() => setServerReady(true)} />;
-  }
-
   if (showLogin) {
     return (
       <div className={styles.appShell}>
@@ -79,13 +74,14 @@ export default function App() {
       <TitleBar />
       <AccountUnlockModal />
       <div className={styles.layout}>
+        <ChatFolders activeFolder={activeFolder} onFolderChange={setActiveFolder} />
         <SideDrawer
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           onSettings={openSettings}
           onAdmin={openAdmin}
         />
-        <ChatList onMenuOpen={() => setDrawerOpen(true)} />
+        <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
         {mainView === "settings" ? (
           <SettingsPage onBack={closeSettings} />
         ) : mainView === "admin" ? (

@@ -5,8 +5,11 @@ import { useChatStore }  from "@/store/chatStore";
 import ChatItem          from "./ChatItem";
 import s                 from "./ChatList.module.css";
 
+import type { FolderId } from "@/components/Layout/ChatFolders";
+
 interface Props {
-  onMenuOpen?: () => void;
+  onMenuOpen?:   () => void;
+  activeFolder?: FolderId;
 }
 
 // Avatar gradientlari (userSearch uchun)
@@ -17,7 +20,7 @@ function avatarColor(name: string): string {
   return colors[h % colors.length]!;
 }
 
-export default function ChatList({ onMenuOpen }: Props) {
+export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
   const [search, setSearch]           = useState("");
   const { token, username }           = useAuthStore();
   const {
@@ -48,9 +51,18 @@ export default function ChatList({ onMenuOpen }: Props) {
     }, 300);
   }, [token, searchUsers, clearUserResults]);
 
+  const folderChats = (() => {
+    switch (activeFolder) {
+      case "unread":   return chats.filter((c) => c.unread_count > 0);
+      case "groups":   return chats.filter((c) => c.type === "group");
+      case "channels": return chats.filter((c) => c.type === "channel");
+      default:         return chats;
+    }
+  })();
+
   const filteredChats = search.trim()
-    ? chats.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
-    : chats;
+    ? folderChats.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+    : folderChats;
 
   const isSearching = search.length >= 2;
 

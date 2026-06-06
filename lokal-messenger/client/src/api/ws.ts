@@ -1,11 +1,12 @@
 // WebSocket ulanishini boshqaruvchi singleton.
 // Multi-account: har switch da eski ulanish to'liq yopiladi, yangi JWT bilan qayta ulanadi.
 import type { WsEvent } from "@/types";
-import { getWsUrl } from "@/config/serverConfig";
 
 function getWsEndpoint(): string {
-  if (import.meta.env.PROD) return getWsUrl();
-  return "ws://localhost:1420/ws";
+  if (!import.meta.env.PROD) return "ws://localhost:1420/ws";
+  const host = window.location.hostname;
+  const target = host === "localhost" || host === "" ? "127.0.0.1" : host;
+  return `wss://${target}:8443/ws`;
 }
 const PING_INTERVAL_MS   = 25_000;
 const RECONNECT_DELAY_MS = 3_000;

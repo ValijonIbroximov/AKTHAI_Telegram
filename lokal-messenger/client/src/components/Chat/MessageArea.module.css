@@ -42,6 +42,7 @@
 .headerStatus.online { color: var(--accent); }
 
 .headerActions { display: flex; align-items: center; gap: 2px; }
+
 .actionBtn {
   width: 36px; height: 36px;
   border-radius: var(--r-sm);
@@ -55,6 +56,60 @@
   box-shadow: var(--btn-glow);
 }
 .actionBtn:disabled { opacity: 0.30; cursor: not-allowed; }
+.actionBtnActive { background: var(--accent-xs) !important; color: var(--accent) !important; }
+
+/* ── 3 nuqtali dropdown menyu ── */
+.menuWrap {
+  position: relative;
+}
+
+.dropMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: dropIn 0.13s ease;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.dropItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-1);
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.dropItem:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+.dropItem svg { flex-shrink: 0; opacity: 0.75; }
+
+.dropItemDanger { color: var(--danger, #f85149); }
+.dropItemDanger:hover { background: rgba(248,81,73,0.10); color: var(--danger, #f85149); }
+
+.dropDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
 
 /* ── Sessiya tiklash banneri ── */
 .sessionBanner {
