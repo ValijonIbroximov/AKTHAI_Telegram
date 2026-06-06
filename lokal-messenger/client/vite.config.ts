@@ -1,11 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 import path from "path";
 
-// Tauri development server port va host sozlamalari.
-// HTTPS o'chirilgan — Tauri o'zi TLS boshqaradi.
+// Dev server HTTPS — crypto.subtle (WebCrypto) LAN'da ishlashi uchun.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), basicSsl()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -13,6 +13,7 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
+    host: true,
     port:       1420,
     strictPort: true,
     // Dev rejimida barcha /api so'rovlari Go serverga yo'naltiriladi.

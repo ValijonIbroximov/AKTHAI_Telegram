@@ -1,6 +1,6 @@
 import s from "./ChatFolders.module.css";
 
-export type FolderId = "all" | "unread" | "groups" | "channels";
+export type FolderId = "all" | "groups" | "channels";
 
 interface Folder {
   id:    FolderId;
@@ -15,15 +15,6 @@ const FOLDERS: Folder[] = [
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
         <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" strokeLinejoin="round"/>
-      </svg>
-    ),
-  },
-  {
-    id:    "unread",
-    label: "O'qilmagan",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
   },

@@ -53,7 +53,6 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
 
   const folderChats = (() => {
     switch (activeFolder) {
-      case "unread":   return chats.filter((c) => c.unread_count > 0);
       case "groups":   return chats.filter((c) => c.type === "group");
       case "channels": return chats.filter((c) => c.type === "channel");
       default:         return chats;

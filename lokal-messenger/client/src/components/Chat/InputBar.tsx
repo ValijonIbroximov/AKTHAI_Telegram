@@ -45,15 +45,6 @@ const ATTACH_OPTIONS: AttachOption[] = [
     ),
   },
   {
-    label:  "So'rovnoma (Poll)",
-    accept: "",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M18 20V10M12 20V4M6 20v-6" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-  },
-  {
     label:  "Joylashuv",
     accept: "",
     icon: (

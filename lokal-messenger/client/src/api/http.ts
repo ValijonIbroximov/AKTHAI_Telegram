@@ -2,10 +2,7 @@
 import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
 
 function getBaseUrl(): string {
-  if (!import.meta.env.PROD) return "/api/v1";
-  const host = window.location.hostname;
-  const target = host === "localhost" || host === "" ? "127.0.0.1" : host;
-  return `https://${target}:8443/api/v1`;
+  return `https://${window.location.hostname}:8443/api/v1`;
 }
 
 function headers(token?: string): Record<string, string> {
