@@ -321,6 +321,24 @@ func (h *Hub) Inbound() chan<- inboundEnvelope  { return h.inbound }
 func (h *Hub) Register() chan<- *Client          { return h.register }
 func (h *Hub) Unregister() chan<- *Client        { return h.unreg }
 
+// ForceLogoutUser — foydalanuvchiga majburiy chiqish yuboriladi va WS uziladi.
+func (h *Hub) ForceLogoutUser(userID, reason string) {
+	if reason == "" {
+		reason = "blocked"
+	}
+	h.sendTo(userID, "auth.force_logout", map[string]any{
+		"reason":  reason,
+		"user_id": userID,
+	})
+
+	h.mu.RLock()
+	c, ok := h.clients[userID]
+	h.mu.RUnlock()
+	if ok && c != nil && !c.closed {
+		h.unreg <- c
+	}
+}
+
 // IsOnline — foydalanuvchi hozir WebSocket orqali ulanganmi.
 func (h *Hub) IsOnline(userID string) bool {
 	h.mu.RLock()

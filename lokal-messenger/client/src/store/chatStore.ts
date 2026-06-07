@@ -917,11 +917,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
               : plaintext;
             const show = await shouldNotifyIncoming(m.chat_id, get().activeChatId);
             if (show) {
-              await notifyIncomingMessage(
-                chat?.title ?? m.sender_id,
-                notifyText,
-                m.chat_id,
-              );
+              await notifyIncomingMessage({
+                chatId:    m.chat_id,
+                chatTitle: chat?.title?.trim() || "Yangi xabar",
+                preview:   notifyText,
+                isGroup:   chat?.type === "group",
+              });
             }
           }
 

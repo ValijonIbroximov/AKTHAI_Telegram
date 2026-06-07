@@ -80,8 +80,9 @@ func ifNil(p *string) string {
 // Logout — JWT sessiyasi Redis'dan o'chiriladi.
 func (h *Handlers) Logout(c *fiber.Ctx) error {
 	jti, _ := c.Locals("jti").(string)
+	userID, _ := c.Locals("user_id").(string)
 	if jti != "" {
-		_ = h.deps.Cache.Del(c.Context(), "session:"+jti).Err()
+		h.untrackSession(c.Context(), userID, jti)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

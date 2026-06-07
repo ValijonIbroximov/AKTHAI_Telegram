@@ -16,7 +16,10 @@ import { adminApi, type AdminStats, type AdminChat, type AuditEntry, type AdminC
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import { gradientCssFor } from "@/utils/avatarGradient";
 import type { User } from "@/types";
+import type { ProfileEditPolicy, ProfileFieldKey } from "@/types";
 import PasswordInput from "@/components/Common/PasswordInput";
+import DeleteUserConfirmModal from "@/components/Admin/DeleteUserConfirmModal";
+import bubbleS from "@/components/Chat/MessageBubble.module.css";
 import s from "./AdminDashboard.module.css";
 
 interface Props { onBack: () => void; }
@@ -46,6 +49,8 @@ const ACTION_LABELS: Record<string, string> = {
   "admin.user.create":         "Foydalanuvchi yaratildi",
   "admin.user.update":         "Ma'lumot yangilandi",
   "admin.user.set_active":     "Holat o'zgartirildi",
+  "admin.user.delete":         "Foydalanuvchi o'chirildi",
+  "admin.profile_policy.update": "Profil ruxsatlari yangilandi",
   "admin.user.reset_password": "Parol tiklandi",
   "admin.chat.read":           "Suhbat ko'rildi",
   "auth.login":                "Tizimga kirish",
@@ -343,6 +348,8 @@ function UsersSection({ token }: { token: string }) {
   const [editUser, setEditUser]   = useState<User | null>(null);
   const [passInfo, setPassInfo]   = useState<{ username: string; pass: string } | null>(null);
   const [creating, setCreating]   = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleting, setDeleting]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -402,6 +409,18 @@ function UsersSection({ token }: { token: string }) {
     setPassInfo({ username: u.username, pass: r.temporary_password });
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteUser(token, deleteTarget.id);
+      setUsers((p) => p.filter((x) => x.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const toForm = (u: User): UserForm => ({
     username: u.username, display_name: u.display_name,
     role: u.role, password: "",
@@ -459,7 +478,7 @@ function UsersSection({ token }: { token: string }) {
                 <th>Unvon · Bo'linma</th>
                 <th>Okrug / Qism</th>
                 <th>Holat</th>
-                <th style={{ width: 130 }}>Amallar</th>
+                <th style={{ width: 160 }}>Amallar</th>
               </tr>
             </thead>
             <tbody>
@@ -509,6 +528,16 @@ function UsersSection({ token }: { token: string }) {
                           : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         }
                       </button>
+                      <button
+                        className={`${s.actionBtn} ${s.actionDanger}`}
+                        title="O'chirish"
+                        onClick={() => setDeleteTarget(u)}
+                        disabled={u.id === currentUserId}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                          <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -530,14 +559,66 @@ function UsersSection({ token }: { token: string }) {
       {passInfo && (
         <PasswordModal username={passInfo.username} pass={passInfo.pass} onClose={() => setPassInfo(null)} />
       )}
+      {deleteTarget && (
+        <DeleteUserConfirmModal
+          user={deleteTarget}
+          avatarBg={gradientCssFor(deleteTarget.display_name)}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+          loading={deleting}
+        />
+      )}
     </div>
   );
 }
 
 // ─── SECTION: Chats ───────────────────────────────────────────────────────────
-function adminMsgTypeLabel(t: number): string {
-  if (t === 2) return "Fayl";
-  return "Matn";
+function adminMsgTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(String(iso)).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "—";
+  }
+}
+
+function adminMsgPreview(msg: AdminChatMessage): string {
+  if (msg.msg_type === 2) return "📎 Shifrlangan fayl";
+  return "🔒 Shifrlangan xabar";
+}
+
+function AdminChatMessageBubble({
+  msg,
+  chatType,
+  leftMemberId,
+  showSenderName,
+}: {
+  msg: AdminChatMessage;
+  chatType: string;
+  leftMemberId?: string;
+  showSenderName: boolean;
+}) {
+  const isPrivate = chatType === "private" && leftMemberId;
+  const isOwn = isPrivate && msg.sender_id !== leftMemberId;
+
+  return (
+    <div className={`${bubbleS.wrap} ${isOwn ? bubbleS.own : bubbleS.incoming}`}>
+      <div className={`${bubbleS.bubble} ${isOwn ? bubbleS.bubbleOwn : bubbleS.bubbleIn}`}>
+        {showSenderName && (
+          <div className={s.adminBubbleSender}>@{msg.sender_username}</div>
+        )}
+        <div className={bubbleS.textPending}>{adminMsgPreview(msg)}</div>
+        <div className={bubbleS.meta}>
+          <span className={bubbleS.time}>{adminMsgTime(msg.created_at)}</span>
+          {isOwn && (
+            <span className={msg.read ? bubbleS.ticksRead : bubbleS.ticks} aria-hidden="true">
+              {msg.read ? "✓✓" : "✓"}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ChatViewerModal({
@@ -551,6 +632,7 @@ function ChatViewerModal({
   const [loading, setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [err, setErr]             = useState("");
+  const listRef                   = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async (offset = 0, append = false) => {
     if (offset === 0) setLoading(true);
@@ -573,13 +655,21 @@ function ChatViewerModal({
 
   useEffect(() => { void load(0); }, [load]);
 
+  useEffect(() => {
+    if (!loading && detail?.messages.length && listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [loading, detail?.messages.length]);
+
   const title = detail?.chat.title || chat.title || `Suhbat ${chat.id.slice(0, 8)}`;
   const hasMore = detail != null && detail.messages.length < detail.total;
+  const leftMemberId = detail?.chat.members[0]?.id;
+  const isGroup = (detail?.chat.type ?? chat.type) === "group";
 
   return (
     <div className={s.overlay} onClick={onClose}>
       <div className={s.chatViewer} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div className={s.modalHead}>
+        <div className={s.chatViewerHead}>
           <div>
             <h2 className={s.modalTitle}>{title}</h2>
             <p className={s.chatViewerSub}>
@@ -602,10 +692,10 @@ function ChatViewerModal({
         )}
 
         <div className={s.e2eeBanner}>
-          🔒 Xabarlar E2EE bilan shifrlangan — server faqat metadata va hajmni saqlaydi, matn ochiq emas.
+          🔒 Xabarlar E2EE bilan shifrlangan — faqat metadata ko&apos;rinadi.
         </div>
 
-        <div className={s.chatMsgList}>
+        <div className={s.chatMsgArea} ref={listRef}>
           {loading ? (
             <Spinner />
           ) : err ? (
@@ -614,7 +704,13 @@ function ChatViewerModal({
             <p className={s.emptySmall}>Xabarlar yo&apos;q</p>
           ) : (
             detail?.messages.map((msg) => (
-              <AdminChatMessageRow key={msg.msg_id} msg={msg} />
+              <AdminChatMessageBubble
+                key={msg.msg_id}
+                msg={msg}
+                chatType={detail.chat.type}
+                leftMemberId={leftMemberId}
+                showSenderName={isGroup}
+              />
             ))
           )}
         </div>
@@ -631,30 +727,6 @@ function ChatViewerModal({
             </button>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function AdminChatMessageRow({ msg }: { msg: AdminChatMessage }) {
-  const time = fmtDateShort(msg.created_at);
-  return (
-    <div className={s.chatMsgItem}>
-      <div className={s.chatMsgAvatar} style={{ background: gradientCssFor(msg.sender_name) }}>
-        {msg.sender_name.charAt(0).toUpperCase()}
-      </div>
-      <div className={s.chatMsgBody}>
-        <div className={s.chatMsgHead}>
-          <span className={s.chatMsgSender}>@{msg.sender_username}</span>
-          <span className={s.chatMsgTime}>{time}</span>
-        </div>
-        <div className={s.chatMsgMeta}>
-          <Badge variant="default">{adminMsgTypeLabel(msg.msg_type)}</Badge>
-          <span className={s.chatMsgSize}>{msg.size_bytes} bayt</span>
-          {msg.delivered && <span className={s.chatMsgStatus}>✓ yetkazildi</span>}
-          {msg.read && <span className={s.chatMsgStatusRead}>✓✓ o&apos;qilgan</span>}
-        </div>
-        <div className={s.chatMsgCipher}>🔒 Shifrlangan xabar (E2EE)</div>
       </div>
     </div>
   );
@@ -843,6 +915,83 @@ function AuditSection({ token }: { token: string }) {
 }
 
 // ─── SECTION: Security ────────────────────────────────────────────────────────
+const POLICY_LABELS: Record<ProfileFieldKey, string> = {
+  display_name:  "To'liq ism",
+  display_short: "Qisqa ism",
+  rank_title:    "Unvon",
+  unit_code:     "Qism kodi",
+  unit_name:     "Qism nomi",
+  okrug_name:    "Okrug nomi",
+  okrug_code:    "Okrug kodi",
+  division_name: "Bo'linma nomi",
+  division_code: "Bo'linma kodi",
+  avatar:        "Profil surati",
+};
+
+function ProfilePolicyCard({ token }: { token: string }) {
+  const [policy, setPolicy] = useState<ProfileEditPolicy | null>(null);
+  const [fields, setFields] = useState<ProfileFieldKey[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg]       = useState("");
+
+  const load = useCallback(async () => {
+    const data = await adminApi.getProfilePolicy(token);
+    setPolicy(data.policy);
+    setFields(data.fields as ProfileFieldKey[]);
+  }, [token]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = (key: ProfileFieldKey) => {
+    if (!policy) return;
+    setPolicy({ ...policy, [key]: !policy[key] });
+  };
+
+  const save = async () => {
+    if (!policy) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      await adminApi.setProfilePolicy(token, policy);
+      setMsg("Saqlandi");
+    } catch (ex) {
+      setMsg(ex instanceof Error ? ex.message : "Xatolik");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!policy) return <Spinner />;
+
+  return (
+    <div className={s.card}>
+      <h3 className={s.cardTitle}>Profil tahrirlash ruxsatlari</h3>
+      <p className={s.emptySmall} style={{ marginBottom: 12 }}>
+        Foydalanuvchilar qaysi maydonlarni o&apos;zlari tahrirlashi mumkinligini belgilang.
+      </p>
+      <div className={s.policyGrid}>
+        {fields.map((key) => (
+          <label key={key} className={s.policyRow}>
+            <span>{POLICY_LABELS[key] ?? key}</span>
+            <button
+              type="button"
+              className={`${s.toggle} ${policy[key] ? s.toggleOn : ""}`}
+              onClick={() => toggle(key)}
+              aria-pressed={policy[key]}
+            >
+              <span className={s.toggleKnob} />
+            </button>
+          </label>
+        ))}
+      </div>
+      {msg && <p className={s.emptySmall}>{msg}</p>}
+      <button type="button" className={s.btnPrimary} style={{ marginTop: 12 }} disabled={saving} onClick={() => void save()}>
+        {saving ? "Saqlanmoqda…" : "Ruxsatlarni saqlash"}
+      </button>
+    </div>
+  );
+}
+
 function SecuritySection({ token }: { token: string }) {
   const [users, setUsers]   = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
@@ -924,6 +1073,8 @@ function SecuritySection({ token }: { token: string }) {
           )}
         </div>
       </div>
+
+      <ProfilePolicyCard token={token} />
 
       {/* E2EE info card */}
       <div className={s.card}>

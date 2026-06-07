@@ -96,7 +96,8 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		       COALESCE(okrug_name, ''), COALESCE(okrug_code, ''),
 		       COALESCE(unit_name, ''), COALESCE(division_name, ''), COALESCE(division_code, ''),
 		       COALESCE(display_short, ''),
-		       is_active
+		       is_active,
+		       (avatar_path IS NOT NULL AND avatar_path <> '')
 		FROM users
 		ORDER BY created_at ASC
 	`)
@@ -119,6 +120,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		DivisionCode string `json:"division_code"`
 		DisplayShort string `json:"display_short"`
 		IsActive     bool   `json:"is_active"`
+		HasAvatar    bool   `json:"has_avatar"`
 	}
 
 	var result []userRow
@@ -128,7 +130,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 			&u.ID, &u.Username, &u.DisplayName, &u.Role,
 			&u.RankTitle, &u.UnitCode,
 			&u.OkrugName, &u.OkrugCode, &u.UnitName, &u.DivisionName, &u.DivisionCode, &u.DisplayShort,
-			&u.IsActive,
+			&u.IsActive, &u.HasAvatar,
 		); err != nil {
 			return err
 		}
@@ -538,7 +540,7 @@ func (h *Handlers) AdminAuditLogFiltered(c *fiber.Ctx) error {
 }
 
 // AdminSetActive — admin foydalanuvchini bloklashi yoki faollashtirishi mumkin.
-// is_active=false qilingan foydalanuvchi tizimga kira olmaydi.
+// is_active=false qilingan foydalanuvchi tizimga kira olmaydi; faol sessiyalar bekor qilinadi.
 func (h *Handlers) AdminSetActive(c *fiber.Ctx) error {
 	targetID := c.Params("id")
 	var body struct {
@@ -553,7 +555,74 @@ func (h *Handlers) AdminSetActive(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	if !body.IsActive {
+		_ = h.deps.Cache.Set(c.Context(), "user_blocked:"+targetID, "1", 0).Err()
+		_ = h.revokeAllUserSessions(c.Context(), targetID)
+		h.deps.Hub.ForceLogoutUser(targetID, "blocked")
+	} else {
+		_ = h.deps.Cache.Del(c.Context(), "user_blocked:"+targetID).Err()
+	}
 	actorID, _ := c.Locals("user_id").(string)
 	_ = h.audit(c.Context(), actorID, "admin.user.set_active", &targetID, c.IP())
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// AdminDeleteUser — foydalanuvchini va unga bog'liq ma'lumotlarni o'chiradi.
+func (h *Handlers) AdminDeleteUser(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	actorID, _ := c.Locals("user_id").(string)
+	if targetID == actorID {
+		return fiber.NewError(fiber.StatusBadRequest, "o'zingizni o'chirolmaysiz")
+	}
+
+	var role string
+	err := h.deps.DB.QueryRow(c.Context(), `
+		SELECT role FROM users WHERE id = $1::uuid
+	`, targetID).Scan(&role)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi topilmadi")
+	}
+	if role == "admin" {
+		var adminCount int
+		if err := h.deps.DB.QueryRow(c.Context(), `
+			SELECT COUNT(*) FROM users WHERE role = 'admin' AND is_active = TRUE
+		`).Scan(&adminCount); err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return fiber.NewError(fiber.StatusBadRequest, "oxirgi admin o'chirib bo'lmaydi")
+		}
+	}
+
+	_ = h.revokeAllUserSessions(c.Context(), targetID)
+	_ = h.deps.Cache.Set(c.Context(), "user_blocked:"+targetID, "1", 0).Err()
+	h.deps.Hub.ForceLogoutUser(targetID, "deleted")
+
+	tx, err := h.deps.DB.Begin(c.Context())
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(c.Context())
+
+	if _, err := tx.Exec(c.Context(), `
+		DELETE FROM messages WHERE sender_id = $1::uuid OR recipient_id = $1::uuid
+	`, targetID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(c.Context(), `
+		DELETE FROM files WHERE uploader_id = $1::uuid
+	`, targetID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(c.Context(), `
+		DELETE FROM users WHERE id = $1::uuid
+	`, targetID); err != nil {
+		return err
+	}
+	if err := tx.Commit(c.Context()); err != nil {
+		return err
+	}
+
+	_ = h.audit(c.Context(), actorID, "admin.user.delete", &targetID, c.IP())
 	return c.SendStatus(fiber.StatusNoContent)
 }

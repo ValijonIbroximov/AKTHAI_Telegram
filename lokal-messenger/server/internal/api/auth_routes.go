@@ -123,7 +123,7 @@ func (h *Handlers) Login(c *fiber.Ctx) error {
 	if ttl <= 0 {
 		ttl = 12 * time.Hour
 	}
-	if err := h.deps.Cache.Set(c.Context(), "session:"+jti, userID, ttl).Err(); err != nil {
+	if err := h.trackSession(c.Context(), userID, jti, ttl); err != nil {
 		return internalError("[AUTH] Redis session set", err)
 	}
 

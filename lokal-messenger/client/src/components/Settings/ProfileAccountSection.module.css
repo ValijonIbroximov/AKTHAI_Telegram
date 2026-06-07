@@ -1,0 +1,110 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 520px;
+}
+
+.avatarBlock {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border-radius: var(--r-lg);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+}
+
+.avatarMeta { flex: 1; min-width: 0; }
+
+.login {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.role {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.avatarActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+
+.label {
+  font-size: 12px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lockBadge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--text-3);
+}
+
+.input {
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-1);
+  font-size: 14px;
+}
+
+.inputLocked {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  align-self: flex-start;
+  padding: 10px 18px;
+  border-radius: var(--r-md);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btnSecondary {
+  padding: 7px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btnGhost {
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.hint { font-size: 13px; color: var(--text-3); }
+.lockedHint { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.error { font-size: 13px; color: #e85d5d; }
+.ok { font-size: 13px; color: #22c55e; }

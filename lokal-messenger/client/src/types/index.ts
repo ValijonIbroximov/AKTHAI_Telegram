@@ -16,7 +16,34 @@ export interface User {
   division_code?:    string | null;
   display_short?:    string | null;
   is_active?:   boolean;
+  has_avatar?:  boolean;
   last_seen_at?: string | null;
+}
+
+/** Admin belgilaydigan profil maydonlari tahrirlash ruxsati */
+export type ProfileFieldKey =
+  | "display_name" | "display_short" | "rank_title"
+  | "unit_code" | "unit_name" | "okrug_name" | "okrug_code"
+  | "division_name" | "division_code" | "avatar";
+
+export type ProfileEditPolicy = Record<ProfileFieldKey, boolean>;
+
+export interface UserProfile {
+  id:             string;
+  username:       string;
+  display_name:   string;
+  role:           "admin" | "user";
+  rank_title:     string | null;
+  unit_code:      string | null;
+  okrug_name:     string | null;
+  okrug_code:     string | null;
+  unit_name:      string | null;
+  division_name:  string | null;
+  division_code:  string | null;
+  display_short:  string | null;
+  has_avatar:     boolean;
+  hide_last_seen: boolean;
+  editable:       ProfileEditPolicy;
 }
 
 /**
@@ -88,7 +115,8 @@ export type WsEvent =
   | { type: "msg.ack";   payload: WsMsgAck }
   | { type: "msg.read";  payload: WsMsgRead }
   | { type: "presence";  payload: WsPresence }
-  | { type: "session.rekey_request"; payload: WsSessionRekeyRequest };
+  | { type: "session.rekey_request"; payload: WsSessionRekeyRequest }
+  | { type: "auth.force_logout"; payload: { reason?: string; user_id?: string } };
 
 export interface WsSessionRekeyRequest {
   from_user_id: string;

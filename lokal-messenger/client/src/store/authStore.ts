@@ -6,7 +6,7 @@ import {
   activateCryptoContext,
   isTauri,
 } from "@/crypto/adapter";
-import { authApi } from "@/api/http";
+import { authApi, userApi, profileApi } from "@/api/http";
 import { wsClient } from "@/api/ws";
 
 // ── Nuke: barcha lokal shifrlash ma'lumotlarini o'chirish ─────────────────────
@@ -52,9 +52,11 @@ async function nukeAllLocalData(): Promise<void> {
 export interface AccountSession {
   userId:               string;
   username:             string;
+  displayName?:         string;
   role:                 "admin" | "user";
   token:                string;
   mustChangePassword:   boolean;
+  hasAvatar?:           boolean;
   /** Tez qulf ochish uchun 4–6 raqamli PIN (SHA-256 hex) */
   pinHash?:             string;
 }
@@ -87,6 +89,9 @@ interface AuthState {
   switchAccountDirect:(userId: string) => Promise<void>;
   logout:             () => Promise<void>;
   logoutAccount:      (userId: string) => Promise<void>;
+  handleForceLogout:  (reason?: string, targetUserId?: string) => Promise<void>;
+  validateAccounts:   () => Promise<void>;
+  syncActiveProfile:  () => Promise<void>;
   changePassword:     (oldPwd: string, newPwd: string) => Promise<void>;
   dismissMustChangePassword: () => Promise<void>;
   clearError:         () => void;
@@ -95,19 +100,17 @@ interface AuthState {
 
 async function activateSession(
   account: AccountSession,
-  set: (p: Partial<AuthState>) => void
+  set: (p: Partial<AuthState>) => void,
 ): Promise<void> {
   console.log(`[Auth] 🔄 Account switch → ${account.username} (${account.userId})`);
   set({ loading: true, error: null });
 
   try {
-    // 1) Eski WS majburiy uziladi
-    await wsClient.disconnectAsync();
+    await userApi.me(account.token);
 
-    // 2) Kripto kontekst: harbiy-signal-{userId} / signal_{userId}.db
+    await wsClient.disconnectAsync();
     await activateCryptoContext(account.userId, account.token);
 
-    // 3) Auth state YANGILANADI (WS ulanishidan OLDIN — handler to'g'ri userId ko'radi)
     set({
       activeAccountId:    account.userId,
       token:              account.token,
@@ -120,11 +123,9 @@ async function activateSession(
       error:              null,
     });
 
-    // 4) Chat pending queue va holat tozalanadi (circular import oldini olish)
     const { useChatStore } = await import("@/store/chatStore");
     useChatStore.getState().onAccountSwitch(account.userId);
 
-    // 5) Yangi JWT bilan WS qayta ulanadi
     await wsClient.connectAsync(account.token);
     void useChatStore.getState().loadChats(account.token);
     console.log(`[Auth] ✅ Active: ${account.username}, WS=${wsClient.isConnected()}`);
@@ -133,6 +134,59 @@ async function activateSession(
     throw e;
   } finally {
     set({ loading: false });
+  }
+}
+
+async function validateStoredAccounts(
+  get: () => AuthState,
+  set: (p: Partial<AuthState>) => void,
+): Promise<void> {
+  const { accounts, activeAccountId } = get();
+  if (accounts.length === 0) return;
+
+  const valid: AccountSession[] = [];
+  for (const acc of accounts) {
+    try {
+      await userApi.me(acc.token);
+      valid.push(acc);
+    } catch {
+      /* bloklangan yoki sessiya tugagan */
+    }
+  }
+
+  if (valid.length === accounts.length) return;
+
+  const removedActive = Boolean(
+    activeAccountId && !valid.some((a) => a.userId === activeAccountId),
+  );
+  const msg = "Hisobingiz administrator tomonidan bloklandi yoki sessiya tugadi";
+
+  if (removedActive) {
+    await wsClient.disconnectAsync();
+  }
+
+  if (valid.length === 0) {
+    const { useChatStore } = await import("@/store/chatStore");
+    useChatStore.getState().onAccountSwitch("");
+    set({
+      accounts:           [],
+      activeAccountId:    null,
+      token:              null,
+      userId:             null,
+      username:           null,
+      role:               null,
+      mustChangePassword: false,
+      uiMode:             "login",
+      error:              msg,
+    });
+    return;
+  }
+
+  set({ accounts: valid });
+
+  if (removedActive) {
+    set({ error: msg });
+    await activateSession(valid[0]!, set);
   }
 }
 
@@ -181,6 +235,7 @@ export const useAuthStore = create<AuthState>()(
           const accounts = upsertAccount(get().accounts, account);
           set({ accounts, loading: false });
           await activateSession(account, set);
+          await get().syncActiveProfile();
         } catch (err) {
           set({
             loading: false,
@@ -203,6 +258,7 @@ export const useAuthStore = create<AuthState>()(
           const accounts = upsertAccount(get().accounts, account);
           set({ accounts, loading: false });
           await activateSession(account, set);
+          await get().syncActiveProfile();
         } catch (err) {
           set({
             loading: false,
@@ -304,16 +360,44 @@ export const useAuthStore = create<AuthState>()(
       },
 
       bootstrap: async () => {
-        const { accounts, activeAccountId } = get();
+        await validateStoredAccounts(get, set);
         const account =
-          accounts.find((a) => a.userId === activeAccountId) ??
-          accounts[0] ??
+          get().accounts.find((a) => a.userId === get().activeAccountId) ??
+          get().accounts[0] ??
           null;
         if (!account) return;
         try {
           await activateSession(account, set);
+          await get().syncActiveProfile();
         } catch (e) {
           console.warn("[Bootstrap] xatolik:", e);
+        }
+      },
+
+      validateAccounts: async () => {
+        await validateStoredAccounts(get, set);
+      },
+
+      syncActiveProfile: async () => {
+        const { token, activeAccountId } = get();
+        if (!token || !activeAccountId) return;
+        try {
+          const profile = await profileApi.get(token);
+          set({
+            accounts: get().accounts.map((a) =>
+              a.userId === activeAccountId
+                ? {
+                    ...a,
+                    displayName: profile.display_name,
+                    hasAvatar:   profile.has_avatar,
+                    username:    profile.username,
+                  }
+                : a,
+            ),
+            username: profile.username,
+          });
+        } catch {
+          /* ignore */
         }
       },
 
@@ -391,6 +475,50 @@ export const useAuthStore = create<AuthState>()(
         set({ accounts: remaining });
       },
 
+      handleForceLogout: async (reason, targetUserId) => {
+        const uid = targetUserId ?? get().activeAccountId;
+        if (!uid) return;
+
+        const { activeAccountId, accounts } = get();
+        const isActive = uid === activeAccountId;
+
+        const msg =
+          reason === "deleted"
+            ? "Hisobingiz administrator tomonidan o'chirildi"
+            : "Hisobingiz administrator tomonidan bloklandi";
+
+        if (isActive) {
+          await wsClient.disconnectAsync();
+          await clearToken().catch(() => {});
+        }
+
+        const remaining = accounts.filter((a) => a.userId !== uid);
+
+        if (isActive) {
+          if (remaining.length > 0) {
+            set({ accounts: remaining, error: msg });
+            await activateSession(remaining[0]!, set);
+            return;
+          }
+          const { useChatStore } = await import("@/store/chatStore");
+          useChatStore.getState().onAccountSwitch("");
+          set({
+            accounts:           [],
+            activeAccountId:    null,
+            token:              null,
+            userId:             null,
+            username:           null,
+            role:               null,
+            mustChangePassword: false,
+            uiMode:             "login",
+            error:              msg,
+          });
+          return;
+        }
+
+        set({ accounts: remaining });
+      },
+
       changePassword: async (oldPwd, newPwd) => {
         const { token } = get();
         if (!token) throw new Error("Sessiya yo'q");
@@ -456,3 +584,10 @@ export function selectActiveAccount(state: AuthState): AccountSession | null {
   if (!state.activeAccountId) return null;
   return state.accounts.find((a) => a.userId === state.activeAccountId) ?? null;
 }
+
+wsClient.on((event) => {
+  if (event.type === "auth.force_logout") {
+    const payload = event.payload as { reason?: string; user_id?: string };
+    void useAuthStore.getState().handleForceLogout(payload.reason, payload.user_id);
+  }
+});

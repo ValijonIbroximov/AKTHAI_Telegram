@@ -41,6 +41,12 @@ func Authenticate(jwtMgr *auth.JWTManager, rdb *redis.Client) fiber.Handler {
 			return fiber.NewError(fiber.StatusUnauthorized, "sessiya tugagan")
 		}
 
+		// Bloklangan hisob
+		blocked, err := rdb.Exists(c.Context(), "user_blocked:"+claims.UserID).Result()
+		if err == nil && blocked > 0 {
+			return fiber.NewError(fiber.StatusForbidden, "hisob bloklangan")
+		}
+
 		// Konteksga foydalanuvchi ma'lumoti yoziladi
 		c.Locals("user_id", claims.UserID)
 		c.Locals("role", claims.Role)

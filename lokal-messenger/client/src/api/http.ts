@@ -1,5 +1,5 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
-import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
+import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage, UserProfile, ProfileEditPolicy } from "@/types";
 import { getApiBaseUrl } from "@/config/devServer";
 
 export { getApiBaseUrl };
@@ -27,6 +27,31 @@ async function request<T>(
     throw new Error(`HTTP ${res.status}: ${errText}`);
   }
 
+  if (res.status === 204) return {} as T;
+  return res.json() as Promise<T>;
+}
+
+/** Profil surati URL (WebSocket kabi query token) */
+export function buildAvatarUrl(userId: string, token: string, cacheKey = ""): string {
+  const base = `${getApiBaseUrl()}/avatars/${userId}?token=${encodeURIComponent(token)}`;
+  return cacheKey ? `${base}&v=${encodeURIComponent(cacheKey)}` : base;
+}
+
+async function requestForm<T>(
+  method: string,
+  path: string,
+  token: string,
+  form: FormData,
+): Promise<T> {
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method,
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.status.toString());
+    throw new Error(`HTTP ${res.status}: ${errText}`);
+  }
   if (res.status === 204) return {} as T;
   return res.json() as Promise<T>;
 }
@@ -79,6 +104,23 @@ export const userApi = {
 
   setActive: (token: string, userId: string, active: boolean) =>
     request<void>("PATCH", `/admin/users/${userId}/active`, token, { is_active: active }),
+};
+
+export const profileApi = {
+  get: (token: string) =>
+    request<UserProfile>("GET", "/me/profile", token),
+
+  update: (token: string, data: Partial<Record<string, string>>) =>
+    request<void>("PATCH", "/me/profile", token, data),
+
+  uploadAvatar: (token: string, file: File) => {
+    const fd = new FormData();
+    fd.append("avatar", file);
+    return requestForm<{ has_avatar: boolean }>("POST", "/me/avatar", token, fd);
+  },
+
+  deleteAvatar: (token: string) =>
+    request<void>("DELETE", "/me/avatar", token),
 };
 
 export interface AdminStats {
@@ -160,6 +202,9 @@ export const adminApi = {
   setActive: (token: string, id: string, active: boolean) =>
     request<void>("PATCH", `/admin/users/${id}/active`, token, { is_active: active }),
 
+  deleteUser: (token: string, id: string) =>
+    request<void>("DELETE", `/admin/users/${id}`, token),
+
   resetPassword: (token: string, id: string, password?: string) =>
     request<{ temporary_password: string }>("POST", `/admin/users/${id}/reset-password`, token,
       password ? { password } : {}),
@@ -187,6 +232,12 @@ export const adminApi = {
     const qs = p.toString() ? `?${p}` : "";
     return request<AuditEntry[]>("GET", `/admin/audit-log${qs}`, token);
   },
+
+  getProfilePolicy: (token: string) =>
+    request<{ policy: ProfileEditPolicy; fields: string[] }>("GET", "/admin/profile-policy", token),
+
+  setProfilePolicy: (token: string, policy: ProfileEditPolicy) =>
+    request<void>("PUT", "/admin/profile-policy", token, { policy }),
 };
 
 // ── Suhbatlar ─────────────────────────────────────────────────────────────────

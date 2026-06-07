@@ -13,7 +13,6 @@ import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
 import AdminDashboard    from "@/components/Admin/AdminDashboard";
 import styles            from "./App.module.css";
-import ToastStack        from "@/components/Notifications/ToastStack";
 import { BackNavigationProvider } from "@/contexts/BackNavigationContext";
 import { initNotifications, setChatPaneVisible, setNotificationClickHandler } from "@/utils/notifications";
 import { useChatStore } from "@/store/chatStore";
@@ -136,7 +135,6 @@ function ChatApp() {
             <MessageArea />
           )}
         </div>
-        <ToastStack />
       </div>
     </BackNavigationProvider>
   );
@@ -178,7 +176,6 @@ function AdminRoute() {
         <TitleBar />
         <AccountUnlockModal />
         <AdminDashboard onBack={() => navigate("/")} />
-        <ToastStack />
       </div>
     </BackNavigationProvider>
   );

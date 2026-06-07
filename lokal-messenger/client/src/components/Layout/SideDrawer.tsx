@@ -4,6 +4,7 @@ import { useAuthStore, selectActiveAccount } from "@/store/authStore";
 import { useTheme }     from "@/contexts/ThemeContext";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import LogoutConfirmModal from "@/components/Auth/LogoutConfirmModal";
+import UserAvatar from "@/components/Common/UserAvatar";
 import s from "./SideDrawer.module.css";
 
 const isTauri =
@@ -34,8 +35,8 @@ interface NavItem {
 
 export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props) {
   const {
-    username, role, userId, activeAccountId, accounts,
-    logoutAccount, beginAddAccount, beginSwitchAccount,
+    username, role, userId, activeAccountId, accounts, token,
+    logoutAccount, beginAddAccount, beginSwitchAccount, validateAccounts,
   } = useAuthStore();
   const activeAccount = useAuthStore(selectActiveAccount);
   const { mode, setMode } = useTheme();
@@ -64,9 +65,13 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
   );
 
   useEffect(() => {
-    if (open) drawerRef.current?.focus();
-    else setLogoutOpen(false);
-  }, [open]);
+    if (open) {
+      drawerRef.current?.focus();
+      void validateAccounts();
+    } else {
+      setLogoutOpen(false);
+    }
+  }, [open, validateAccounts]);
 
   const handleSettings = useCallback(() => { onClose(); onSettings(); }, [onClose, onSettings]);
   const handleAdmin    = useCallback(() => { onClose(); onAdmin?.(); }, [onClose, onAdmin]);
@@ -89,8 +94,8 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
     if (uid !== activeAccountId) beginSwitchAccount(uid);
   }, [onClose, activeAccountId, beginSwitchAccount]);
 
-  const avatarInitial = (username ?? "?").charAt(0).toUpperCase();
   const avatarBg      = avatarColor(userId ?? "a");
+  const displayLabel  = activeAccount?.displayName ?? username ?? "Foydalanuvchi";
 
   const NAV_ITEMS: NavItem[] = [
     {
@@ -167,10 +172,15 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
             className={s.profileBg}
             style={{ background: `linear-gradient(135deg, ${avatarBg}55 0%, transparent 100%)` }}
           />
-          <div className={s.profileAvatar} style={{ background: avatarBg }}>
-            {avatarInitial}
-          </div>
-          <div className={s.profileName}>{username ?? "Foydalanuvchi"}</div>
+          <UserAvatar
+            userId={userId ?? ""}
+            name={displayLabel}
+            token={token}
+            hasAvatar={activeAccount?.hasAvatar}
+            size={72}
+            className={s.profileAvatarImg}
+          />
+          <div className={s.profileName}>{displayLabel}</div>
           <div className={s.profileRole}>
             {role === "admin" ? "Administrator" : "Foydalanuvchi"} · E2EE
           </div>
@@ -181,7 +191,6 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
           <div className={s.accountsTitle}>Akkauntlar</div>
           <div className={s.accountList}>
             {accounts.map((acc) => {
-              const bg     = avatarColor(acc.userId);
               const active = acc.userId === activeAccountId;
               return (
                 <button
@@ -190,10 +199,15 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
                   className={`${s.accountItem} ${active ? s.accountItemActive : ""}`}
                   onClick={() => handleSwitch(acc.userId)}
                 >
-                  <span className={s.accountAvatar} style={{ background: bg }}>
-                    {acc.username.charAt(0).toUpperCase()}
-                  </span>
-                  <span className={s.accountName}>{acc.username}</span>
+                  <UserAvatar
+                    userId={acc.userId}
+                    name={acc.displayName ?? acc.username}
+                    token={acc.token}
+                    hasAvatar={acc.hasAvatar}
+                    size={32}
+                    className={s.accountAvatarImg}
+                  />
+                  <span className={s.accountName}>{acc.displayName ?? acc.username}</span>
                   {active && <span className={s.accountCheck}>✓</span>}
                 </button>
               );

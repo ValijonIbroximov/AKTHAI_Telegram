@@ -24,7 +24,8 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 
 	rows, err := h.deps.DB.Query(c.Context(), `
         SELECT id::text, username, display_name, role, rank_title, unit_code,
-               okrug_name, okrug_code, unit_name, division_name, division_code, display_short
+               okrug_name, okrug_code, unit_name, division_name, division_code, display_short,
+               (avatar_path IS NOT NULL AND avatar_path <> '')
           FROM users
          WHERE is_active = TRUE AND id <> $1::uuid
            AND (username ILIKE $2 OR display_name ILIKE $2)
@@ -39,8 +40,9 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, u, dn, role string
 		var rank, unit, okrugName, okrugCode, unitName, divName, divCode, displayShort *string
+		var hasAvatar bool
 		if err := rows.Scan(&id, &u, &dn, &role, &rank, &unit,
-			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort); err != nil {
+			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort, &hasAvatar); err != nil {
 			continue
 		}
 		out = append(out, fiber.Map{
@@ -49,6 +51,7 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 			"okrug_name": okrugName, "okrug_code": okrugCode,
 			"unit_name": unitName, "division_name": divName, "division_code": divCode,
 			"display_short": displayShort,
+			"has_avatar": hasAvatar,
 		})
 	}
 	return c.JSON(out)
@@ -60,7 +63,8 @@ func (h *Handlers) ListUsersDirectory(c *fiber.Ctx) error {
 
 	rows, err := h.deps.DB.Query(c.Context(), `
         SELECT id::text, username, display_name, role, rank_title, unit_code,
-               okrug_name, okrug_code, unit_name, division_name, division_code, display_short
+               okrug_name, okrug_code, unit_name, division_name, division_code, display_short,
+               (avatar_path IS NOT NULL AND avatar_path <> '')
           FROM users
          WHERE is_active = TRUE AND id <> $1::uuid
          ORDER BY
@@ -78,8 +82,9 @@ func (h *Handlers) ListUsersDirectory(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, u, dn, role string
 		var rank, unit, okrugName, okrugCode, unitName, divName, divCode, displayShort *string
+		var hasAvatar bool
 		if err := rows.Scan(&id, &u, &dn, &role, &rank, &unit,
-			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort); err != nil {
+			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort, &hasAvatar); err != nil {
 			continue
 		}
 		out = append(out, fiber.Map{
@@ -88,6 +93,7 @@ func (h *Handlers) ListUsersDirectory(c *fiber.Ctx) error {
 			"okrug_name": okrugName, "okrug_code": okrugCode,
 			"unit_name": unitName, "division_name": divName, "division_code": divCode,
 			"display_short": displayShort,
+			"has_avatar": hasAvatar,
 		})
 	}
 	if out == nil {

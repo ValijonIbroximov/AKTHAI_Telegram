@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { userApi } from "@/api/http";
 import ChangePasswordModal from "./ChangePasswordModal";
+import ProfileAccountSection from "./ProfileAccountSection";
+import UserAvatar from "@/components/Common/UserAvatar";
 import { useTheme, FONT_LABELS, RADIUS_LABELS, type FontChoice, type RadiusPreset } from "@/contexts/ThemeContext";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import { THEMES } from "@/themes";
@@ -34,11 +36,10 @@ interface Props {
 
 export default function SettingsPage({ onBack }: Props) {
   const [section, setSection] = useState<Section>(null);
-  const { username, role, userId } = useAuthStore();
+  const { username, role, userId, token } = useAuthStore();
+  const activeAccount = useAuthStore((s) => s.accounts.find((a) => a.userId === s.activeAccountId));
 
-  const AVATAR_COLORS = ["#1d4ed8","#0891b2","#059669","#7c3aed","#dc2626","#d97706","#0d9488"];
-  const avatarBg      = AVATAR_COLORS[(userId ?? "a").charCodeAt(0) % AVATAR_COLORS.length]!;
-  const avatarInitial = (username ?? "?").charAt(0).toUpperCase();
+  const avatarName = activeAccount?.displayName ?? username ?? "?";
 
   const goBack = useCallback(() => {
     if (section !== null) setSection(null);
@@ -82,17 +83,26 @@ export default function SettingsPage({ onBack }: Props) {
           <>
             {/* Profil bloki */}
             <div className={s.profileCard}>
-              <div className={s.profileAvatar} style={{ background: avatarBg }}>
-                {avatarInitial}
-              </div>
+              <UserAvatar
+                userId={userId ?? ""}
+                name={avatarName}
+                token={token}
+                hasAvatar={activeAccount?.hasAvatar}
+                size={56}
+              />
               <div className={s.profileInfo}>
-                <div className={s.profileName}>{username ?? "Foydalanuvchi"}</div>
+                <div className={s.profileName}>{avatarName}</div>
                 <div className={s.profileStatus}>
                   <span className={s.onlineDot} />
-                  {role === "admin" ? "Administrator" : "Foydalanuvchi"} · onlayn
+                  {role === "admin" ? "Administrator" : "Foydalanuvchi"} · @{username}
                 </div>
               </div>
-              <button className={s.profileEditBtn} aria-label="Profilni tahrirlash" title="Tahrirlash">
+              <button
+                className={s.profileEditBtn}
+                aria-label="Profilni tahrirlash"
+                title="Tahrirlash"
+                onClick={() => setSection("account")}
+              >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -131,8 +141,10 @@ export default function SettingsPage({ onBack }: Props) {
         {/* ═══ PLACEHOLDER BO'LIMLAR ═══ */}
         {section === "privacy" && <PrivacySection />}
 
-        {(section === "account" || section === "notifications" || section === "language") && (
-          <PlaceholderSection label={MAIN_SECTIONS.find(s => s.id === section)?.label ?? ""} />
+        {section === "account" && token && <ProfileAccountSection token={token} />}
+
+        {(section === "notifications" || section === "language") && (
+          <PlaceholderSection label={MAIN_SECTIONS.find(x => x.id === section)?.label ?? ""} />
         )}
 
       </div>

@@ -32,6 +32,11 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	v1.Post("/auth/dismiss-password-change", h.DismissPasswordChange)
 	v1.Post("/auth/logout", h.Logout)
 	v1.Get("/me", h.Me)
+	v1.Get("/me/profile", h.GetMyProfile)
+	v1.Patch("/me/profile", h.UpdateMyProfile)
+	v1.Post("/me/avatar", h.UploadMyAvatar)
+	v1.Delete("/me/avatar", h.DeleteMyAvatar)
+	v1.Get("/avatars/:id", h.GetUserAvatar)
 	v1.Patch("/me/privacy", h.UpdatePrivacy)
 
 	// Signal Protocol kalit-bundle marshrutlari
@@ -60,11 +65,14 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	admin.Post("/users", h.AdminCreateUser)
 	admin.Put("/users/:id", h.AdminUpdateUser)
 	admin.Patch("/users/:id/active", h.AdminSetActive)
+	admin.Delete("/users/:id", h.AdminDeleteUser)
 	admin.Post("/users/:id/reset-password", h.AdminResetPassword)
 	admin.Get("/users/:id/presence", h.AdminGetUserPresence)
 	admin.Get("/chats", h.AdminListChats)
 	admin.Get("/chats/:id/messages", h.AdminChatMessages)
 	admin.Get("/audit-log", h.AdminAuditLogFiltered)
+	admin.Get("/profile-policy", h.AdminGetProfilePolicy)
+	admin.Put("/profile-policy", h.AdminSetProfilePolicy)
 
 	// WebSocket marshruti — upgrade tekshiruvi middleware sifatida
 	app.Use("/ws", authMW, func(c *fiber.Ctx) error {
