@@ -1,5 +1,6 @@
 // Asosiy ilova komponenti.
 import { useState, useCallback, useEffect } from "react";
+import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuthStore }  from "@/store/authStore";
 import LoginPage         from "@/components/Auth/LoginPage";
 import AccountUnlockModal from "@/components/Auth/AccountUnlockModal";
@@ -16,13 +17,14 @@ import { BackNavigationProvider } from "@/contexts/BackNavigationContext";
 import { initNotifications, setChatPaneVisible, setNotificationClickHandler } from "@/utils/notifications";
 import { useChatStore } from "@/store/chatStore";
 
-type MainView = "chat" | "settings" | "admin";
+type MainView = "chat" | "settings";
 
-export default function App() {
+function ChatApp() {
   const token    = useAuthStore((s) => s.token);
   const userId   = useAuthStore((s) => s.userId);
   const uiMode   = useAuthStore((s) => s.uiMode);
   const bootstrap = useAuthStore((s) => s.bootstrap);
+  const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen]     = useState(false);
   const [mainView, setMainView]         = useState<MainView>("chat");
   const [activeFolder, setActiveFolder] = useState<FolderId>("all");
@@ -41,13 +43,13 @@ export default function App() {
     setNotificationClickHandler((chatId) => {
       const t = useAuthStore.getState().token;
       if (!t) return;
+      navigate("/");
       setMainView("chat");
       void useChatStore.getState().selectChat(chatId, t);
     });
     return () => setNotificationClickHandler(null);
-  }, []);
+  }, [navigate]);
 
-  // Akkaunt almashganda asosiy ko'rinish
   useEffect(() => {
     if (!token || !userId) return;
     setMainView("chat");
@@ -64,8 +66,8 @@ export default function App() {
 
   const openAdmin = useCallback(() => {
     setDrawerOpen(false);
-    setMainView("admin");
-  }, []);
+    navigate("/admin");
+  }, [navigate]);
 
   const showLogin = !token || uiMode === "add_account";
 
@@ -96,8 +98,6 @@ export default function App() {
           <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
           {mainView === "settings" ? (
             <SettingsPage onBack={closeSettings} />
-          ) : mainView === "admin" ? (
-            <AdminDashboard onBack={() => setMainView("chat")} />
           ) : (
             <MessageArea />
           )}
@@ -105,5 +105,88 @@ export default function App() {
         <ToastStack />
       </div>
     </BackNavigationProvider>
+  );
+}
+
+function AdminRoute() {
+  const token           = useAuthStore((s) => s.token);
+  const role            = useAuthStore((s) => s.role);
+  const loading         = useAuthStore((s) => s.loading);
+  const accounts        = useAuthStore((s) => s.accounts);
+  const activeAccountId = useAuthStore((s) => s.activeAccountId);
+  const uiMode          = useAuthStore((s) => s.uiMode);
+  const bootstrap       = useAuthStore((s) => s.bootstrap);
+  const navigate        = useNavigate();
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    void initNotifications();
+    void bootstrap().finally(() => setAuthReady(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setChatPaneVisible(false);
+  }, []);
+
+  const activeAccount = accounts.find((a) => a.userId === activeAccountId);
+  const effectiveRole = role ?? activeAccount?.role ?? null;
+  const showLogin     = !token || uiMode === "add_account";
+  const bootstrapping = !authReady && (loading || (accounts.length > 0 && !token));
+
+  if (bootstrapping) {
+    return (
+      <div className={styles.appShell}>
+        <TitleBar />
+        <div className={styles.loginWrap}>Yuklanmoqda…</div>
+      </div>
+    );
+  }
+
+  if (showLogin) {
+    return (
+      <div className={styles.appShell}>
+        <TitleBar />
+        <div className={styles.loginWrap}>
+          <LoginPage />
+        </div>
+      </div>
+    );
+  }
+
+  if (effectiveRole !== "admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  return (
+    <BackNavigationProvider>
+      <div className={styles.appShell}>
+        <TitleBar />
+        <AccountUnlockModal />
+        <AdminDashboard onBack={() => navigate("/")} />
+        <ToastStack />
+      </div>
+    </BackNavigationProvider>
+  );
+}
+
+function normalizePath(path: string): string {
+  const p = path.replace(/\/+$/, "") || "/";
+  return p;
+}
+
+export default function App() {
+  const location = useLocation();
+  const path = normalizePath(location.pathname);
+
+  if (path !== "/" && path !== "/admin") {
+    return <Navigate to="/" replace />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/admin" element={<AdminRoute />} />
+      <Route path="/"      element={<ChatApp />} />
+    </Routes>
   );
 }
