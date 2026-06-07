@@ -78,6 +78,70 @@ export const userApi = {
     request<void>("PATCH", `/admin/users/${userId}/active`, token, { is_active: active }),
 };
 
+export interface AdminStats {
+  total_users:    number;
+  active_users:   number;
+  locked_users:   number;
+  admin_count:    number;
+  online_now:     number;
+  total_chats:    number;
+  private_chats:  number;
+  group_chats:    number;
+  total_messages: number;
+}
+
+export interface AdminChat {
+  id:            string;
+  type:          string;
+  title:         string;
+  created_at:    string;
+  member_count:  number;
+  message_count: number;
+  last_activity: string | null;
+}
+
+export interface AuditEntry {
+  id:         number;
+  actor_id:   string;
+  action:     string;
+  target_id:  string;
+  ip:         string;
+  created_at: string;
+  username:   string;
+}
+
+export const adminApi = {
+  stats: (token: string) =>
+    request<AdminStats>("GET", "/admin/stats", token),
+
+  listUsers: (token: string) =>
+    request<User[]>("GET", "/admin/users", token),
+
+  createUser: (token: string, data: Partial<User> & { role: string }) =>
+    request<{ user_id: string; temporary_password: string }>("POST", "/admin/users", token, data),
+
+  updateUser: (token: string, id: string, data: Partial<User>) =>
+    request<void>("PUT", `/admin/users/${id}`, token, data),
+
+  setActive: (token: string, id: string, active: boolean) =>
+    request<void>("PATCH", `/admin/users/${id}/active`, token, { is_active: active }),
+
+  resetPassword: (token: string, id: string) =>
+    request<{ temporary_password: string }>("POST", `/admin/users/${id}/reset-password`, token, {}),
+
+  listChats: (token: string) =>
+    request<AdminChat[]>("GET", "/admin/chats", token),
+
+  auditLog: (token: string, opts?: { limit?: number; offset?: number; action?: string }) => {
+    const p = new URLSearchParams();
+    if (opts?.limit)  p.set("limit",  String(opts.limit));
+    if (opts?.offset) p.set("offset", String(opts.offset));
+    if (opts?.action) p.set("action", opts.action);
+    const qs = p.toString() ? `?${p}` : "";
+    return request<AuditEntry[]>("GET", `/admin/audit-log${qs}`, token);
+  },
+};
+
 // ── Suhbatlar ─────────────────────────────────────────────────────────────────
 // msg_type raqamlarni string ga o'girish:
 //   1 = text (SignalMessage)

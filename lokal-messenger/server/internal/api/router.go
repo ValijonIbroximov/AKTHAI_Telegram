@@ -54,10 +54,14 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 
 	// Faqat admin uchun marshrutlar (RBAC: "admin" roli talab qilinadi)
 	admin := v1.Group("/admin", middleware.RequireRole("admin"))
+	admin.Get("/stats", h.AdminStats)
 	admin.Get("/users", h.AdminListUsers)
 	admin.Post("/users", h.AdminCreateUser)
+	admin.Put("/users/:id", h.AdminUpdateUser)
 	admin.Patch("/users/:id/active", h.AdminSetActive)
-	admin.Get("/audit-log", h.AdminAuditLog)
+	admin.Post("/users/:id/reset-password", h.AdminResetPassword)
+	admin.Get("/chats", h.AdminListChats)
+	admin.Get("/audit-log", h.AdminAuditLogFiltered)
 
 	// WebSocket marshruti — upgrade tekshiruvi middleware sifatida
 	app.Use("/ws", authMW, func(c *fiber.Ctx) error {

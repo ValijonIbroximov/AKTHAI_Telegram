@@ -329,6 +329,19 @@ func (h *Hub) IsOnline(userID string) bool {
 	return ok && c != nil && !c.closed
 }
 
+// OnlineCount — hozirda ulanib turgan mijozlar soni.
+func (h *Hub) OnlineCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	n := 0
+	for _, c := range h.clients {
+		if c != nil && !c.closed {
+			n++
+		}
+	}
+	return n
+}
+
 // broadcastPresence — barcha ulangan mijozlarga onlayn/offline xabar yuboriladi.
 func (h *Hub) broadcastPresence(userID string, online bool, lastSeen *time.Time) {
 	ctx := context.Background()
