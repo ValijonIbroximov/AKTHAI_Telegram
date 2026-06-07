@@ -9,6 +9,12 @@ export interface User {
   role:         "admin" | "user";
   rank_title:   string | null;
   unit_code:    string | null;
+  okrug_name?:       string | null;
+  okrug_code?:       string | null;
+  unit_name?:        string | null;
+  division_name?:    string | null;
+  division_code?:    string | null;
+  display_short?:    string | null;
   is_active?:   boolean;
   last_seen_at?: string | null;
 }

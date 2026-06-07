@@ -66,6 +66,9 @@ export const userApi = {
   search: (token: string, q: string) =>
     request<User[]>("GET", `/users?q=${encodeURIComponent(q)}`, token),
 
+  directory: (token: string) =>
+    request<User[]>("GET", "/users/directory", token),
+
   create: (token: string, data: Partial<User> & { role: string }) =>
     request<{ user_id: string; temporary_password: string }>(
       "POST", "/admin/users", token, data

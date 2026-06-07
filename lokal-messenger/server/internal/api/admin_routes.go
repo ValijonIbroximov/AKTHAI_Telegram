@@ -13,11 +13,17 @@ import (
 )
 
 type createUserRequest struct {
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	Role        string `json:"role"`
-	RankTitle   string `json:"rank_title"`
-	UnitCode    string `json:"unit_code"`
+	Username     string `json:"username"`
+	DisplayName  string `json:"display_name"`
+	Role         string `json:"role"`
+	RankTitle    string `json:"rank_title"`
+	UnitCode     string `json:"unit_code"`
+	OkrugName    string `json:"okrug_name"`
+	OkrugCode    string `json:"okrug_code"`
+	UnitName     string `json:"unit_name"`
+	DivisionName string `json:"division_name"`
+	DivisionCode string `json:"division_code"`
+	DisplayShort string `json:"display_short"`
 }
 
 type createUserResponse struct {
@@ -50,10 +56,15 @@ func (h *Handlers) AdminCreateUser(c *fiber.Ctx) error {
 	var newID string
 	err = h.deps.DB.QueryRow(c.Context(), `
 		INSERT INTO users
-		    (username, password_hash, display_name, role, rank_title, unit_code, must_change_password)
-		VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''), TRUE)
+		    (username, password_hash, display_name, role, rank_title, unit_code,
+		     okrug_name, okrug_code, unit_name, division_name, division_code, display_short,
+		     must_change_password)
+		VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''),
+		        NULLIF($7,''), NULLIF($8,''), NULLIF($9,''), NULLIF($10,''), NULLIF($11,''), NULLIF($12,''),
+		        TRUE)
 		RETURNING id::text
-	`, req.Username, hash, req.DisplayName, req.Role, req.RankTitle, req.UnitCode).Scan(&newID)
+	`, req.Username, hash, req.DisplayName, req.Role, req.RankTitle, req.UnitCode,
+		req.OkrugName, req.OkrugCode, req.UnitName, req.DivisionName, req.DivisionCode, req.DisplayShort).Scan(&newID)
 	if err != nil {
 		return fiber.NewError(fiber.StatusConflict, "foydalanuvchi yaratilmadi: "+err.Error())
 	}
@@ -72,6 +83,9 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 	rows, err := h.deps.DB.Query(c.Context(), `
 		SELECT id::text, username, display_name, role,
 		       COALESCE(rank_title, ''), COALESCE(unit_code, ''),
+		       COALESCE(okrug_name, ''), COALESCE(okrug_code, ''),
+		       COALESCE(unit_name, ''), COALESCE(division_name, ''), COALESCE(division_code, ''),
+		       COALESCE(display_short, ''),
 		       is_active
 		FROM users
 		ORDER BY created_at ASC
@@ -82,13 +96,19 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type userRow struct {
-		ID          string `json:"id"`
-		Username    string `json:"username"`
-		DisplayName string `json:"display_name"`
-		Role        string `json:"role"`
-		RankTitle   string `json:"rank_title"`
-		UnitCode    string `json:"unit_code"`
-		IsActive    bool   `json:"is_active"`
+		ID           string `json:"id"`
+		Username     string `json:"username"`
+		DisplayName  string `json:"display_name"`
+		Role         string `json:"role"`
+		RankTitle    string `json:"rank_title"`
+		UnitCode     string `json:"unit_code"`
+		OkrugName    string `json:"okrug_name"`
+		OkrugCode    string `json:"okrug_code"`
+		UnitName     string `json:"unit_name"`
+		DivisionName string `json:"division_name"`
+		DivisionCode string `json:"division_code"`
+		DisplayShort string `json:"display_short"`
+		IsActive     bool   `json:"is_active"`
 	}
 
 	var result []userRow
@@ -96,7 +116,9 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		var u userRow
 		if err := rows.Scan(
 			&u.ID, &u.Username, &u.DisplayName, &u.Role,
-			&u.RankTitle, &u.UnitCode, &u.IsActive,
+			&u.RankTitle, &u.UnitCode,
+			&u.OkrugName, &u.OkrugCode, &u.UnitName, &u.DivisionName, &u.DivisionCode, &u.DisplayShort,
+			&u.IsActive,
 		); err != nil {
 			return err
 		}

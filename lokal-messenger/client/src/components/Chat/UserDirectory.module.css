@@ -1,0 +1,154 @@
+.org {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.group {
+  border-radius: var(--r-sm);
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.groupHeader:hover {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.groupHeader[data-level="okrug"] {
+  padding-left: 6px;
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.groupHeader[data-level="unit"] {
+  padding-left: 18px;
+}
+
+.groupHeader[data-level="division"] {
+  padding-left: 30px;
+  font-weight: 500;
+}
+
+.chevron {
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: transform 0.18s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.groupTitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  background: var(--bg-surface);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.userRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px 8px 42px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--text-1);
+  transition: background var(--t-fast);
+}
+
+.userRow:hover {
+  background: var(--bg-hover);
+}
+
+.userAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  flex-shrink: 0;
+}
+
+.userText {
+  flex: 1;
+  min-width: 0;
+}
+
+.userLabel {
+  display: block;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userSub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+
+.chatIcon {
+  flex-shrink: 0;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--t-fast), color var(--t-fast);
+}
+
+.userRow:hover .chatIcon {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.loading,
+.empty {
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.error {
+  padding: 16px;
+  font-size: 13px;
+  color: var(--danger);
+  text-align: center;
+}

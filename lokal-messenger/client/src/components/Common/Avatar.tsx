@@ -1,22 +1,7 @@
 // Umumiy avatar komponenti — Telegram uslubidagi gradient doira.
 import { useMemo } from "react";
+import { gradientCssFor } from "@/utils/avatarGradient";
 import s from "./Avatar.module.css";
-
-const GRADIENTS = [
-  ["#f09433","#e6683c"],
-  ["#dc2743","#cc2366"],
-  ["#3d7de4","#2962d9"],
-  ["#0e8174","#0da678"],
-  ["#7958d4","#5e44a8"],
-  ["#c2a62e","#e8c32e"],
-];
-
-function gradientFor(name: string): string {
-  let h = 0;
-  for (const c of name) h = (h * 31 + c.charCodeAt(0)) | 0;
-  const [c1, c2] = GRADIENTS[Math.abs(h) % GRADIENTS.length]!;
-  return `linear-gradient(135deg, ${c1} 0%, ${c2} 100%)`;
-}
 
 interface AvatarProps {
   name:    string;
@@ -26,7 +11,7 @@ interface AvatarProps {
 }
 
 export default function Avatar({ name, size = 46, online, square = false }: AvatarProps) {
-  const bg = useMemo(() => gradientFor(name), [name]);
+  const bg = useMemo(() => gradientCssFor(name), [name]);
   const radius = square ? "var(--r-sm)" : "50%";
 
   return (

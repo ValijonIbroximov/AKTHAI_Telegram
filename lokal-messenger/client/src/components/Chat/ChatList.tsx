@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore }  from "@/store/chatStore";
 import ChatItem          from "./ChatItem";
+import UserDirectory     from "./UserDirectory";
 import s                 from "./ChatList.module.css";
 
 import type { FolderId } from "@/components/Layout/ChatFolders";
@@ -51,7 +52,10 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
     }, 300);
   }, [token, searchUsers, clearUserResults]);
 
+  const isUsersFolder = activeFolder === "users";
+
   const folderChats = (() => {
+    if (isUsersFolder) return [];
     switch (activeFolder) {
       case "groups":   return chats.filter((c) => c.type === "group");
       case "channels": return chats.filter((c) => c.type === "channel");
@@ -64,6 +68,11 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
     : folderChats;
 
   const isSearching = search.length >= 2;
+
+  const headerTitle = isUsersFolder ? "Foydalanuvchilar" : "Xabarlar";
+  const searchPlaceholder = isUsersFolder
+    ? "Foydalanuvchi qidirish"
+    : "Qidirish yoki yangi suhbat";
 
   return (
     <aside className={s.root}>
@@ -80,7 +89,7 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
           <span className={s.burger} />
         </button>
 
-        <span className={s.headerTitle}>Xabarlar</span>
+        <span className={s.headerTitle}>{headerTitle}</span>
 
         <button
           className={s.iconBtn}
@@ -108,7 +117,7 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
             id="chat-search-input"
             className={s.searchInput}
             type="search"
-            placeholder="Qidirish yoki yangi suhbat"
+            placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
           />
@@ -127,9 +136,21 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
       </div>
 
       {/* Suhbatlar ro'yxati */}
-      <div className={s.list} role="list" aria-label="Suhbatlar">
+      <div className={s.list} role="list" aria-label={isUsersFolder ? "Foydalanuvchilar" : "Suhbatlar"}>
 
-        {/* Mavjud suhbatlar */}
+        {isUsersFolder && token && (
+          <UserDirectory
+            token={token}
+            search={search}
+            onSelectUser={(user) => {
+              createChat(user, token);
+              setSearch("");
+            }}
+          />
+        )}
+
+        {!isUsersFolder && (
+        <>
         {filteredChats.length > 0 && (
           <>
             {isSearching && (
@@ -192,6 +213,8 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
               ? 'Topilmadi. Yangi suhbat boshlash uchun foydalanuvchi nomini kiriting.'
               : username ? "Suhbatlar yo'q" : "Yuklanmoqda..."}
           </p>
+        )}
+        </>
         )}
       </div>
     </aside>

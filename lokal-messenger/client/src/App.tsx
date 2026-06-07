@@ -11,8 +11,10 @@ import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
 import AdminDashboard    from "@/components/Admin/AdminDashboard";
 import styles            from "./App.module.css";
+import ToastStack        from "@/components/Notifications/ToastStack";
 import { BackNavigationProvider } from "@/contexts/BackNavigationContext";
-import { initNotifications } from "@/utils/notifications";
+import { initNotifications, setChatPaneVisible, setNotificationClickHandler } from "@/utils/notifications";
+import { useChatStore } from "@/store/chatStore";
 
 type MainView = "chat" | "settings" | "admin";
 
@@ -29,6 +31,20 @@ export default function App() {
     void initNotifications();
     void bootstrap();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setChatPaneVisible(mainView === "chat");
+  }, [mainView]);
+
+  useEffect(() => {
+    setNotificationClickHandler((chatId) => {
+      const t = useAuthStore.getState().token;
+      if (!t) return;
+      setMainView("chat");
+      void useChatStore.getState().selectChat(chatId, t);
+    });
+    return () => setNotificationClickHandler(null);
   }, []);
 
   // Akkaunt almashganda asosiy ko'rinish
@@ -86,6 +102,7 @@ export default function App() {
             <MessageArea />
           )}
         </div>
+        <ToastStack />
       </div>
     </BackNavigationProvider>
   );

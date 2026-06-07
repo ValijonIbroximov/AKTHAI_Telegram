@@ -45,6 +45,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 
 	// Foydalanuvchilar katalogi
 	v1.Get("/users", h.ListUsers)
+	v1.Get("/users/directory", h.ListUsersDirectory)
 
 	// Shifrlangan media fayllar (AES-256-GCM blob)
 	// Server faylning mazmunini bilmaydi — faqat shifrlangan baytlar saqlanadi.

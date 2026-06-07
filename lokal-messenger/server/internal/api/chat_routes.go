@@ -23,7 +23,8 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	q := "%" + c.Query("q") + "%"
 
 	rows, err := h.deps.DB.Query(c.Context(), `
-        SELECT id::text, username, display_name, role, rank_title, unit_code
+        SELECT id::text, username, display_name, role, rank_title, unit_code,
+               okrug_name, okrug_code, unit_name, division_name, division_code, display_short
           FROM users
          WHERE is_active = TRUE AND id <> $1::uuid
            AND (username ILIKE $2 OR display_name ILIKE $2)
@@ -37,14 +38,60 @@ func (h *Handlers) ListUsers(c *fiber.Ctx) error {
 	out := make([]fiber.Map, 0)
 	for rows.Next() {
 		var id, u, dn, role string
-		var rank, unit *string
-		if err := rows.Scan(&id, &u, &dn, &role, &rank, &unit); err != nil {
+		var rank, unit, okrugName, okrugCode, unitName, divName, divCode, displayShort *string
+		if err := rows.Scan(&id, &u, &dn, &role, &rank, &unit,
+			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort); err != nil {
 			continue
 		}
 		out = append(out, fiber.Map{
 			"id": id, "username": u, "display_name": dn,
 			"role": role, "rank_title": rank, "unit_code": unit,
+			"okrug_name": okrugName, "okrug_code": okrugCode,
+			"unit_name": unitName, "division_name": divName, "division_code": divCode,
+			"display_short": displayShort,
 		})
+	}
+	return c.JSON(out)
+}
+
+// ListUsersDirectory — barcha faol foydalanuvchilar ierarxik ro'yxat uchun qaytariladi.
+func (h *Handlers) ListUsersDirectory(c *fiber.Ctx) error {
+	selfID, _ := c.Locals("user_id").(string)
+
+	rows, err := h.deps.DB.Query(c.Context(), `
+        SELECT id::text, username, display_name, role, rank_title, unit_code,
+               okrug_name, okrug_code, unit_name, division_name, division_code, display_short
+          FROM users
+         WHERE is_active = TRUE AND id <> $1::uuid
+         ORDER BY
+           COALESCE(okrug_code, 'zzz'),
+           COALESCE(unit_code, 'zzz'),
+           COALESCE(division_code, 'zzz'),
+           COALESCE(rank_title, ''),
+           display_name`, selfID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	out := make([]fiber.Map, 0)
+	for rows.Next() {
+		var id, u, dn, role string
+		var rank, unit, okrugName, okrugCode, unitName, divName, divCode, displayShort *string
+		if err := rows.Scan(&id, &u, &dn, &role, &rank, &unit,
+			&okrugName, &okrugCode, &unitName, &divName, &divCode, &displayShort); err != nil {
+			continue
+		}
+		out = append(out, fiber.Map{
+			"id": id, "username": u, "display_name": dn,
+			"role": role, "rank_title": rank, "unit_code": unit,
+			"okrug_name": okrugName, "okrug_code": okrugCode,
+			"unit_name": unitName, "division_name": divName, "division_code": divCode,
+			"display_short": displayShort,
+		})
+	}
+	if out == nil {
+		out = []fiber.Map{}
 	}
 	return c.JSON(out)
 }

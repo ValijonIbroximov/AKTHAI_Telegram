@@ -10,19 +10,31 @@ interface Props {
 }
 
 interface NewUserForm {
-  username:     string;
-  display_name: string;
-  role:         "user" | "admin";
-  rank_title:   string;
-  unit_code:    string;
+  username:      string;
+  display_name:  string;
+  role:          "user" | "admin";
+  rank_title:    string;
+  unit_code:     string;
+  okrug_name:    string;
+  okrug_code:    string;
+  unit_name:     string;
+  division_name: string;
+  division_code: string;
+  display_short: string;
 }
 
 const EMPTY_FORM: NewUserForm = {
-  username:     "",
-  display_name: "",
-  role:         "user",
-  rank_title:   "",
-  unit_code:    "",
+  username:      "",
+  display_name:  "",
+  role:          "user",
+  rank_title:    "",
+  unit_code:     "",
+  okrug_name:    "",
+  okrug_code:    "",
+  unit_name:     "",
+  division_name: "",
+  division_code: "",
+  display_short: "",
 };
 
 export default function AdminDashboard({ onBack }: Props) {
@@ -77,11 +89,17 @@ export default function AdminDashboard({ onBack }: Props) {
     setFormError("");
     try {
       const result = await userApi.create(token, {
-        username:     form.username.trim(),
-        display_name: form.display_name.trim(),
-        role:         form.role,
-        rank_title:   form.rank_title || null as unknown as string,
-        unit_code:    form.unit_code  || null as unknown as string,
+        username:      form.username.trim(),
+        display_name:  form.display_name.trim(),
+        role:          form.role,
+        rank_title:    form.rank_title || null as unknown as string,
+        unit_code:     form.unit_code  || null as unknown as string,
+        okrug_name:    form.okrug_name || null as unknown as string,
+        okrug_code:    form.okrug_code || null as unknown as string,
+        unit_name:     form.unit_name || null as unknown as string,
+        division_name: form.division_name || null as unknown as string,
+        division_code: form.division_code || null as unknown as string,
+        display_short: form.display_short || null as unknown as string,
       });
       setNewPass({ username: form.username.trim(), pass: result.temporary_password });
       setForm(EMPTY_FORM);
@@ -153,16 +171,70 @@ export default function AdminDashboard({ onBack }: Props) {
                   className={styles.input}
                   value={form.rank_title}
                   onChange={(e) => setForm((f) => ({ ...f, rank_title: e.target.value }))}
-                  placeholder="Mayor"
+                  placeholder="kursant"
                 />
               </div>
               <div className={styles.field}>
-                <label className={styles.label}>Birlik kodi</label>
+                <label className={styles.label}>Qisqa yorliq</label>
+                <input
+                  className={styles.input}
+                  value={form.display_short}
+                  onChange={(e) => setForm((f) => ({ ...f, display_short: e.target.value }))}
+                  placeholder="k-nt Ibroximov V.A."
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Harbiy okrug</label>
+                <input
+                  className={styles.input}
+                  value={form.okrug_name}
+                  onChange={(e) => setForm((f) => ({ ...f, okrug_name: e.target.value }))}
+                  placeholder="Toshkent harbiy okrugi"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Okrug kodi</label>
+                <input
+                  className={styles.input}
+                  value={form.okrug_code}
+                  onChange={(e) => setForm((f) => ({ ...f, okrug_code: e.target.value }))}
+                  placeholder="THO"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Harbiy qism</label>
+                <input
+                  className={styles.input}
+                  value={form.unit_name}
+                  onChange={(e) => setForm((f) => ({ ...f, unit_name: e.target.value }))}
+                  placeholder="AKTHAI"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Qism kodi</label>
                 <input
                   className={styles.input}
                   value={form.unit_code}
                   onChange={(e) => setForm((f) => ({ ...f, unit_code: e.target.value }))}
-                  placeholder="V-1234"
+                  placeholder="AKTHAI"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Bo'linma</label>
+                <input
+                  className={styles.input}
+                  value={form.division_name}
+                  onChange={(e) => setForm((f) => ({ ...f, division_name: e.target.value }))}
+                  placeholder="Kursantlar batalyoni 1-vzvod"
+                />
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Bo'linma kodi</label>
+                <input
+                  className={styles.input}
+                  value={form.division_code}
+                  onChange={(e) => setForm((f) => ({ ...f, division_code: e.target.value }))}
+                  placeholder="KursBat1"
                 />
               </div>
             </div>

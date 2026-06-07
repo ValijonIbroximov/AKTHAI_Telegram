@@ -576,9 +576,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       set((s) => ({
         chats:        [newChat, ...s.chats.filter((c) => c.id !== chatId)],
-        activeChatId: chatId,
         userResults:  [],
       }));
+      await get().selectChat(chatId, token);
     } catch (e) {
       console.error("[Chat] createChat xatoligi:", e);
     }
