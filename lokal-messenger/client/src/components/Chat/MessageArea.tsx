@@ -1,28 +1,45 @@
 // O'ng panel — Telegram Desktop uslubidagi chat oynasi.
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore, PENDING_DECRYPT_LABEL } from "@/store/chatStore";
 import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
 import { parseMediaPayload } from "@/crypto/fileCrypto";
+import { formatPeerStatus } from "@/utils/presence";
+import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import Avatar            from "@/components/Common/Avatar";
 import MessageBubble     from "./MessageBubble";
 import ImageViewer       from "./ImageViewer";
 import InputBar          from "./InputBar";
 import s                 from "./MessageArea.module.css";
 
+const BOTTOM_THRESHOLD = 80;
+
 export default function MessageArea() {
   const { userId, token } = useAuthStore();
-  const { activeChatId, chats, messages, presenceMap, resetSessionWithPeer } = useChatStore();
-  const bottomRef    = useRef<HTMLDivElement>(null);
+  const { activeChatId, chats, messages, presenceMap, lastSeenMap, lastSeenHiddenMap, resetSessionWithPeer, closeChat } = useChatStore();
+  const messagesRef  = useRef<HTMLDivElement>(null);
+  const pinnedToBottomRef = useRef(true);
+  const scrollingToBottomRef = useRef(false);
+  const chatEnteringRef = useRef(false);
+  const prevChatIdRef = useRef<string | null>(null);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const [resetting, setResetting]       = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [, tick] = useState(0);
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
   const peerId     = activeChat?.peer_user_id ?? null;
   const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
+  const lastSeen   = peerId
+    ? (lastSeenMap[peerId] ?? activeChat?.peer_last_seen_at ?? null)
+    : null;
+  const lastSeenHidden = peerId
+    ? (lastSeenHiddenMap[peerId] ?? activeChat?.peer_last_seen_hidden ?? false)
+    : false;
+  const statusText = formatPeerStatus(isOnline, lastSeen, lastSeenHidden);
 
   const chatImages = useMemo(() => {
     const out: { messageId: string; payload: NonNullable<ReturnType<typeof parseMediaPayload>> }[] = [];
@@ -38,13 +55,139 @@ export default function MessageArea() {
     (m) => m.plaintext === PENDING_DECRYPT_LABEL || m.plaintext === DECRYPT_ERROR_LABEL
   );
 
+  const snapToBottom = useCallback((): boolean => {
+    const el = messagesRef.current;
+    if (!el) return false;
+    el.scrollTop = el.scrollHeight;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = dist <= BOTTOM_THRESHOLD;
+    if (near) {
+      pinnedToBottomRef.current = true;
+      chatEnteringRef.current = false;
+      setShowScrollDown(false);
+    }
+    return near;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const el = messagesRef.current;
+    if (!el) return;
+    if (behavior === "auto") {
+      snapToBottom();
+      return;
+    }
+    scrollingToBottomRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [snapToBottom]);
+
+  const updateScrollState = useCallback(() => {
+    if (chatEnteringRef.current) return;
+    const el = messagesRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = dist <= BOTTOM_THRESHOLD;
+    pinnedToBottomRef.current = near;
+    setShowScrollDown(!near);
+  }, []);
+
+  const handleMessagesScroll = useCallback(() => {
+    if (chatEnteringRef.current || scrollingToBottomRef.current) {
+      if (scrollingToBottomRef.current) {
+        const el = messagesRef.current;
+        if (!el) return;
+        const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (dist <= BOTTOM_THRESHOLD) scrollingToBottomRef.current = false;
+      }
+      return;
+    }
+    updateScrollState();
+  }, [updateScrollState]);
+
+  const handleScrollDownClick = useCallback(() => {
+    scrollingToBottomRef.current = true;
+    pinnedToBottomRef.current = true;
+    chatEnteringRef.current = false;
+    setShowScrollDown(false);
+    scrollToBottom("smooth");
+  }, [scrollToBottom]);
+
+  const lastMsg = msgs[msgs.length - 1];
+
+  useLayoutEffect(() => {
+    if (!activeChatId) return;
+
+    if (prevChatIdRef.current !== activeChatId) {
+      prevChatIdRef.current = activeChatId;
+      chatEnteringRef.current = true;
+      pinnedToBottomRef.current = true;
+      scrollingToBottomRef.current = false;
+      setShowScrollDown(false);
+    }
+
+    if (chatEnteringRef.current || pinnedToBottomRef.current) {
+      snapToBottom();
+    }
+  }, [activeChatId, msgs.length, lastMsg?.id, lastMsg?.plaintext, snapToBottom]);
+
+  // DOM balandligi o'zgarganda (rasm, kech yuklangan tarix) — qayta urinish
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs.length]);
+    if (!activeChatId) return;
+    let cancelled = false;
+
+    const retrySnap = (attemptsLeft: number) => {
+      if (cancelled || attemptsLeft <= 0) return;
+      if (!chatEnteringRef.current && !pinnedToBottomRef.current) return;
+      const ok = snapToBottom();
+      if (!ok) requestAnimationFrame(() => retrySnap(attemptsLeft - 1));
+    };
+
+    retrySnap(16);
+    const t1 = window.setTimeout(() => retrySnap(8), 50);
+    const t2 = window.setTimeout(() => retrySnap(8), 200);
+    const t3 = window.setTimeout(() => retrySnap(8), 500);
+    const t4 = window.setTimeout(() => {
+      if (chatEnteringRef.current) {
+        snapToBottom();
+        chatEnteringRef.current = false;
+      }
+    }, 1200);
+
+    const el = messagesRef.current;
+    if (!el) {
+      return () => {
+        cancelled = true;
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+
+    const ro = new ResizeObserver(() => {
+      if (chatEnteringRef.current || pinnedToBottomRef.current) snapToBottom();
+    });
+    ro.observe(el);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+      ro.disconnect();
+    };
+  }, [activeChatId, msgs.length, snapToBottom]);
 
   useEffect(() => {
     setViewerMessageId(null);
   }, [activeChatId]);
+
+  // "N daqiqa oldin ko'rildi" matnini yangilash
+  useEffect(() => {
+    if (!peerId || isOnline) return;
+    const id = window.setInterval(() => tick((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, [peerId, isOnline]);
 
   // Menyu tashqariga bosish → yopish
   useEffect(() => {
@@ -59,6 +202,24 @@ export default function MessageArea() {
   }, [headerMenuOpen]);
 
   const closeMenu = useCallback(() => setHeaderMenuOpen(false), []);
+
+  const handleBack = useCallback(() => {
+    if (viewerMessageId) {
+      setViewerMessageId(null);
+      return true;
+    }
+    if (headerMenuOpen) {
+      setHeaderMenuOpen(false);
+      return true;
+    }
+    if (activeChatId) {
+      closeChat();
+      return true;
+    }
+    return false;
+  }, [viewerMessageId, headerMenuOpen, activeChatId, closeChat]);
+
+  useRegisterBackHandler(handleBack, !!activeChat, BACK_PRIORITY.chat);
 
   const handleResetSession = async () => {
     if (!activeChatId || !peerId || !token || resetting) return;
@@ -100,12 +261,22 @@ export default function MessageArea() {
     <div className={s.root}>
       {/* Chat sarlavhasi */}
       <div className={s.header}>
+        <button
+          className={s.backBtn}
+          onClick={closeChat}
+          aria-label="Suhbatlar ro'yxatiga qaytish"
+          title="Orqaga"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+            <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
         <Avatar name={activeChat.title} size={36} online={isOnline} />
 
         <div className={s.headerInfo}>
           <span className={s.headerName}>{activeChat.title}</span>
           <span className={`${s.headerStatus} ${isOnline ? s.online : ""}`}>
-            {isOnline ? "onlayn" : "so'nggi marta uzoq vaqt oldin"}
+            {statusText}
           </span>
         </div>
 
@@ -192,22 +363,41 @@ export default function MessageArea() {
       )}
 
       {/* Xabarlar maydoni */}
-      <div className={s.messages}>
-        {msgs.length === 0 ? (
-          <div className={s.noMsgs}>
-            <div className={s.noMsgsBox}>Suhbat boshlash uchun xabar yuboring</div>
-          </div>
-        ) : (
-          msgs.map(msg => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              isOwn={msg.sender_id === userId || msg.sender_id === "me"}
-              onImageOpen={setViewerMessageId}
-            />
-          ))
+      <div className={s.messagesWrap}>
+        <div
+          className={s.messages}
+          ref={messagesRef}
+          onScroll={handleMessagesScroll}
+        >
+          {msgs.length === 0 ? (
+            <div className={s.noMsgs}>
+              <div className={s.noMsgsBox}>Suhbat boshlash uchun xabar yuboring</div>
+            </div>
+          ) : (
+            msgs.map(msg => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                isOwn={msg.sender_id === userId || msg.sender_id === "me"}
+                onImageOpen={setViewerMessageId}
+              />
+            ))
+          )}
+        </div>
+
+        {showScrollDown && (
+          <button
+            type="button"
+            className={s.scrollDownBtn}
+            onClick={handleScrollDownClick}
+            aria-label="Eng pastga tushish"
+            title="Eng pastga"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M12 5v14M5 12l7 7 7-7" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Kiritish paneli */}

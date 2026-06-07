@@ -47,11 +47,18 @@ export const authApi = {
 };
 
 // ── Foydalanuvchilar ──────────────────────────────────────────────────────────
-interface MeResponse { user_id: string; role: string }
+interface MeResponse {
+  user_id:        string;
+  role:           string;
+  hide_last_seen: boolean;
+}
 
 export const userApi = {
   me: (token: string) =>
     request<MeResponse>("GET", "/me", token),
+
+  updatePrivacy: (token: string, data: { hide_last_seen: boolean }) =>
+    request<{ hide_last_seen: boolean }>("PATCH", "/me/privacy", token, data),
 
   list: (token: string) =>
     request<User[]>("GET", "/users", token),
@@ -95,10 +102,13 @@ export const chatApi = {
   list: async (token: string): Promise<Chat[]> => {
     const raw = await request<RawChat[]>("GET", "/chats", token);
     return (raw ?? []).map((c) => ({
-      id:           c.id,
-      type:         c.type,
-      title:        c.title || "Nomsiz",
-      peer_user_id: c.peer_user_id ?? null,
+      id:                 c.id,
+      type:               c.type,
+      title:              c.title || "Nomsiz",
+      peer_user_id:       c.peer_user_id ?? null,
+      peer_online:           c.peer_online,
+      peer_last_seen_at:     c.peer_last_seen_at ?? null,
+      peer_last_seen_hidden: c.peer_last_seen_hidden ?? false,
       last_message: c.last_time
         ? { sender_id: "", preview: "", created_at: c.last_time }
         : null,
@@ -185,11 +195,6 @@ export const mediaApi = {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (url.startsWith("/")) {
-        throw new Error(
-          `Fayl yuklanmadi: server topilmadi. Login ekranida Server IP ni kiriting (masalan 192.168.101.32). (${msg})`
-        );
-      }
       throw new Error(`Fayl yuklanmadi: serverga ulanib bo'lmadi (${msg})`);
     }
 

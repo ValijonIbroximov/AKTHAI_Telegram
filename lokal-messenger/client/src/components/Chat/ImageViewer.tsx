@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { MediaPayload } from "@/crypto/fileCrypto";
 import { formatFileSize } from "@/crypto/fileCrypto";
 import { loadDecryptedMedia } from "@/utils/mediaLoader";
+import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import s from "./ImageViewer.module.css";
 
 export interface ViewerImage {
@@ -82,6 +83,12 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     setPanX(0);
     setPanY(0);
   }, []);
+
+  const handleEscapeBack = useCallback(() => {
+    onClose();
+    return true;
+  }, [onClose]);
+  useRegisterBackHandler(handleEscapeBack, true, BACK_PRIORITY.imageViewer);
 
   const applyZoom = useCallback((px: number, py: number, factor: number) => {
     const stage = stageRef.current;
@@ -218,15 +225,9 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* */ }
   }, []);
 
-  // Klaviatura: Escape, ← →, Ctrl + +/-
+  // Klaviatura: ← →, Ctrl + +/-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-        return;
-      }
-
       const mod = e.ctrlKey || e.metaKey;
 
       if (mod && (e.key === "+" || e.key === "=" || e.key === "-")) {

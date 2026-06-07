@@ -31,6 +31,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	v1.Post("/auth/change-password", h.ChangePassword)
 	v1.Post("/auth/logout", h.Logout)
 	v1.Get("/me", h.Me)
+	v1.Patch("/me/privacy", h.UpdatePrivacy)
 
 	// Signal Protocol kalit-bundle marshrutlari
 	v1.Post("/keys/upload", h.UploadKeyBundle)

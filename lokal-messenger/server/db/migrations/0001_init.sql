@@ -23,6 +23,7 @@ CREATE TABLE users (
     locked_until            TIMESTAMPTZ,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at            TIMESTAMPTZ,
+    hide_last_seen          BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))
 );
 

@@ -24,10 +24,13 @@ export interface Chat {
   id:             string;
   type:           ChatType;
   title:          string;
-  peer_user_id:   string | null;   // to'g'ridan-to'g'ri suhbatda sherik ID
+  peer_user_id:   string | null;
   last_message:   LastMessage | null;
   unread_count:   number;
   updated_at:     string;
+  peer_online?:            boolean;
+  peer_last_seen_at?:      string | null;
+  peer_last_seen_hidden?:  boolean;
   /** Guruh/kanal uchun a'zolar soni (kelajak) */
   member_count?:  number | null;
   /** Guruh/kanal tavsifi (kelajak) */
@@ -77,6 +80,7 @@ export interface Message {
 export type WsEvent =
   | { type: "msg.recv";  payload: WsMsgRecv }
   | { type: "msg.ack";   payload: WsMsgAck }
+  | { type: "msg.read";  payload: WsMsgRead }
   | { type: "presence";  payload: WsPresence }
   | { type: "session.rekey_request"; payload: WsSessionRekeyRequest };
 
@@ -118,9 +122,16 @@ export interface WsMsgAck {
   server_msg_id: string;
 }
 
+export interface WsMsgRead {
+  msg_id:  string;
+  chat_id: string;
+}
+
 export interface WsPresence {
-  user_id: string;
-  online:  boolean;
+  user_id:           string;
+  online:            boolean;
+  last_seen_at?:     string | null;
+  last_seen_hidden?: boolean;
 }
 
 // Login javob turi
@@ -150,12 +161,15 @@ export interface KeyBundle {
 
 // Server ListChats xom javob turi (transformatsiya uchun)
 export interface RawChat {
-  id:           string;
-  type:         ChatType;
-  title:        string;
-  peer_user_id: string | null;
-  last_time:    string | null;
-  unread:       number;
+  id:                 string;
+  type:               ChatType;
+  title:              string;
+  peer_user_id:       string | null;
+  last_time:          string | null;
+  unread:             number;
+  peer_online?:            boolean;
+  peer_last_seen_at?:      string | null;
+  peer_last_seen_hidden?:  boolean;
 }
 
 // Server ChatHistory xom javob turi

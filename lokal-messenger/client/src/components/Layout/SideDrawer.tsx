@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useTheme }     from "@/contexts/ThemeContext";
+import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import s from "./SideDrawer.module.css";
 
 const isTauri =
@@ -48,11 +49,15 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
     }
   }, []);
 
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    if (open) document.addEventListener("keydown", h);
-    return () => document.removeEventListener("keydown", h);
-  }, [open, onClose]);
+  useRegisterBackHandler(
+    useCallback(() => {
+      if (!open) return false;
+      onClose();
+      return true;
+    }, [open, onClose]),
+    open,
+    BACK_PRIORITY.sideDrawer,
+  );
 
   useEffect(() => {
     if (open) drawerRef.current?.focus();

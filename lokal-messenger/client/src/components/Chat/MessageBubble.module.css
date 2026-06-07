@@ -91,6 +91,20 @@
 }
 .time { font-size: 11px; color: var(--text-3); white-space: nowrap; }
 .status { display: flex; align-items: center; margin-left: 1px; }
+.ticks {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: -1px;
+  line-height: 1;
+}
+.ticksRead {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -2px;
+  line-height: 1;
+}
 .tick     { color: var(--text-3); }
 .tickRead { color: var(--accent); }
 

@@ -366,6 +366,13 @@ export async function webHasSession(peerId: string): Promise<boolean> {
   return sess !== null;
 }
 
+export async function webGetSessionRole(
+  peerId: string,
+): Promise<"sender" | "receiver" | null> {
+  const sess = await getSession(peerId);
+  return sess?.role ?? null;
+}
+
 /** Berilgan peer bilan Signal sessiyasini o'chirish */
 export async function webClearSession(peerId: string): Promise<void> {
   await idbDelete("sessions", peerId);
@@ -470,8 +477,9 @@ async function webInitSignalKeysImpl(token: string): Promise<KeyInitResult> {
   // Timestamp asosida noyob offset — avvalgi (used=TRUE) kalit ID lari bilan
   // to'qnashuv bo'lmasligi uchun. Server: ON CONFLICT (user_id, key_id) DO NOTHING.
   const baseId = (Date.now() % 900_000) + 100_000; // 100000–999999
+  const otpkCount = regenerated ? 15 : 5;
   const otpks: { key_id: number; public_key: string }[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < otpkCount; i++) {
     const keyId = baseId + i;
     const k = genX25519();
     // IDB'da key_id bo'yicha saqlanadi (webEstablishSessionReceiver qidirish uchun)
@@ -576,22 +584,6 @@ export async function webEstablishSession(
   peerId:     string,
   bundleJson: string
 ): Promise<WebEstablishResult> {
-  const hadSession = await getSession(peerId);
-  if (hadSession?.role === "receiver") {
-    console.warn(
-      `[WebCrypto] Qabul sessiyasi saqlanadi (receiver) — sender X3DH o'tkazib yuborildi: ${peerId}`
-    );
-    const ident = await getIdentity();
-    if (!ident) throw new Error("Identifikatsiya kaliti yo'q");
-    const ek = genX25519();
-    return {
-      ekPk:           b64(ek.pk),
-      senderIkX25519: ident.ikPkB64,
-      spkKeyId:       1,
-      otpkKeyId:      0,
-    };
-  }
-
   const bundle = JSON.parse(bundleJson) as {
     identity_key:          string;
     identity_key_x25519?:  string;
@@ -657,12 +649,6 @@ export async function webEstablishSessionReceiver(
   spkKeyId:          number,
   otpkKeyId:         number
 ): Promise<void> {
-  const existing = await getSession(peerId);
-  if (existing?.role === "receiver" && existing.recvMsgNum > 0) {
-    console.log(`[WebCrypto] Receiver sessiya faol — X3DH o'tkazib yuborildi: ${peerId}`);
-    return;
-  }
-
   const ident = await getIdentity();
   if (!ident) throw new Error("Identifikatsiya kaliti yo'q — avval webInitSignalKeys chaqiring");
 

@@ -1,32 +1,19 @@
 // Harbiy autentifikatsiya ekrani.
 // Faqat admin tomonidan yaratilgan hisob bilan kirish amalga oshiriladi.
-import { useState, FormEvent, useEffect } from "react";
+import { useState, FormEvent } from "react";
 import { useAuthStore } from "@/store/authStore";
-import { hasDevServerHost, resolveDevServerHost, setDevServerHost } from "@/config/devServer";
 import s from "./LoginPage.module.css";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
-  const [serverIp, setServerIp] = useState("");
   const { login, addAccount, loading, error, clearError, uiMode, cancelAuthUI } = useAuthStore();
   const isAddMode = uiMode === "add_account";
-  const isDev = import.meta.env.DEV;
-  const onLanClient = typeof window !== "undefined" &&
-    !["127.0.0.1", "localhost"].includes(window.location.hostname);
-
-  useEffect(() => {
-    const h = resolveDevServerHost();
-    if (h !== "127.0.0.1" && h !== "localhost") setServerIp(h);
-  }, []);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password) return;
-    if (isDev && serverIp.trim()) {
-      setDevServerHost(serverIp.trim());
-    }
     if (isAddMode) await addAccount(username.trim(), password);
     else await login(username.trim(), password);
   };
@@ -128,29 +115,6 @@ export default function LoginPage() {
               </button>
             </div>
           </div>
-
-          {isDev && (onLanClient || !hasDevServerHost()) && (
-            <div className={s.field}>
-              <label htmlFor="server-ip" className={s.label}>
-                Server IP (LAN)
-              </label>
-              <div className={s.inputWrap}>
-                <input
-                  id="server-ip"
-                  type="text"
-                  className={s.input}
-                  placeholder="192.168.101.32"
-                  value={serverIp}
-                  onChange={(e) => setServerIp(e.target.value)}
-                  spellCheck={false}
-                  disabled={loading}
-                />
-              </div>
-              <p className={s.fieldHint}>
-                Server boshqa mashinada bo&apos;lsa, uning IP manzilini kiriting (rasm yuborish uchun ham kerak).
-              </p>
-            </div>
-          )}
 
           <button
             type="submit"

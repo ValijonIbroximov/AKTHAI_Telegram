@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/military/lokal-messenger/server/internal/cache"
 )
 
 // Client — bitta WebSocket ulanishini ifodalaydi.
@@ -69,18 +71,31 @@ func (h *Hub) Run(ctx context.Context) {
 			_ = h.rdb.Set(ctx, "presence:"+c.UserID, time.Now().Unix(), 90*time.Second).Err()
 			log.Printf("[WS] 🟢 Ulanish: userID=%s | jami=%d", c.UserID, h.clientCount())
 			go h.flushPending(ctx, c)
+			go h.broadcastPresence(c.UserID, true, nil)
+			go h.sendInitialPresence(ctx, c)
 
 		case c := <-h.unreg:
+			userID := c.UserID
+			removed := false
 			h.mu.Lock()
 			if cur, ok := h.clients[c.UserID]; ok && cur == c {
 				delete(h.clients, c.UserID)
 				close(c.Send)
 				c.closed = true
+				removed = true
 			}
 			h.mu.Unlock()
-			_ = h.rdb.SRem(ctx, "presence:online_set", c.UserID).Err()
-			_ = h.rdb.Del(ctx, "presence:"+c.UserID).Err()
-			log.Printf("[WS] 🔴 Uzilish: userID=%s | jami=%d", c.UserID, h.clientCount())
+			if removed {
+				_ = h.rdb.SRem(ctx, "presence:online_set", userID).Err()
+				_ = h.rdb.Del(ctx, "presence:"+userID).Err()
+				now := time.Now()
+				if _, err := h.db.Exec(ctx,
+					`UPDATE users SET last_seen_at = $1 WHERE id = $2::uuid`, now, userID); err != nil {
+					log.Printf("[WS] last_seen_at yangilash xatoligi: user=%s err=%v", userID, err)
+				}
+				go h.broadcastPresence(userID, false, &now)
+				log.Printf("[WS] 🔴 Uzilish: userID=%s | jami=%d", userID, h.clientCount())
+			}
 
 		case env := <-h.inbound:
 			h.handleInbound(ctx, env)
@@ -258,15 +273,29 @@ func (h *Hub) markDelivered(ctx context.Context, env inboundEnvelope) {
 		    WHERE id = $1::uuid AND recipient_id = $2::uuid`, p.MsgID, env.From)
 }
 
-// markRead — xabar o'qilgan deb belgilanadi.
+// markRead — xabar o'qilgan deb belgilanadi; yuboruvchiga msg.read yuboriladi.
 func (h *Hub) markRead(ctx context.Context, env inboundEnvelope) {
 	var p struct{ MsgID string `json:"msg_id"` }
-	if err := json.Unmarshal(env.Payload, &p); err != nil {
+	if err := json.Unmarshal(env.Payload, &p); err != nil || p.MsgID == "" {
 		return
 	}
-	_, _ = h.db.Exec(ctx,
-		`UPDATE messages SET read_at = NOW()
-		    WHERE id = $1::uuid AND recipient_id = $2::uuid`, p.MsgID, env.From)
+
+	var senderID, chatID string
+	err := h.db.QueryRow(ctx, `
+		UPDATE messages SET read_at = COALESCE(read_at, NOW())
+		 WHERE id = $1::uuid AND recipient_id = $2::uuid
+		 RETURNING sender_id::text, chat_id::text
+	`, p.MsgID, env.From).Scan(&senderID, &chatID)
+	if err != nil {
+		return
+	}
+
+	if senderID != "" && senderID != env.From {
+		h.sendTo(senderID, "msg.read", map[string]any{
+			"msg_id":  p.MsgID,
+			"chat_id": chatID,
+		})
+	}
 }
 
 // routeSessionRekey — qabul qiluvchi sessiya yo'qligini bildiradi; yuboruvchi keyingi xabarda PreKey ishlatadi.
@@ -291,3 +320,91 @@ func (h *Hub) routeSessionRekey(env inboundEnvelope) {
 func (h *Hub) Inbound() chan<- inboundEnvelope  { return h.inbound }
 func (h *Hub) Register() chan<- *Client          { return h.register }
 func (h *Hub) Unregister() chan<- *Client        { return h.unreg }
+
+// IsOnline — foydalanuvchi hozir WebSocket orqali ulanganmi.
+func (h *Hub) IsOnline(userID string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	c, ok := h.clients[userID]
+	return ok && c != nil && !c.closed
+}
+
+// broadcastPresence — barcha ulangan mijozlarga onlayn/offline xabar yuboriladi.
+func (h *Hub) broadcastPresence(userID string, online bool, lastSeen *time.Time) {
+	ctx := context.Background()
+	if !online && h.userHidesLastSeen(ctx, userID) {
+		h.broadcastPresencePayload(userID, map[string]any{
+			"user_id":           userID,
+			"online":            false,
+			"last_seen_hidden":  true,
+		})
+		return
+	}
+
+	payload := map[string]any{
+		"user_id": userID,
+		"online":  online,
+	}
+	if lastSeen != nil && !online {
+		payload["last_seen_at"] = lastSeen.UTC().Format(time.RFC3339Nano)
+	}
+	h.broadcastPresencePayload(userID, payload)
+}
+
+// BroadcastPresence — REST handlerlaridan tashqi chaqiruv uchun.
+func (h *Hub) BroadcastPresence(userID string, online bool, lastSeen *time.Time) {
+	h.broadcastPresence(userID, online, lastSeen)
+}
+
+// BroadcastPresenceHidden — faollik yashirilgan holatni e'lon qiladi.
+func (h *Hub) BroadcastPresenceHidden(userID string, online bool) {
+	h.broadcastPresencePayload(userID, map[string]any{
+		"user_id":          userID,
+		"online":           online,
+		"last_seen_hidden": true,
+	})
+}
+
+func (h *Hub) userHidesLastSeen(ctx context.Context, userID string) bool {
+	var hide bool
+	err := h.db.QueryRow(ctx,
+		`SELECT COALESCE(hide_last_seen, FALSE) FROM users WHERE id = $1::uuid`, userID,
+	).Scan(&hide)
+	return err == nil && hide
+}
+
+func (h *Hub) broadcastPresencePayload(userID string, payload map[string]any) {
+	raw, err := json.Marshal(map[string]any{"type": "presence", "payload": payload})
+	if err != nil {
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for uid, c := range h.clients {
+		if uid == userID || c.closed {
+			continue
+		}
+		select {
+		case c.Send <- raw:
+		default:
+		}
+	}
+}
+
+// sendInitialPresence — yangi mijozga hozir onlayn bo'lgan foydalanuvchilar ro'yxati yuboriladi.
+func (h *Hub) sendInitialPresence(ctx context.Context, c *Client) {
+	members, err := h.rdb.SMembers(ctx, cache.PresenceOnlineSet).Result()
+	if err != nil {
+		return
+	}
+	for _, uid := range members {
+		if uid == c.UserID {
+			continue
+		}
+		h.sendTo(c.UserID, "presence", map[string]any{
+			"user_id": uid,
+			"online":  true,
+		})
+	}
+}

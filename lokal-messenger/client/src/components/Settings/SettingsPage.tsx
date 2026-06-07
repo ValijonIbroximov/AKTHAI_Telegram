@@ -1,10 +1,11 @@
 // Telegram Desktop uslubidagi to'liq ekran Sozlamalar sahifasi.
 // MessageArea o'rnida ko'rsatiladi; ichki navigatsiya bilan bo'limlarga kirish mumkin.
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { userApi } from "@/api/http";
 import ChangePasswordModal from "./ChangePasswordModal";
-import { hasDevServerHost, resolveDevServerHost, setDevServerHost } from "@/config/devServer";
 import { useTheme, FONT_LABELS, RADIUS_LABELS, type FontChoice, type RadiusPreset } from "@/contexts/ThemeContext";
+import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import { THEMES } from "@/themes";
 import type { ThemeId } from "@/themes";
 import s from "./SettingsPage.module.css";
@@ -43,6 +44,15 @@ export default function SettingsPage({ onBack }: Props) {
     if (section !== null) setSection(null);
     else onBack();
   }, [section, onBack]);
+
+  useRegisterBackHandler(
+    useCallback(() => {
+      goBack();
+      return true;
+    }, [goBack]),
+    true,
+    BACK_PRIORITY.settings,
+  );
 
   return (
     <div className={s.root}>
@@ -326,24 +336,34 @@ function PrivacySection() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pin, setPin]         = useState("");
   const [pinMsg, setPinMsg]   = useState<string | null>(null);
-  const [serverIp, setServerIp] = useState(() => {
-    const h = resolveDevServerHost();
-    return h === "127.0.0.1" ? "" : h;
-  });
-  const [serverMsg, setServerMsg] = useState<string | null>(null);
+  const [hideLastSeen, setHideLastSeen] = useState(false);
+  const [privacyLoading, setPrivacyLoading] = useState(true);
+  const [privacySaving, setPrivacySaving] = useState(false);
+  const token                 = useAuthStore((st) => st.token);
   const setAccountPin         = useAuthStore((st) => st.setAccountPin);
   const active                = useAuthStore((st) => st.accounts.find((a) => a.userId === st.activeAccountId));
-  const isDev                 = import.meta.env.DEV;
 
-  const saveServerIp = () => {
-    setServerMsg(null);
-    const ip = serverIp.trim();
-    if (!ip) {
-      setServerMsg("Server IP kiritilmagan");
-      return;
+  useEffect(() => {
+    if (!token) return;
+    setPrivacyLoading(true);
+    userApi.me(token)
+      .then((r) => setHideLastSeen(r.hide_last_seen ?? false))
+      .catch(() => { /* ignore */ })
+      .finally(() => setPrivacyLoading(false));
+  }, [token]);
+
+  const toggleHideLastSeen = async () => {
+    if (!token || privacySaving) return;
+    const next = !hideLastSeen;
+    setHideLastSeen(next);
+    setPrivacySaving(true);
+    try {
+      await userApi.updatePrivacy(token, { hide_last_seen: next });
+    } catch {
+      setHideLastSeen(!next);
+    } finally {
+      setPrivacySaving(false);
     }
-    setDevServerHost(ip);
-    setServerMsg("Saqlandi — rasm yuborish uchun sahifani yangilang (F5)");
   };
 
   const savePin = async () => {
@@ -359,6 +379,30 @@ function PrivacySection() {
 
   return (
     <div className={s.privacySection}>
+      <div className={s.groupBox}>
+        <div className={s.groupTitle}>So'nggi faollik</div>
+        <p className={s.groupDesc}>
+          Yoniq bo'lsa, boshqalar sizning oxirgi faolligingizni ko'ra olmaydi
+        </p>
+        <div className={s.privacyToggleRow}>
+          <div className={s.privacyToggleText}>
+            <span className={s.actionLabel}>So'nggi faollikni yashirish</span>
+            <span className={s.actionSub}>
+              Profilda «So'nggi faolligi yashirilgan» ko'rinadi
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hideLastSeen}
+            aria-label="So'nggi faollikni yashirish"
+            className={`${s.toggle} ${hideLastSeen ? s.toggleOn : ""}`}
+            onClick={toggleHideLastSeen}
+            disabled={privacyLoading || privacySaving}
+          />
+        </div>
+      </div>
+
       <div className={s.groupBox}>
         <div className={s.groupTitle}>Parol</div>
         <p className={s.groupDesc}>Hisob parolini xavfsiz tarzda yangilang (Argon2id)</p>
@@ -394,30 +438,6 @@ function PrivacySection() {
         {active?.pinHash && <p className={s.pinOk}>✓ PIN o'rnatilgan</p>}
         {pinMsg && <p className={s.pinMsg}>{pinMsg}</p>}
       </div>
-
-      {isDev && (
-        <div className={s.groupBox}>
-          <div className={s.groupTitle}>Server IP (LAN dev)</div>
-          <p className={s.groupDesc}>
-            Server boshqa mashinada bo&apos;lsa kiriting. Hozir:{" "}
-            {hasDevServerHost() ? resolveDevServerHost() : "localhost (proxy)"}
-          </p>
-          <div className={s.pinRow}>
-            <input
-              type="text"
-              className={s.pinInput}
-              placeholder="192.168.101.32"
-              value={serverIp}
-              onChange={(e) => setServerIp(e.target.value)}
-              spellCheck={false}
-            />
-            <button type="button" className={s.pinSaveBtn} onClick={saveServerIp}>
-              Saqlash
-            </button>
-          </div>
-          {serverMsg && <p className={s.pinMsg}>{serverMsg}</p>}
-        </div>
-      )}
 
       <div className={s.groupBox}>
         <div className={s.groupTitle}>E2EE</div>

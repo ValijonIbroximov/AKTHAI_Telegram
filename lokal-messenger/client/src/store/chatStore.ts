@@ -14,6 +14,7 @@ import {
   encryptFirstMessage,
   decryptMessage,
   hasSession,
+  getSessionRole,
   clearSession,
   DECRYPT_ERROR_LABEL,
   classifyDecryptError,
@@ -43,14 +44,16 @@ import {
 } from "@/utils/notifications";
 import type {
   Chat, Message, User,
-  WsEvent, WsMsgRecv, WsMsgAck, WsSessionRekeyRequest,
+  WsEvent, WsMsgRecv, WsMsgAck, WsMsgRead, WsSessionRekeyRequest,
 } from "@/types";
 
 interface ChatState {
   chats:        Chat[];
   activeChatId: string | null;
   messages:     Record<string, Message[]>;
-  presenceMap:  Record<string, boolean>;
+  presenceMap:         Record<string, boolean>;
+  lastSeenMap:         Record<string, string | null>;
+  lastSeenHiddenMap:   Record<string, boolean>;
   loading:      boolean;
 
   userResults:    User[];
@@ -58,6 +61,7 @@ interface ChatState {
 
   loadChats:        (token: string) => Promise<void>;
   selectChat:       (chatId: string, token: string) => Promise<void>;
+  closeChat:        () => void;
   createChat:       (peer: User, token: string) => Promise<void>;
   sendMessage:      (chatId: string, recipientId: string, plaintext: string, token: string) => Promise<void>;
   sendFileMessage:  (chatId: string, recipientId: string, file: File, token: string) => Promise<void>;
@@ -168,6 +172,20 @@ async function prepareOutgoingCiphertext(
   if (forcePreKey) {
     await clearSession(recipientId).catch(() => {});
     return sendPreKey();
+  }
+
+  const sessionRole = await getSessionRole(recipientId).catch(() => null);
+  if (sessionRole === "receiver") {
+    try {
+      return {
+        ciphertext: await encryptMessage(chatId, recipientId, plaintext),
+        msgTypeNum: 1,
+      };
+    } catch (e) {
+      console.warn("[E2EE] Qabul sessiyasidan yuborib bo'lmadi, PreKey ga o'tilmoqda:", e);
+      await clearSession(recipientId).catch(() => {});
+      return sendPreKey();
+    }
   }
 
   const sessionExists = await hasSession(recipientId).catch(() => false);
@@ -398,6 +416,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeChatId: null,
   messages:     {},
   presenceMap:  {},
+  lastSeenMap:  {},
+  lastSeenHiddenMap: {},
   loading:      false,
   userResults:  [],
   userLoading:  false,
@@ -407,7 +427,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ loading: true });
     try {
       const list = await chatApi.list(token);
-      set({ chats: list ?? [], loading: false });
+      const presenceMap = { ...get().presenceMap };
+      const lastSeenMap = { ...get().lastSeenMap };
+      const lastSeenHiddenMap = { ...get().lastSeenHiddenMap };
+      for (const c of list ?? []) {
+        if (!c.peer_user_id) continue;
+        if (c.peer_online !== undefined) {
+          presenceMap[c.peer_user_id] = c.peer_online;
+        }
+        lastSeenHiddenMap[c.peer_user_id] = c.peer_last_seen_hidden ?? false;
+        if (c.peer_last_seen_at !== undefined && !c.peer_last_seen_hidden) {
+          lastSeenMap[c.peer_user_id] = c.peer_last_seen_at;
+        }
+      }
+      set({ chats: list ?? [], presenceMap, lastSeenMap, lastSeenHiddenMap, loading: false });
 
       const userId = useAuthStore.getState().userId;
       const saved  = userId ? loadSavedActiveChatId(userId) : null;
@@ -518,6 +551,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         /* ignore */
       }
     }
+  },
+
+  closeChat: () => {
+    set({ activeChatId: null });
+    const userId = useAuthStore.getState().userId;
+    if (userId) clearSavedActiveChatId(userId);
   },
 
   // Yangi shaxsiy suhbat yaratish
@@ -924,9 +963,61 @@ export const useChatStore = create<ChatState>((set, get) => ({
         break;
       }
 
+      case "msg.read": {
+        const p = event.payload as WsMsgRead;
+        let readMsg: Message | undefined;
+        set((s) => {
+          const msgs = s.messages[p.chat_id];
+          if (!msgs) return s;
+          const next = msgs.map((m) => {
+            if (m.id !== p.msg_id) return m;
+            readMsg = { ...m, status: "read" as const };
+            return readMsg;
+          });
+          return { messages: { ...s.messages, [p.chat_id]: next } };
+        });
+        if (readMsg && isReadablePlaintext(readMsg.plaintext)) {
+          void persistLocalMessage(readMsg).catch((e) =>
+            console.warn("[WS] persistLocalMessage (read):", e)
+          );
+        }
+        break;
+      }
+
       case "presence": {
         const p = event.payload;
-        set((s) => ({ presenceMap: { ...s.presenceMap, [p.user_id]: p.online } }));
+        set((s) => {
+          const lastSeenHiddenMap = { ...s.lastSeenHiddenMap };
+          if (p.last_seen_hidden) {
+            lastSeenHiddenMap[p.user_id] = true;
+          } else if (!p.online) {
+            lastSeenHiddenMap[p.user_id] = false;
+          }
+
+          return {
+            presenceMap: { ...s.presenceMap, [p.user_id]: p.online },
+            lastSeenHiddenMap,
+            lastSeenMap:
+              p.online || p.last_seen_hidden
+                ? s.lastSeenMap
+                : {
+                    ...s.lastSeenMap,
+                    [p.user_id]: p.last_seen_at ?? new Date().toISOString(),
+                  },
+            chats: s.chats.map((c) =>
+              c.peer_user_id === p.user_id
+                ? {
+                    ...c,
+                    peer_online: p.online,
+                    peer_last_seen_hidden: p.last_seen_hidden ?? false,
+                    peer_last_seen_at: p.last_seen_hidden
+                      ? null
+                      : (p.last_seen_at ?? c.peer_last_seen_at ?? null),
+                  }
+                : c
+            ),
+          };
+        });
         break;
       }
 
@@ -966,6 +1057,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages:     {},
         activeChatId: null,
         presenceMap:  {},
+        lastSeenMap:  {},
+        lastSeenHiddenMap: {},
         userResults:  [],
       });
       console.log(`[Chat] onAccountSwitch: ${prev} → ${userId}, holat tozalandi`);

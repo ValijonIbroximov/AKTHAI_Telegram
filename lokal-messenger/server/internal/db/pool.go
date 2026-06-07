@@ -22,5 +22,21 @@ func NewPool(ctx context.Context, cfg config.DatabaseConfig) (*pgxpool.Pool, err
 	if cfg.MaxIdleConns > 0 {
 		pcfg.MinConns = int32(cfg.MaxIdleConns)
 	}
-	return pgxpool.NewWithConfig(ctx, pcfg)
+	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureSchema(ctx, pool); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return pool, nil
+}
+
+// ensureSchema — mavjud bazaga yangi ustunlar qo'shiladi (qo'lda migratsiyasiz ishlashi uchun).
+func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, `
+		ALTER TABLE users
+		    ADD COLUMN IF NOT EXISTS hide_last_seen BOOLEAN NOT NULL DEFAULT FALSE`)
+	return err
 }

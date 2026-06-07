@@ -120,9 +120,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     radius: (localStorage.getItem(LS.customRadius) as RadiusPreset) || null,
   }));
 
-  // data-theme atributini body ga qo'llash (faqat theme/mode o'zgarganda)
+  // data-theme html ga — CSS o'zgaruvchilari :root bilan bir xil elementda yangilanadi
   useEffect(() => {
-    document.body.setAttribute("data-theme", `${theme}-${mode}`);
+    const id = `${theme}-${mode}`;
+    document.documentElement.setAttribute("data-theme", id);
+    document.documentElement.setAttribute("data-mode", mode);
+    document.body.removeAttribute("data-theme");
     localStorage.setItem(LS.theme, theme);
     localStorage.setItem(LS.mode,  mode);
   }, [theme, mode]);

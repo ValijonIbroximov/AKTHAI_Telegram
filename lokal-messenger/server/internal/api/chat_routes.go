@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -63,13 +64,15 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
             ch.title,
             peer.id::text          AS peer_id,
             peer.display_name      AS peer_name,
+            peer.last_seen_at      AS peer_last_seen,
+            peer.hide_last_seen    AS peer_hide_last_seen,
             (SELECT MAX(created_at) FROM messages m WHERE m.chat_id = ch.id) AS last_time,
             (SELECT COUNT(*) FROM messages m
               WHERE m.chat_id = ch.id AND m.recipient_id = $1::uuid AND m.read_at IS NULL) AS unread
           FROM chats ch
           JOIN chat_members cm ON cm.chat_id = ch.id AND cm.user_id = $1::uuid
           LEFT JOIN LATERAL (
-              SELECT u.id, u.display_name
+              SELECT u.id, u.display_name, u.last_seen_at, u.hide_last_seen
                 FROM chat_members cm2
                 JOIN users u ON u.id = cm2.user_id
                WHERE cm2.chat_id = ch.id AND cm2.user_id <> $1::uuid
@@ -85,9 +88,12 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 	for rows.Next() {
 		var id, ctype string
 		var title, peerID, peerName *string
+		var peerLastSeen *time.Time
+		var peerHideLastSeen *bool
 		var lastTime any
 		var unread int
-		if err := rows.Scan(&id, &ctype, &title, &peerID, &peerName, &lastTime, &unread); err != nil {
+		if err := rows.Scan(&id, &ctype, &title, &peerID, &peerName, &peerLastSeen, &peerHideLastSeen, &lastTime, &unread); err != nil {
+			log.Printf("[CHAT] ListChats scan xatoligi: %v", err)
 			continue
 		}
 		// Shaxsiy suhbatda sarlavha sifatida sherikning ismi ishlatiladi
@@ -98,14 +104,24 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 		if ctype == "private" && peerName != nil {
 			displayTitle = *peerName
 		}
-		out = append(out, fiber.Map{
+
+		item := fiber.Map{
 			"id":           id,
 			"type":         ctype,
 			"title":        displayTitle,
 			"peer_user_id": peerID,
 			"last_time":    lastTime,
 			"unread":       unread,
-		})
+		}
+		if peerID != nil && *peerID != "" {
+			item["peer_online"] = h.deps.Hub.IsOnline(*peerID)
+			if peerHideLastSeen != nil && *peerHideLastSeen {
+				item["peer_last_seen_hidden"] = true
+			} else if peerLastSeen != nil {
+				item["peer_last_seen_at"] = peerLastSeen.UTC().Format(time.RFC3339Nano)
+			}
+		}
+		out = append(out, item)
 	}
 	return c.JSON(out)
 }

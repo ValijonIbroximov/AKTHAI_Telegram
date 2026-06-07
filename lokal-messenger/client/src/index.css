@@ -78,8 +78,8 @@
   /* Panel backdrop (Windows Acrylic uchun) */
   --panel-backdrop: none;
   --panel-bg-real:  var(--bg-panel);
-
-  /* Scan-line (High-Tech uchun) */
+  --drawer-shadow:  6px 0 32px rgba(0, 0, 0, 0.45);
+  --dropdown-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
   --scan-overlay: repeating-linear-gradient(
     0deg,
     transparent,
@@ -120,7 +120,7 @@
    HIGH-TECH DARK — Cyber-defense uslubi
    Monospace, 0px radius, neon cyan glow
    ──────────────────────────────────────────────────────────────── */
-[data-theme="hightech-dark"] {
+html[data-theme="hightech-dark"] {
   --bg-base:    #070c14;
   --bg-panel:   #0d1219;
   --bg-surface: #131920;
@@ -163,7 +163,7 @@
 /* ────────────────────────────────────────────────────────────────
    HIGH-TECH LIGHT
    ──────────────────────────────────────────────────────────────── */
-[data-theme="hightech-light"] {
+html[data-theme="hightech-light"] {
   --bg-base:    #e8f4f8;
   --bg-panel:   #d4eaf2;
   --bg-surface: #c0dde8;
@@ -206,7 +206,7 @@
    TELEGRAM DARK — Rasmiy Telegram Desktop ranglari
    Inter shrift, 18px yumaloq, tekis fonlar
    ──────────────────────────────────────────────────────────────── */
-[data-theme="telegram-dark"] {
+html[data-theme="telegram-dark"] {
   --bg-base:    #0e1621;
   --bg-panel:   #17212b;
   --bg-surface: #1c2733;
@@ -250,7 +250,7 @@
 /* ────────────────────────────────────────────────────────────────
    TELEGRAM LIGHT
    ──────────────────────────────────────────────────────────────── */
-[data-theme="telegram-light"] {
+html[data-theme="telegram-light"] {
   --bg-base:    #f1f1f1;
   --bg-panel:   #ffffff;
   --bg-surface: #f9f9f9;
@@ -294,7 +294,7 @@
 /* ────────────────────────────────────────────────────────────────
    WINDOWS 11 DARK — Acrylic, Segoe UI, 8px radius
    ──────────────────────────────────────────────────────────────── */
-[data-theme="windows-dark"] {
+html[data-theme="windows-dark"] {
   --bg-base:    #202020;
   --bg-panel:   rgba(32,32,32,0.88);
   --bg-surface: rgba(44,44,44,0.92);
@@ -338,7 +338,7 @@
 /* ────────────────────────────────────────────────────────────────
    WINDOWS 11 LIGHT — Acrylic Light
    ──────────────────────────────────────────────────────────────── */
-[data-theme="windows-light"] {
+html[data-theme="windows-light"] {
   --bg-base:    #f3f3f3;
   --bg-panel:   rgba(255,255,255,0.82);
   --bg-surface: rgba(248,248,248,0.92);
@@ -382,7 +382,7 @@
 /* ────────────────────────────────────────────────────────────────
    GRADIENT DARK / LIGHT
    ──────────────────────────────────────────────────────────────── */
-[data-theme="gradient-dark"] {
+html[data-theme="gradient-dark"] {
   --bg-base:    #0d0918;
   --bg-panel:   #110d22;
   --bg-surface: #16132e;
@@ -421,7 +421,7 @@
   --chat-bg-pattern: radial-gradient(ellipse 80% 60% at 50% 110%, rgba(167,139,250,0.06) 0%, transparent 70%);
 }
 
-[data-theme="gradient-light"] {
+html[data-theme="gradient-light"] {
   --bg-base:    #faf5ff;
   --bg-panel:   #f3e8ff;
   --bg-surface: #ede4fa;
@@ -462,7 +462,7 @@
 /* ────────────────────────────────────────────────────────────────
    TERMINAL DARK / LIGHT (Solarized)
    ──────────────────────────────────────────────────────────────── */
-[data-theme="simpletext-dark"] {
+html[data-theme="simpletext-dark"] {
   --bg-base:    #000000;
   --bg-panel:   #0a0a0a;
   --bg-surface: #111111;
@@ -500,7 +500,7 @@
   --chat-bg-pattern: none;
 }
 
-[data-theme="simpletext-light"] {
+html[data-theme="simpletext-light"] {
   --bg-base:    #fdf6e3;
   --bg-panel:   #eee8d5;
   --bg-surface: #fffdf5;
@@ -538,9 +538,13 @@
   --chat-bg-pattern: none;
 }
 
-/* ================================================================
-   GLOBAL ELEMENTLAR
-   ================================================================ */
+html[data-theme$="-light"] {
+  color-scheme: light;
+  --drawer-shadow: 6px 0 24px rgba(0, 0, 0, 0.08);
+  --dropdown-shadow: 0 8px 24px rgba(0, 0, 0, 0.10);
+}
+html[data-theme$="-dark"]  { color-scheme: dark; }
+
 html, body, #root {
   height: 100%;
   background: var(--bg-base);
@@ -603,7 +607,7 @@ body::after {
 }
 
 /* ── Windows Acrylic: panel-ga backdrop-filter ── */
-[data-theme^="windows"] .acrylic {
+html[data-theme^="windows"] .acrylic {
   backdrop-filter: var(--panel-backdrop);
   -webkit-backdrop-filter: var(--panel-backdrop);
   background: var(--panel-bg-real, var(--bg-panel));

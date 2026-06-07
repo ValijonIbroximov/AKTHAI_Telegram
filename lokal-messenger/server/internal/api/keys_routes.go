@@ -171,11 +171,12 @@ func (h *Handlers) FetchKeyBundle(c *fiber.Ctx) error {
 		PublicKey string `json:"public_key"`
 	}
 	type bundle struct {
-		UserID         string             `json:"user_id"`
-		RegistrationID int                `json:"registration_id"`
-		IdentityKey    string             `json:"identity_key"`
-		SignedPreKey   signedPreKeyInfo   `json:"signed_prekey"`
-		OneTimePreKey  *oneTimePreKeyInfo `json:"one_time_prekey,omitempty"`
+		UserID            string             `json:"user_id"`
+		RegistrationID    int                `json:"registration_id"`
+		IdentityKey       string             `json:"identity_key"`
+		IdentityKeyX25519 string             `json:"identity_key_x25519"`
+		SignedPreKey      signedPreKeyInfo   `json:"signed_prekey"`
+		OneTimePreKey     *oneTimePreKeyInfo `json:"one_time_prekey,omitempty"`
 	}
 
 	var b bundle
@@ -202,6 +203,7 @@ func (h *Handlers) FetchKeyBundle(c *fiber.Ctx) error {
 	}
 	log.Printf("[KEYS] ✅ bundle topildi: target=%s  spk_id=%d", targetID, spkID)
 	b.IdentityKey = base64.StdEncoding.EncodeToString(ikRaw)
+	b.IdentityKeyX25519 = b.IdentityKey
 	b.SignedPreKey = signedPreKeyInfo{
 		KeyID:     spkID,
 		PublicKey: base64.StdEncoding.EncodeToString(spkRaw),

@@ -8,8 +8,8 @@
   padding: 8px 0;
   width: 68px;
   min-width: 68px;
-  background: #0d1117;
-  border-right: 1px solid #1c2333;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
   overflow-y: auto;
   overflow-x: hidden;
   flex-shrink: 0;

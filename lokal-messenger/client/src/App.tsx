@@ -11,6 +11,7 @@ import TitleBar          from "@/components/Layout/TitleBar";
 import SettingsPage      from "@/components/Settings/SettingsPage";
 import AdminDashboard    from "@/components/Admin/AdminDashboard";
 import styles            from "./App.module.css";
+import { BackNavigationProvider } from "@/contexts/BackNavigationContext";
 import { initNotifications } from "@/utils/notifications";
 
 type MainView = "chat" | "settings" | "admin";
@@ -64,26 +65,28 @@ export default function App() {
   }
 
   return (
-    <div className={styles.appShell}>
-      <TitleBar />
-      <AccountUnlockModal />
-      <div className={styles.layout}>
-        <ChatFolders activeFolder={activeFolder} onFolderChange={setActiveFolder} />
-        <SideDrawer
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          onSettings={openSettings}
-          onAdmin={openAdmin}
-        />
-        <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
-        {mainView === "settings" ? (
-          <SettingsPage onBack={closeSettings} />
-        ) : mainView === "admin" ? (
-          <AdminDashboard onBack={() => setMainView("chat")} />
-        ) : (
-          <MessageArea />
-        )}
+    <BackNavigationProvider>
+      <div className={styles.appShell}>
+        <TitleBar />
+        <AccountUnlockModal />
+        <div className={styles.layout}>
+          <ChatFolders activeFolder={activeFolder} onFolderChange={setActiveFolder} />
+          <SideDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            onSettings={openSettings}
+            onAdmin={openAdmin}
+          />
+          <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
+          {mainView === "settings" ? (
+            <SettingsPage onBack={closeSettings} />
+          ) : mainView === "admin" ? (
+            <AdminDashboard onBack={() => setMainView("chat")} />
+          ) : (
+            <MessageArea />
+          )}
+        </div>
       </div>
-    </div>
+    </BackNavigationProvider>
   );
 }

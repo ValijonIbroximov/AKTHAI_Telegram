@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { userApi }      from "@/api/http";
+import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import type { User }    from "@/types";
 import styles           from "./AdminDashboard.module.css";
 
@@ -56,6 +57,15 @@ export default function AdminDashboard({ onBack }: Props) {
   }, [token]);
 
   useEffect(() => { void loadUsers(); }, [loadUsers]);
+
+  useRegisterBackHandler(
+    useCallback(() => {
+      onBack();
+      return true;
+    }, [onBack]),
+    true,
+    BACK_PRIORITY.settings,
+  );
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -27,16 +27,11 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("uz-UZ", { hour: "2-digit", minute: "2-digit" });
 }
 
-function TickIcon({ read }: { read: boolean }) {
-  return (
-    <svg width="15" height="11" viewBox="0 0 15 11" fill="none"
-         className={read ? s.tickRead : s.tick}>
-      <path d="M1 5.5L4.5 9L10 2"  stroke="currentColor" strokeWidth="1.6"
-            strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M5.5 9L11 2"         stroke="currentColor" strokeWidth="1.6"
-            strokeLinecap="round" strokeLinejoin="round" opacity={read ? 1 : 0}/>
-    </svg>
-  );
+function StatusTicks({ status }: { status: Message["status"] }) {
+  if (status === "read") {
+    return <span className={s.ticksRead} aria-label="O'qilgan">✓✓</span>;
+  }
+  return <span className={s.ticks} aria-label="Yuborildi">✓</span>;
 }
 
 // ── MediaContent ──────────────────────────────────────────────────────────
@@ -310,7 +305,7 @@ export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
                     style={{ animation: "spin 1s linear infinite", transformOrigin: "center" }}/>
                 </svg>
               ) : (
-                <TickIcon read={message.status === "read"} />
+                <StatusTicks status={message.status} />
               )}
             </span>
           )}

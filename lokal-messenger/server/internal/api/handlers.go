@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -85,11 +86,57 @@ func (h *Handlers) Logout(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// Me — joriy foydalanuvchining identifikatori va roli qaytariladi.
+// Me — joriy foydalanuvchining identifikatori, roli va maxfiylik sozlamalari.
 func (h *Handlers) Me(c *fiber.Ctx) error {
 	uid, _ := c.Locals("user_id").(string)
 	role, _ := c.Locals("role").(string)
-	return c.JSON(fiber.Map{"user_id": uid, "role": role})
+
+	var hideLastSeen bool
+	if err := h.deps.DB.QueryRow(c.Context(),
+		`SELECT COALESCE(hide_last_seen, FALSE) FROM users WHERE id = $1::uuid`, uid,
+	).Scan(&hideLastSeen); err != nil {
+		return internalError("[ME] users query", err)
+	}
+
+	return c.JSON(fiber.Map{
+		"user_id":        uid,
+		"role":           role,
+		"hide_last_seen": hideLastSeen,
+	})
+}
+
+type privacySettingsRequest struct {
+	HideLastSeen *bool `json:"hide_last_seen"`
+}
+
+// UpdatePrivacy — so'nggi faollikni yashirish kabi maxfiylik sozlamalarini yangilaydi.
+func (h *Handlers) UpdatePrivacy(c *fiber.Ctx) error {
+	uid, _ := c.Locals("user_id").(string)
+
+	var req privacySettingsRequest
+	if err := c.BodyParser(&req); err != nil || req.HideLastSeen == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "hide_last_seen talab qilinadi")
+	}
+
+	if _, err := h.deps.DB.Exec(c.Context(),
+		`UPDATE users SET hide_last_seen = $1 WHERE id = $2::uuid`, *req.HideLastSeen, uid,
+	); err != nil {
+		return internalError("[PRIVACY] update", err)
+	}
+
+	// Offline bo'lsa va yashirish o'chirilsa — oxirgi faollikni yangilash (ixtiyoriy ko'rinish)
+	if !*req.HideLastSeen && !h.deps.Hub.IsOnline(uid) {
+		var lastSeen time.Time
+		if err := h.deps.DB.QueryRow(c.Context(),
+			`SELECT last_seen_at FROM users WHERE id = $1::uuid`, uid,
+		).Scan(&lastSeen); err == nil && !lastSeen.IsZero() {
+			h.deps.Hub.BroadcastPresence(uid, false, &lastSeen)
+		}
+	} else if *req.HideLastSeen {
+		h.deps.Hub.BroadcastPresenceHidden(uid, false)
+	}
+
+	return c.JSON(fiber.Map{"hide_last_seen": *req.HideLastSeen})
 }
 
 // RefillOneTimePreKeys — mijozdan yangi bir martalik kalitlar qabul qilinadi (kelajakda).

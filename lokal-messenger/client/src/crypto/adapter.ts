@@ -7,6 +7,7 @@ import {
   webEstablishSessionReceiver,
   webInitSignalKeys,
   webHasSession,
+  webGetSessionRole,
   webClearSession,
   webClearAllSessions,
   webEnsureCryptoReady,
@@ -68,6 +69,7 @@ export async function activateCryptoContext(
   const keyInit = await initSignalKeys(token, userId);
   if (keyInit.regenerated) {
     console.warn("[E2EE] Mahalliy kalitlar qayta yaratildi — server overwrite bajarildi");
+    console.warn("[E2EE] Yangi qurilma: eski xabarlar ochilmasligi mumkin; yangi xabarlar PreKey bilan ishlaydi");
   }
   await ensureCryptoReady(userId);
 }
@@ -281,6 +283,13 @@ export async function hasSession(peerId: string): Promise<boolean> {
     return invoke<boolean>("has_session", { peerId });
   }
   return webHasSession(peerId);
+}
+
+export async function getSessionRole(
+  peerId: string,
+): Promise<"sender" | "receiver" | null> {
+  if (isTauri) return null;
+  return webGetSessionRole(peerId);
 }
 
 /** Berilgan peer bilan Signal sessiyasini o'chirish */

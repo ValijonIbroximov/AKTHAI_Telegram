@@ -1,30 +1,15 @@
 // Eski API — devServer.ts ga yo'naltiriladi.
-import {
-  getApiBaseUrl,
-  buildWsUrl,
-  setDevServerHost,
-  resolveDevServerHost,
-  hasDevServerHost,
-} from "./devServer";
+import { getApiBaseUrl, buildWsUrl, resolveDevServerHost } from "./devServer";
 
 export function getServerUrl(): string {
-  const host = resolveDevServerHost();
-  if (host === "127.0.0.1" || host === "localhost") return "";
-  return `https://${host}:8443`;
+  return `https://${resolveDevServerHost()}:8443`;
 }
 
-export function setServerUrl(url: string): void {
-  const h = url.replace(/\/+$/, "");
-  try {
-    const u = new URL(h.startsWith("http") ? h : `https://${h}`);
-    setDevServerHost(u.hostname, u.port || "8443");
-  } catch {
-    setDevServerHost(h.replace(/^https?:\/\//, "").split(":")[0] ?? h);
-  }
-}
+/** Host brauzer hostname dan olinadi; qo'lda o'zgartirish kerak emas */
+export function setServerUrl(_url: string): void {}
 
 export function hasServerUrl(): boolean {
-  return hasDevServerHost();
+  return true;
 }
 
 export function getApiBase(): string {
