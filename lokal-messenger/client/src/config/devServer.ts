@@ -30,6 +30,13 @@ export function resolveDevServerHost(): string {
       const h = hostFromUrl(lsUrl);
       if (h) return h;
     }
+
+    // Dev: brauzer qaysi host orqali ochilgan bo'lsa (masalan 192.168.101.32:1420),
+    // Go server ham shu IP da — localhost proxy emas.
+    if (import.meta.env.DEV) {
+      const pageHost = window.location.hostname;
+      if (!isLocalHost(pageHost)) return pageHost;
+    }
   }
 
   const env = import.meta.env.VITE_API_HOST as string | undefined;
