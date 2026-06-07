@@ -40,7 +40,7 @@ import (
 )
 
 const (
-	minPassLen      = 8
+	minPassLen      = 1
 	maxPassLen      = 128
 	minUsernameLen  = 3
 	maxUsernameLen  = 64
@@ -63,7 +63,7 @@ Bayroqlar:
 
 Argumentlar:
   username      Majburiy. Faqat [a-zA-Z0-9_-], 3–64 belgi.
-  password      Majburiy. Kamida 8 belgi.
+  password      Majburiy. Bo'sh bo'lmasligi kerak.
   display_name  Ixtiyoriy. Ko'rsatma ism (standart: username bilan bir xil).
   role          Ixtiyoriy: "user" yoki "admin" (standart: "user").
 

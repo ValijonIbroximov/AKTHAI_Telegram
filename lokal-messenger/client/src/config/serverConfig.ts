@@ -2,6 +2,9 @@
 import { getApiBaseUrl, buildWsUrl, resolveDevServerHost } from "./devServer";
 
 export function getServerUrl(): string {
+  if (import.meta.env.DEV && typeof window !== "undefined") {
+    return window.location.origin;
+  }
   return `https://${resolveDevServerHost()}:8443`;
 }
 

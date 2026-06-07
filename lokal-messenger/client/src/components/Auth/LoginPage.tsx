@@ -4,7 +4,7 @@ import { useState, FormEvent } from "react";
 import { useAuthStore } from "@/store/authStore";
 import s from "./LoginPage.module.css";
 
-export default function LoginPage() {
+export default function LoginPage({ adminMode = false }: { adminMode?: boolean }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -32,10 +32,14 @@ export default function LoginPage() {
             </svg>
           </div>
           <div className={s.logoTitle}>
-            {isAddMode ? "Akkaunt qo'shish" : "Harbiy Messenjer"}
+            {isAddMode ? "Akkaunt qo'shish" : adminMode ? "Admin Panel" : "Harbiy Messenjer"}
           </div>
           <div className={s.logoSub}>
-            {isAddMode ? "Yangi hisob bilan kiring" : "E2E Shifrlangan · Signal Protocol"}
+            {isAddMode
+              ? "Yangi hisob bilan kiring"
+              : adminMode
+                ? "Administrator hisobi bilan kiring"
+                : "E2E Shifrlangan · Signal Protocol"}
           </div>
         </div>
 

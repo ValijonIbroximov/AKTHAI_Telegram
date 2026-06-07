@@ -1,8 +1,9 @@
 // Telegram Desktop uslubidagi slide-out navigatsiya paneli.
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useAuthStore } from "@/store/authStore";
+import { useAuthStore, selectActiveAccount } from "@/store/authStore";
 import { useTheme }     from "@/contexts/ThemeContext";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
+import LogoutConfirmModal from "@/components/Auth/LogoutConfirmModal";
 import s from "./SideDrawer.module.css";
 
 const isTauri =
@@ -34,11 +35,14 @@ interface NavItem {
 export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props) {
   const {
     username, role, userId, activeAccountId, accounts,
-    logout, beginAddAccount, beginSwitchAccount,
+    logoutAccount, beginAddAccount, beginSwitchAccount,
   } = useAuthStore();
+  const activeAccount = useAuthStore(selectActiveAccount);
   const { mode, setMode } = useTheme();
   const drawerRef = useRef<HTMLDivElement>(null);
   const [author, setAuthor] = useState("Valijon Ibroximov tomonidan yaratilgan");
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   useEffect(() => {
     if (isTauri) {
@@ -61,11 +65,24 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
 
   useEffect(() => {
     if (open) drawerRef.current?.focus();
+    else setLogoutOpen(false);
   }, [open]);
 
   const handleSettings = useCallback(() => { onClose(); onSettings(); }, [onClose, onSettings]);
   const handleAdmin    = useCallback(() => { onClose(); onAdmin?.(); }, [onClose, onAdmin]);
-  const handleLogout   = useCallback(async () => { onClose(); await logout(); }, [onClose, logout]);
+  const handleLogoutClick = useCallback(() => setLogoutOpen(true), []);
+  const handleLogoutCancel = useCallback(() => setLogoutOpen(false), []);
+  const handleLogoutConfirm = useCallback(async () => {
+    if (!activeAccountId) return;
+    setLogoutBusy(true);
+    try {
+      await logoutAccount(activeAccountId);
+      setLogoutOpen(false);
+      onClose();
+    } finally {
+      setLogoutBusy(false);
+    }
+  }, [activeAccountId, logoutAccount, onClose]);
   const handleAddAccount = useCallback(() => { onClose(); beginAddAccount(); }, [onClose, beginAddAccount]);
   const handleSwitch   = useCallback((uid: string) => {
     onClose();
@@ -247,7 +264,7 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
         {/* ── Footer ── */}
         <div className={s.footer}>
           <div className={s.authorBadge}>{author}</div>
-          <button className={s.logoutBtn} onClick={handleLogout}>
+          <button className={s.logoutBtn} onClick={handleLogoutClick}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" strokeLinecap="round"/>
             </svg>
@@ -255,6 +272,16 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
           </button>
         </div>
       </div>
+
+      {logoutOpen && activeAccount && (
+        <LogoutConfirmModal
+          account={activeAccount}
+          avatarBg={avatarBg}
+          onConfirm={handleLogoutConfirm}
+          onCancel={handleLogoutCancel}
+          loading={logoutBusy}
+        />
+      )}
     </>
   );
 }

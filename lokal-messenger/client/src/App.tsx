@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-
 import { useAuthStore }  from "@/store/authStore";
 import LoginPage         from "@/components/Auth/LoginPage";
 import AccountUnlockModal from "@/components/Auth/AccountUnlockModal";
+import FirstLoginPasswordPrompt from "@/components/Auth/FirstLoginPasswordPrompt";
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
 import SideDrawer        from "@/components/Layout/SideDrawer";
@@ -19,11 +20,45 @@ import { useChatStore } from "@/store/chatStore";
 
 type MainView = "chat" | "settings";
 
+/** localStorage yuklangach bootstrap — faol sessiya bo'lsa qayta ishlamaydi */
+function useSessionBootstrap(): boolean {
+  const token     = useAuthStore((s) => s.token);
+  const accounts  = useAuthStore((s) => s.accounts);
+  const bootstrap = useAuthStore((s) => s.bootstrap);
+  const [hydrated, setHydrated]       = useState(() => useAuthStore.persist.hasHydrated());
+  const [bootstrapped, setBootstrapped] = useState(false);
+
+  useEffect(() => {
+    const unsub = useAuthStore.persist.onFinishHydration(() => setHydrated(true));
+    if (useAuthStore.persist.hasHydrated()) setHydrated(true);
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    // Sessiya allaqachon faol yoki tiklanadigan akkaunt yo'q
+    if (token || accounts.length === 0) {
+      setBootstrapped(true);
+      return;
+    }
+
+    let cancelled = false;
+    void bootstrap().finally(() => {
+      if (!cancelled) setBootstrapped(true);
+    });
+    return () => { cancelled = true; };
+  }, [hydrated, bootstrap, token, accounts.length]);
+
+  if (!hydrated) return false;
+  if (token || accounts.length === 0) return true;
+  return bootstrapped;
+}
+
 function ChatApp() {
   const token    = useAuthStore((s) => s.token);
   const userId   = useAuthStore((s) => s.userId);
   const uiMode   = useAuthStore((s) => s.uiMode);
-  const bootstrap = useAuthStore((s) => s.bootstrap);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen]     = useState(false);
   const [mainView, setMainView]         = useState<MainView>("chat");
@@ -31,8 +66,6 @@ function ChatApp() {
 
   useEffect(() => {
     void initNotifications();
-    void bootstrap();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -87,6 +120,7 @@ function ChatApp() {
       <div className={styles.appShell}>
         <TitleBar />
         <AccountUnlockModal />
+        <FirstLoginPasswordPrompt />
         <div className={styles.layout}>
           <ChatFolders activeFolder={activeFolder} onFolderChange={setActiveFolder} />
           <SideDrawer
@@ -111,18 +145,12 @@ function ChatApp() {
 function AdminRoute() {
   const token           = useAuthStore((s) => s.token);
   const role            = useAuthStore((s) => s.role);
-  const loading         = useAuthStore((s) => s.loading);
   const accounts        = useAuthStore((s) => s.accounts);
   const activeAccountId = useAuthStore((s) => s.activeAccountId);
-  const uiMode          = useAuthStore((s) => s.uiMode);
-  const bootstrap       = useAuthStore((s) => s.bootstrap);
   const navigate        = useNavigate();
-  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
     void initNotifications();
-    void bootstrap().finally(() => setAuthReady(true));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -131,31 +159,17 @@ function AdminRoute() {
 
   const activeAccount = accounts.find((a) => a.userId === activeAccountId);
   const effectiveRole = role ?? activeAccount?.role ?? null;
-  const showLogin     = !token || uiMode === "add_account";
-  const bootstrapping = !authReady && (loading || (accounts.length > 0 && !token));
+  const isAdmin       = Boolean(token && effectiveRole === "admin");
 
-  if (bootstrapping) {
-    return (
-      <div className={styles.appShell}>
-        <TitleBar />
-        <div className={styles.loginWrap}>Yuklanmoqda…</div>
-      </div>
-    );
-  }
-
-  if (showLogin) {
+  if (!isAdmin) {
     return (
       <div className={styles.appShell}>
         <TitleBar />
         <div className={styles.loginWrap}>
-          <LoginPage />
+          <LoginPage adminMode />
         </div>
       </div>
     );
-  }
-
-  if (effectiveRole !== "admin") {
-    return <Navigate to="/" replace />;
   }
 
   return (
@@ -178,15 +192,25 @@ function normalizePath(path: string): string {
 export default function App() {
   const location = useLocation();
   const path = normalizePath(location.pathname);
+  const sessionReady = useSessionBootstrap();
 
   if (path !== "/" && path !== "/admin") {
     return <Navigate to="/" replace />;
   }
 
+  if (!sessionReady) {
+    return (
+      <div className={styles.appShell}>
+        <TitleBar />
+        <div className={styles.loginWrap}>Yuklanmoqda…</div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
-      <Route path="/admin" element={<AdminRoute />} />
-      <Route path="/"      element={<ChatApp />} />
+      <Route path="/admin/*" element={<AdminRoute />} />
+      <Route path="/*"       element={<ChatApp />} />
     </Routes>
   );
 }

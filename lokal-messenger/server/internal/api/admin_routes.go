@@ -6,6 +6,8 @@ package api
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -16,6 +18,7 @@ type createUserRequest struct {
 	Username     string `json:"username"`
 	DisplayName  string `json:"display_name"`
 	Role         string `json:"role"`
+	Password     string `json:"password"`
 	RankTitle    string `json:"rank_title"`
 	UnitCode     string `json:"unit_code"`
 	OkrugName    string `json:"okrug_name"`
@@ -42,10 +45,17 @@ func (h *Handlers) AdminCreateUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "rol noto'g'ri: 'user' yoki 'admin' bo'lishi kerak")
 	}
 
-	// 16 baytli kriptografik jihatdan kuchli vaqtinchalik parol generatsiya qilinadi
-	raw := make([]byte, 16)
-	_, _ = rand.Read(raw)
-	tempPass := base64.RawURLEncoding.EncodeToString(raw)
+	var tempPass string
+	if strings.TrimSpace(req.Password) != "" {
+		if err := auth.ValidatePassword(req.Password); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		tempPass = req.Password
+	} else {
+		raw := make([]byte, 16)
+		_, _ = rand.Read(raw)
+		tempPass = base64.RawURLEncoding.EncodeToString(raw)
+	}
 
 	// Parol Argon2id bilan xeshlanadi
 	hash, err := auth.HashPassword(tempPass, h.deps.Config.Auth.Argon2)
@@ -136,6 +146,7 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 	var req struct {
 		DisplayName  string `json:"display_name"`
 		Role         string `json:"role"`
+		Password     string `json:"password"`
 		RankTitle    string `json:"rank_title"`
 		UnitCode     string `json:"unit_code"`
 		OkrugName    string `json:"okrug_name"`
@@ -173,6 +184,22 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 		return internalError("AdminUpdateUser", err)
 	}
 	actorID, _ := c.Locals("user_id").(string)
+	if strings.TrimSpace(req.Password) != "" {
+		if err := auth.ValidatePassword(req.Password); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		hash, hashErr := auth.HashPassword(req.Password, h.deps.Config.Auth.Argon2)
+		if hashErr != nil {
+			return hashErr
+		}
+		if _, execErr := h.deps.DB.Exec(c.Context(), `
+			UPDATE users SET password_hash = $1, must_change_password = TRUE,
+			                 failed_login_attempts = 0, locked_until = NULL
+			WHERE id = $2::uuid`, hash, targetID); execErr != nil {
+			return internalError("AdminUpdateUser password", execErr)
+		}
+		_ = h.audit(c.Context(), actorID, "admin.user.reset_password", &targetID, c.IP())
+	}
 	_ = h.audit(c.Context(), actorID, "admin.user.update", &targetID, c.IP())
 	return c.SendStatus(fiber.StatusNoContent)
 }
@@ -181,9 +208,22 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 func (h *Handlers) AdminResetPassword(c *fiber.Ctx) error {
 	targetID := c.Params("id")
 
-	raw := make([]byte, 16)
-	_, _ = rand.Read(raw)
-	tempPass := base64.RawURLEncoding.EncodeToString(raw)
+	var body struct {
+		Password string `json:"password"`
+	}
+	_ = c.BodyParser(&body)
+
+	var tempPass string
+	if strings.TrimSpace(body.Password) != "" {
+		if err := auth.ValidatePassword(body.Password); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		tempPass = body.Password
+	} else {
+		raw := make([]byte, 16)
+		_, _ = rand.Read(raw)
+		tempPass = base64.RawURLEncoding.EncodeToString(raw)
+	}
 
 	hash, err := auth.HashPassword(tempPass, h.deps.Config.Auth.Argon2)
 	if err != nil {
@@ -199,6 +239,32 @@ func (h *Handlers) AdminResetPassword(c *fiber.Ctx) error {
 	actorID, _ := c.Locals("user_id").(string)
 	_ = h.audit(c.Context(), actorID, "admin.user.reset_password", &targetID, c.IP())
 	return c.JSON(fiber.Map{"temporary_password": tempPass})
+}
+
+// AdminGetUserPresence — admin uchun yashirilgan so'nggi faollik (vaqtinchaki ko'rish).
+func (h *Handlers) AdminGetUserPresence(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	var lastSeen *time.Time
+	var hideLastSeen bool
+	err := h.deps.DB.QueryRow(c.Context(), `
+		SELECT last_seen_at, COALESCE(hide_last_seen, FALSE)
+		  FROM users
+		 WHERE id = $1::uuid AND is_active = TRUE
+	`, targetID).Scan(&lastSeen, &hideLastSeen)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi topilmadi")
+	}
+
+	resp := fiber.Map{
+		"user_id":        targetID,
+		"online":         h.deps.Hub.IsOnline(targetID),
+		"hide_last_seen": hideLastSeen,
+		"last_seen_at":   nil,
+	}
+	if lastSeen != nil {
+		resp["last_seen_at"] = lastSeen.UTC().Format(time.RFC3339Nano)
+	}
+	return c.JSON(resp)
 }
 
 // AdminStats — tizim statistikasi qaytariladi.
@@ -281,6 +347,121 @@ func (h *Handlers) AdminListChats(c *fiber.Ctx) error {
 		result = []chatRow{}
 	}
 	return c.JSON(result)
+}
+
+// AdminChatMessages — admin ixtiyoriy suhbat xabarlarini ko'radi (metadata; E2EE mazmun shifrlangan).
+func (h *Handlers) AdminChatMessages(c *fiber.Ctx) error {
+	chatID := c.Params("id")
+	limit  := c.QueryInt("limit", 100)
+	offset := c.QueryInt("offset", 0)
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	var chatType, chatTitle string
+	err := h.deps.DB.QueryRow(c.Context(), `
+		SELECT type, COALESCE(title, '') FROM chats WHERE id = $1::uuid
+	`, chatID).Scan(&chatType, &chatTitle)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "suhbat topilmadi")
+	}
+
+	type memberRow struct {
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+	}
+	memberRows, err := h.deps.DB.Query(c.Context(), `
+		SELECT u.id::text, u.username, u.display_name
+		  FROM chat_members cm
+		  JOIN users u ON u.id = cm.user_id
+		 WHERE cm.chat_id = $1::uuid
+		 ORDER BY u.username
+	`, chatID)
+	if err != nil {
+		return err
+	}
+	defer memberRows.Close()
+
+	members := make([]memberRow, 0)
+	for memberRows.Next() {
+		var m memberRow
+		if err := memberRows.Scan(&m.ID, &m.Username, &m.DisplayName); err != nil {
+			continue
+		}
+		members = append(members, m)
+	}
+	if chatTitle == "" && len(members) >= 2 {
+		chatTitle = members[0].DisplayName + " · " + members[1].DisplayName
+	} else if chatTitle == "" && len(members) == 1 {
+		chatTitle = members[0].DisplayName
+	}
+
+	var total int
+	_ = h.deps.DB.QueryRow(c.Context(), `
+		SELECT COUNT(*) FROM messages WHERE chat_id = $1::uuid
+	`, chatID).Scan(&total)
+
+	rows, err := h.deps.DB.Query(c.Context(), `
+		SELECT m.id::text, m.sender_id::text, u.username, u.display_name,
+		       m.msg_type, m.created_at, octet_length(m.ciphertext),
+		       m.delivered_at IS NOT NULL, m.read_at IS NOT NULL
+		  FROM messages m
+		  JOIN users u ON u.id = m.sender_id
+		 WHERE m.chat_id = $1::uuid
+		 ORDER BY m.created_at ASC
+		 LIMIT $2 OFFSET $3
+	`, chatID, limit, offset)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type msgRow struct {
+		MsgID           string `json:"msg_id"`
+		SenderID        string `json:"sender_id"`
+		SenderUsername  string `json:"sender_username"`
+		SenderName      string `json:"sender_name"`
+		MsgType         int    `json:"msg_type"`
+		CreatedAt       any    `json:"created_at"`
+		SizeBytes       int    `json:"size_bytes"`
+		Delivered       bool   `json:"delivered"`
+		Read            bool   `json:"read"`
+	}
+
+	messages := make([]msgRow, 0)
+	for rows.Next() {
+		var r msgRow
+		if err := rows.Scan(
+			&r.MsgID, &r.SenderID, &r.SenderUsername, &r.SenderName,
+			&r.MsgType, &r.CreatedAt, &r.SizeBytes, &r.Delivered, &r.Read,
+		); err != nil {
+			continue
+		}
+		messages = append(messages, r)
+	}
+	if messages == nil {
+		messages = []msgRow{}
+	}
+
+	actorID, _ := c.Locals("user_id").(string)
+	_ = h.audit(c.Context(), actorID, "admin.chat.read", &chatID, c.IP())
+
+	return c.JSON(fiber.Map{
+		"chat": fiber.Map{
+			"id":      chatID,
+			"type":    chatType,
+			"title":   chatTitle,
+			"members": members,
+		},
+		"messages": messages,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+	})
 }
 
 // AdminAuditLogFiltered — filtrlanadigan audit jurnali.

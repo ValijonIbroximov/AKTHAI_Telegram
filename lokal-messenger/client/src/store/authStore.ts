@@ -88,6 +88,7 @@ interface AuthState {
   logout:             () => Promise<void>;
   logoutAccount:      (userId: string) => Promise<void>;
   changePassword:     (oldPwd: string, newPwd: string) => Promise<void>;
+  dismissMustChangePassword: () => Promise<void>;
   clearError:         () => void;
   bootstrap:          () => Promise<void>;
 }
@@ -354,25 +355,26 @@ export const useAuthStore = create<AuthState>()(
       logoutAccount: async (userId) => {
         const { accounts, activeAccountId } = get();
         const target = accounts.find((a) => a.userId === userId);
-        if (target?.token && userId === activeAccountId) {
+        if (!target) return;
+
+        if (target.token && userId === activeAccountId) {
           await wsClient.disconnectAsync();
           await authApi.logout(target.token).catch(() => {});
           await clearToken();
+        } else if (target.token) {
+          await authApi.logout(target.token).catch(() => {});
         }
+
         const remaining = accounts.filter((a) => a.userId !== userId);
+
         if (userId === activeAccountId) {
           if (remaining.length > 0) {
-            set({
-              accounts: remaining,
-              token:    null,
-              userId:   null,
-              username: null,
-              role:     null,
-            });
-            await activateSession(remaining[0]!, set);
             set({ accounts: remaining });
+            await activateSession(remaining[0]!, set);
             return;
           }
+          const { useChatStore } = await import("@/store/chatStore");
+          useChatStore.getState().onAccountSwitch("");
           set({
             accounts:           [],
             activeAccountId:    null,
@@ -381,9 +383,11 @@ export const useAuthStore = create<AuthState>()(
             username:           null,
             role:               null,
             mustChangePassword: false,
+            uiMode:             "login",
           });
           return;
         }
+
         set({ accounts: remaining });
       },
 
@@ -391,6 +395,20 @@ export const useAuthStore = create<AuthState>()(
         const { token } = get();
         if (!token) throw new Error("Sessiya yo'q");
         await authApi.changePassword(token, oldPwd, newPwd);
+        set({
+          mustChangePassword: false,
+          accounts: get().accounts.map((a) =>
+            a.userId === get().activeAccountId
+              ? { ...a, mustChangePassword: false }
+              : a
+          ),
+        });
+      },
+
+      dismissMustChangePassword: async () => {
+        const { token } = get();
+        if (!token) return;
+        await authApi.dismissPasswordChange(token);
         set({
           mustChangePassword: false,
           accounts: get().accounts.map((a) =>

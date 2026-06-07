@@ -103,6 +103,7 @@ func (h *Handlers) ListUsersDirectory(c *fiber.Ctx) error {
 //	serverda shakllanmaydi — u mijozda mahalliy ravishda ochiladi.
 func (h *Handlers) ListChats(c *fiber.Ctx) error {
 	selfID, _ := c.Locals("user_id").(string)
+	viewerRole, _ := c.Locals("role").(string)
 
 	rows, err := h.deps.DB.Query(c.Context(), `
         SELECT
@@ -125,6 +126,7 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
                WHERE cm2.chat_id = ch.id AND cm2.user_id <> $1::uuid
                LIMIT 1
           ) peer ON ch.type = 'private'
+         WHERE EXISTS (SELECT 1 FROM messages msg WHERE msg.chat_id = ch.id)
          ORDER BY last_time DESC NULLS LAST`, selfID)
 	if err != nil {
 		return err
@@ -164,6 +166,9 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 			item["peer_online"] = h.deps.Hub.IsOnline(*peerID)
 			if peerHideLastSeen != nil && *peerHideLastSeen {
 				item["peer_last_seen_hidden"] = true
+				if viewerRole == "admin" && peerLastSeen != nil {
+					item["peer_last_seen_at"] = peerLastSeen.UTC().Format(time.RFC3339Nano)
+				}
 			} else if peerLastSeen != nil {
 				item["peer_last_seen_at"] = peerLastSeen.UTC().Format(time.RFC3339Nano)
 			}

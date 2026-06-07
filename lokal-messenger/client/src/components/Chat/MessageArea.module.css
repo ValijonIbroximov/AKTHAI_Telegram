@@ -54,6 +54,12 @@
 }
 .headerStatus { font-size: 13px; color: var(--text-3); }
 .headerStatus.online { color: var(--accent); }
+.headerStatus.peekable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.headerStatus.peekable:hover { color: var(--text-2); }
 
 .headerActions { display: flex; align-items: center; gap: 2px; }
 

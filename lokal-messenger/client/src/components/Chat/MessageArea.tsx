@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore, PENDING_DECRYPT_LABEL } from "@/store/chatStore";
+import { adminApi } from "@/api/http";
 import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
 import { parseMediaPayload } from "@/crypto/fileCrypto";
 import { formatPeerStatus } from "@/utils/presence";
@@ -13,9 +14,10 @@ import InputBar          from "./InputBar";
 import s                 from "./MessageArea.module.css";
 
 const BOTTOM_THRESHOLD = 80;
+const ADMIN_PEEK_MS = 5000;
 
 export default function MessageArea() {
-  const { userId, token } = useAuthStore();
+  const { userId, token, role } = useAuthStore();
   const { activeChatId, chats, messages, presenceMap, lastSeenMap, lastSeenHiddenMap, resetSessionWithPeer, closeChat } = useChatStore();
   const messagesRef  = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
@@ -27,7 +29,11 @@ export default function MessageArea() {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [peekUntil, setPeekUntil] = useState<number | null>(null);
+  const [peekLastSeen, setPeekLastSeen] = useState<string | null>(null);
   const [, tick] = useState(0);
+
+  const isAdmin = role === "admin";
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
@@ -39,7 +45,14 @@ export default function MessageArea() {
   const lastSeenHidden = peerId
     ? (lastSeenHiddenMap[peerId] ?? activeChat?.peer_last_seen_hidden ?? false)
     : false;
-  const statusText = formatPeerStatus(isOnline, lastSeen, lastSeenHidden);
+  const isPeeking = peekUntil !== null && Date.now() < peekUntil;
+  const showHiddenStatus = lastSeenHidden && !isPeeking;
+  const statusText = formatPeerStatus(
+    isOnline,
+    peekLastSeen ?? lastSeen,
+    showHiddenStatus,
+  );
+  const canPeekHidden = isAdmin && lastSeenHidden && !isOnline && !!peerId;
 
   const chatImages = useMemo(() => {
     const out: { messageId: string; payload: NonNullable<ReturnType<typeof parseMediaPayload>> }[] = [];
@@ -180,14 +193,52 @@ export default function MessageArea() {
 
   useEffect(() => {
     setViewerMessageId(null);
+    setPeekUntil(null);
+    setPeekLastSeen(null);
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!peekUntil) return;
+    const remaining = peekUntil - Date.now();
+    if (remaining <= 0) {
+      setPeekUntil(null);
+      setPeekLastSeen(null);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setPeekUntil(null);
+      setPeekLastSeen(null);
+    }, remaining);
+    return () => window.clearTimeout(t);
+  }, [peekUntil]);
+
+  const handlePeekLastSeen = useCallback(async () => {
+    if (!canPeekHidden || !peerId || !token) return;
+    try {
+      const p = await adminApi.getUserPresence(token, peerId);
+      const at = p.last_seen_at ?? lastSeen;
+      if (at) {
+        useChatStore.setState((s) => ({
+          lastSeenMap: { ...s.lastSeenMap, [peerId]: at },
+        }));
+        setPeekLastSeen(at);
+      }
+      setPeekUntil(Date.now() + ADMIN_PEEK_MS);
+    } catch (e) {
+      console.warn("[Admin] so'nggi faollikni ko'rish xatoligi:", e);
+      if (lastSeen) {
+        setPeekLastSeen(lastSeen);
+        setPeekUntil(Date.now() + ADMIN_PEEK_MS);
+      }
+    }
+  }, [canPeekHidden, peerId, token, lastSeen]);
 
   // "N daqiqa oldin ko'rildi" matnini yangilash
   useEffect(() => {
     if (!peerId || isOnline) return;
     const id = window.setInterval(() => tick((n) => n + 1), 60_000);
     return () => window.clearInterval(id);
-  }, [peerId, isOnline]);
+  }, [peerId, isOnline, isPeeking]);
 
   // Menyu tashqariga bosish → yopish
   useEffect(() => {
@@ -275,7 +326,19 @@ export default function MessageArea() {
 
         <div className={s.headerInfo}>
           <span className={s.headerName}>{activeChat.title}</span>
-          <span className={`${s.headerStatus} ${isOnline ? s.online : ""}`}>
+          <span
+            className={`${s.headerStatus} ${isOnline ? s.online : ""} ${canPeekHidden && !isPeeking ? s.peekable : ""}`}
+            onClick={canPeekHidden ? () => void handlePeekLastSeen() : undefined}
+            onKeyDown={canPeekHidden ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                void handlePeekLastSeen();
+              }
+            } : undefined}
+            role={canPeekHidden ? "button" : undefined}
+            tabIndex={canPeekHidden ? 0 : undefined}
+            title={canPeekHidden ? "So'nggi faollikni vaqtinchalik ko'rish" : undefined}
+          >
             {statusText}
           </span>
         </div>

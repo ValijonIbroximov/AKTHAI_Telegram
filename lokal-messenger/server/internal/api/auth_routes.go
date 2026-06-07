@@ -156,20 +156,15 @@ func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov tanasi noto'g'ri")
 	}
-	if len(req.OldPassword) < 1 {
-		return fiber.NewError(fiber.StatusBadRequest, "eski parol ko'rsatilmagan")
-	}
-	if len(req.NewPassword) < 8 {
-		return fiber.NewError(fiber.StatusBadRequest, "yangi parol kamida 8 belgidan iborat bo'lishi kerak")
-	}
-	if req.OldPassword == req.NewPassword {
-		return fiber.NewError(fiber.StatusBadRequest, "yangi parol eskisidan farq qilishi kerak")
+	if err := auth.ValidatePassword(req.NewPassword); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
 	var hash string
+	var mustChange bool
 	err := h.deps.DB.QueryRow(c.Context(), `
-		SELECT password_hash FROM users WHERE id = $1::uuid AND is_active = TRUE
-	`, userID).Scan(&hash)
+		SELECT password_hash, must_change_password FROM users WHERE id = $1::uuid AND is_active = TRUE
+	`, userID).Scan(&hash, &mustChange)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fiber.NewError(fiber.StatusNotFound, "foydalanuvchi topilmadi")
 	}
@@ -177,13 +172,23 @@ func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
 		return internalError("[AUTH] change-password query", err)
 	}
 
-	ok, verifyErr := auth.VerifyPassword(req.OldPassword, hash)
-	if verifyErr != nil {
-		log.Printf("[AUTH] ERROR change-password hash format (user=%s): %v", userID, verifyErr)
-		return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
-	}
-	if !ok {
-		return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
+	if mustChange {
+		// Birinchi kirish — foydalanuvchi hozirgina joriy parol bilan kirgan
+	} else {
+		if len(req.OldPassword) < 1 {
+			return fiber.NewError(fiber.StatusBadRequest, "eski parol ko'rsatilmagan")
+		}
+		ok, verifyErr := auth.VerifyPassword(req.OldPassword, hash)
+		if verifyErr != nil {
+			log.Printf("[AUTH] ERROR change-password hash format (user=%s): %v", userID, verifyErr)
+			return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
+		}
+		if !ok {
+			return fiber.NewError(fiber.StatusUnauthorized, "eski parol noto'g'ri")
+		}
+		if req.OldPassword == req.NewPassword {
+			return fiber.NewError(fiber.StatusBadRequest, "yangi parol eskisidan farq qilishi kerak")
+		}
 	}
 
 	newHash, err := auth.HashPassword(req.NewPassword, h.deps.Config.Auth.Argon2)
@@ -205,6 +210,21 @@ func (h *Handlers) ChangePassword(c *fiber.Ctx) error {
 
 	if auditErr := h.audit(c.Context(), userID, "password.change", nil, c.IP()); auditErr != nil {
 		log.Printf("[AUTH] WARNING audit password.change: %v", auditErr)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// DismissPasswordChange — foydalanuvchi birinchi kirishda parol almashtirishni rad etganda.
+func (h *Handlers) DismissPasswordChange(c *fiber.Ctx) error {
+	userID, _ := c.Locals("user_id").(string)
+	if userID == "" {
+		return fiber.NewError(fiber.StatusUnauthorized, "autentifikatsiya talab qilinadi")
+	}
+	_, err := h.deps.DB.Exec(c.Context(), `
+		UPDATE users SET must_change_password = FALSE WHERE id = $1::uuid AND is_active = TRUE
+	`, userID)
+	if err != nil {
+		return internalError("[AUTH] dismiss-password-change", err)
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

@@ -436,7 +436,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           presenceMap[c.peer_user_id] = c.peer_online;
         }
         lastSeenHiddenMap[c.peer_user_id] = c.peer_last_seen_hidden ?? false;
-        if (c.peer_last_seen_at !== undefined && !c.peer_last_seen_hidden) {
+        if (c.peer_last_seen_at != null) {
           lastSeenMap[c.peer_user_id] = c.peer_last_seen_at;
         }
       }

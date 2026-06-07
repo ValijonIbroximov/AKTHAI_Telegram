@@ -44,6 +44,9 @@ export const authApi = {
       old_password: oldPwd,
       new_password: newPwd,
     }),
+
+  dismissPasswordChange: (token: string) =>
+    request<void>("POST", "/auth/dismiss-password-change", token, {}),
 };
 
 // ── Foydalanuvchilar ──────────────────────────────────────────────────────────
@@ -100,6 +103,37 @@ export interface AdminChat {
   last_activity: string | null;
 }
 
+export interface AdminChatMember {
+  id:           string;
+  username:     string;
+  display_name: string;
+}
+
+export interface AdminChatMessage {
+  msg_id:          string;
+  sender_id:       string;
+  sender_username: string;
+  sender_name:     string;
+  msg_type:        number;
+  created_at:      string;
+  size_bytes:      number;
+  delivered:       boolean;
+  read:            boolean;
+}
+
+export interface AdminChatDetail {
+  chat: {
+    id:      string;
+    type:    string;
+    title:   string;
+    members: AdminChatMember[];
+  };
+  messages: AdminChatMessage[];
+  total:    number;
+  limit:    number;
+  offset:   number;
+}
+
 export interface AuditEntry {
   id:         number;
   actor_id:   string;
@@ -117,20 +151,33 @@ export const adminApi = {
   listUsers: (token: string) =>
     request<User[]>("GET", "/admin/users", token),
 
-  createUser: (token: string, data: Partial<User> & { role: string }) =>
+  createUser: (token: string, data: Partial<User> & { role: string; password?: string }) =>
     request<{ user_id: string; temporary_password: string }>("POST", "/admin/users", token, data),
 
-  updateUser: (token: string, id: string, data: Partial<User>) =>
+  updateUser: (token: string, id: string, data: Partial<User> & { password?: string }) =>
     request<void>("PUT", `/admin/users/${id}`, token, data),
 
   setActive: (token: string, id: string, active: boolean) =>
     request<void>("PATCH", `/admin/users/${id}/active`, token, { is_active: active }),
 
-  resetPassword: (token: string, id: string) =>
-    request<{ temporary_password: string }>("POST", `/admin/users/${id}/reset-password`, token, {}),
+  resetPassword: (token: string, id: string, password?: string) =>
+    request<{ temporary_password: string }>("POST", `/admin/users/${id}/reset-password`, token,
+      password ? { password } : {}),
+
+  getUserPresence: (token: string, id: string) =>
+    request<{ user_id: string; online: boolean; last_seen_at: string | null; hide_last_seen: boolean }>(
+      "GET", `/admin/users/${id}/presence`, token),
 
   listChats: (token: string) =>
     request<AdminChat[]>("GET", "/admin/chats", token),
+
+  chatMessages: (token: string, chatId: string, opts?: { limit?: number; offset?: number }) => {
+    const p = new URLSearchParams();
+    if (opts?.limit)  p.set("limit",  String(opts.limit));
+    if (opts?.offset) p.set("offset", String(opts.offset));
+    const qs = p.toString() ? `?${p}` : "";
+    return request<AdminChatDetail>("GET", `/admin/chats/${chatId}/messages${qs}`, token);
+  },
 
   auditLog: (token: string, opts?: { limit?: number; offset?: number; action?: string }) => {
     const p = new URLSearchParams();

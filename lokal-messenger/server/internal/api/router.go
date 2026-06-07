@@ -29,6 +29,7 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	// Joriy foydalanuvchi amallari
 	v1.Put("/auth/password", h.ChangePassword)
 	v1.Post("/auth/change-password", h.ChangePassword)
+	v1.Post("/auth/dismiss-password-change", h.DismissPasswordChange)
 	v1.Post("/auth/logout", h.Logout)
 	v1.Get("/me", h.Me)
 	v1.Patch("/me/privacy", h.UpdatePrivacy)
@@ -60,7 +61,9 @@ func RegisterRoutes(app *fiber.App, deps *Deps) {
 	admin.Put("/users/:id", h.AdminUpdateUser)
 	admin.Patch("/users/:id/active", h.AdminSetActive)
 	admin.Post("/users/:id/reset-password", h.AdminResetPassword)
+	admin.Get("/users/:id/presence", h.AdminGetUserPresence)
 	admin.Get("/chats", h.AdminListChats)
+	admin.Get("/chats/:id/messages", h.AdminChatMessages)
 	admin.Get("/audit-log", h.AdminAuditLogFiltered)
 
 	// WebSocket marshruti — upgrade tekshiruvi middleware sifatida

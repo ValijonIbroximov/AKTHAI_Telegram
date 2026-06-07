@@ -7,6 +7,7 @@ import UserDirectory     from "./UserDirectory";
 import s                 from "./ChatList.module.css";
 
 import type { FolderId } from "@/components/Layout/ChatFolders";
+import type { Chat } from "@/types";
 
 interface Props {
   onMenuOpen?:   () => void;
@@ -19,6 +20,11 @@ function avatarColor(name: string): string {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) & 0xffff;
   return colors[h % colors.length]!;
+}
+
+/** Faqat kamida bitta xabari bor suhbatlar */
+function chatHasMessages(chat: Chat): boolean {
+  return chat.last_message != null;
 }
 
 export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
@@ -56,10 +62,11 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
 
   const folderChats = (() => {
     if (isUsersFolder) return [];
+    const withMessages = chats.filter(chatHasMessages);
     switch (activeFolder) {
-      case "groups":   return chats.filter((c) => c.type === "group");
-      case "channels": return chats.filter((c) => c.type === "channel");
-      default:         return chats;
+      case "groups":   return withMessages.filter((c) => c.type === "group");
+      case "channels": return withMessages.filter((c) => c.type === "channel");
+      default:         return withMessages;
     }
   })();
 

@@ -1,14 +1,17 @@
 // Parolni o'zgartirish modali — Maxfiylik va xavfsizlik bo'limi.
 import { useState, FormEvent } from "react";
 import { useAuthStore } from "@/store/authStore";
+import PasswordInput from "@/components/Common/PasswordInput";
 import s from "./ChangePasswordModal.module.css";
 
 interface Props {
-  open:    boolean;
-  onClose: () => void;
+  open:             boolean;
+  onClose:          () => void;
+  /** Birinchi kirish — joriy parol so'ralmaydi */
+  skipOldPassword?:   boolean;
 }
 
-export default function ChangePasswordModal({ open, onClose }: Props) {
+export default function ChangePasswordModal({ open, onClose, skipOldPassword = false }: Props) {
   const changePassword = useAuthStore((st) => st.changePassword);
   const [oldPwd, setOldPwd]       = useState("");
   const [newPwd, setNewPwd]       = useState("");
@@ -35,8 +38,8 @@ export default function ChangePasswordModal({ open, onClose }: Props) {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (newPwd.length < 8) {
-      setError("Yangi parol kamida 8 belgidan iborat bo'lishi kerak");
+    if (!newPwd.trim()) {
+      setError("Yangi parol bo'sh bo'lmasligi kerak");
       return;
     }
     if (newPwd !== confirm) {
@@ -45,7 +48,7 @@ export default function ChangePasswordModal({ open, onClose }: Props) {
     }
     setLoading(true);
     try {
-      await changePassword(oldPwd, newPwd);
+      await changePassword(skipOldPassword ? "" : oldPwd, newPwd);
       setSuccess(true);
       setTimeout(handleClose, 1500);
     } catch (err) {
@@ -55,11 +58,17 @@ export default function ChangePasswordModal({ open, onClose }: Props) {
     }
   };
 
+  const canSubmit = skipOldPassword
+    ? Boolean(newPwd && confirm)
+    : Boolean(oldPwd && newPwd && confirm);
+
   return (
     <div className={s.overlay} onClick={handleClose} role="presentation">
       <div className={s.modal} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className={s.header}>
-          <h2 className={s.title}>Parolni o'zgartirish</h2>
+          <h2 className={s.title}>
+            {skipOldPassword ? "Yangi parol o'rnatish" : "Parolni o'zgartirish"}
+          </h2>
           <button type="button" className={s.closeBtn} onClick={handleClose} aria-label="Yopish">×</button>
         </div>
 
@@ -72,44 +81,38 @@ export default function ChangePasswordModal({ open, onClose }: Props) {
           <form onSubmit={onSubmit} className={s.form}>
             {error && <div className={s.error} role="alert">{error}</div>}
 
-            <label className={s.field}>
-              <span className={s.label}>Joriy parol</span>
-              <input
-                type="password"
-                className={s.input}
-                value={oldPwd}
-                onChange={(e) => setOldPwd(e.target.value)}
-                autoComplete="current-password"
-                required
-                disabled={loading}
-              />
-            </label>
+            {!skipOldPassword && (
+              <label className={s.field}>
+                <span className={s.label}>Joriy parol</span>
+                <PasswordInput
+                  value={oldPwd}
+                  onChange={setOldPwd}
+                  autoComplete="current-password"
+                  disabled={loading}
+                  required
+                />
+              </label>
+            )}
 
             <label className={s.field}>
               <span className={s.label}>Yangi parol</span>
-              <input
-                type="password"
-                className={s.input}
+              <PasswordInput
                 value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)}
+                onChange={setNewPwd}
                 autoComplete="new-password"
-                minLength={8}
-                required
                 disabled={loading}
+                required
               />
-              <span className={s.hint}>Kamida 8 belgi</span>
             </label>
 
             <label className={s.field}>
               <span className={s.label}>Yangi parolni tasdiqlang</span>
-              <input
-                type="password"
-                className={s.input}
+              <PasswordInput
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={setConfirm}
                 autoComplete="new-password"
-                required
                 disabled={loading}
+                required
               />
             </label>
 
@@ -117,7 +120,7 @@ export default function ChangePasswordModal({ open, onClose }: Props) {
               <button type="button" className={s.cancelBtn} onClick={handleClose} disabled={loading}>
                 Bekor qilish
               </button>
-              <button type="submit" className={s.saveBtn} disabled={loading || !oldPwd || !newPwd || !confirm}>
+              <button type="submit" className={s.saveBtn} disabled={loading || !canSubmit}>
                 {loading ? "Saqlanmoqda…" : "Saqlash"}
               </button>
             </div>

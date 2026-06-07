@@ -788,3 +788,133 @@
   font-size: 12.5px;
   padding: 16px;
 }
+
+.clickableRow { cursor: pointer; }
+.clickableRow:hover { background: var(--bg-hover); }
+
+/* ── Chat viewer modal ── */
+.chatViewer {
+  width: min(720px, 96vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg-real, var(--bg-panel));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  animation: modalIn .25s cubic-bezier(.22,1,.36,1);
+  overflow: hidden;
+}
+
+.chatViewerSub {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.chatMembers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.memberChip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-2);
+}
+
+.e2eeBanner {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  background: rgba(59, 130, 246, 0.08);
+  border-bottom: 1px solid var(--border);
+}
+
+.chatMsgList {
+  flex: 1;
+  min-height: 200px;
+  max-height: 52vh;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chatMsgItem {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+}
+
+.chatMsgAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.chatMsgBody { flex: 1; min-width: 0; }
+
+.chatMsgHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.chatMsgSender {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.chatMsgTime {
+  font-size: 11px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.chatMsgMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chatMsgSize { font-size: 11px; color: var(--text-3); }
+
+.chatMsgStatus { font-size: 11px; color: var(--text-3); }
+.chatMsgStatusRead { font-size: 11px; color: var(--accent); }
+
+.chatMsgCipher {
+  font-size: 12px;
+  color: var(--text-2);
+  font-style: italic;
+}
+
+.chatViewerFoot {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}

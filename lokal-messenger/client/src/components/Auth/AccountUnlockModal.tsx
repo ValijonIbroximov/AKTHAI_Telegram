@@ -1,6 +1,7 @@
 // Akkaunt almashishda PIN yoki parol so'rash (Telegram uslubi).
 import { useState, FormEvent, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
+import PasswordInput from "@/components/Common/PasswordInput";
 import s from "./AccountUnlockModal.module.css";
 
 export default function AccountUnlockModal() {
@@ -67,15 +68,13 @@ export default function AccountUnlockModal() {
               disabled={loading}
             />
           ) : (
-            <input
-              type="password"
-              className={s.input}
-              placeholder="Parol"
+            <PasswordInput
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-              disabled={loading}
+              onChange={setPassword}
+              placeholder="Parol"
               autoComplete="current-password"
+              disabled={loading}
+              required
             />
           )}
 

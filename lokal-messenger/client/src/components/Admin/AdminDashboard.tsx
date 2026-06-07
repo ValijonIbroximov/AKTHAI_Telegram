@@ -12,10 +12,11 @@ import {
   useState, useEffect, useCallback, useRef, type ReactNode,
 } from "react";
 import { useAuthStore } from "@/store/authStore";
-import { adminApi, type AdminStats, type AdminChat, type AuditEntry } from "@/api/http";
+import { adminApi, type AdminStats, type AdminChat, type AuditEntry, type AdminChatDetail, type AdminChatMessage } from "@/api/http";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import { gradientCssFor } from "@/utils/avatarGradient";
 import type { User } from "@/types";
+import PasswordInput from "@/components/Common/PasswordInput";
 import s from "./AdminDashboard.module.css";
 
 interface Props { onBack: () => void; }
@@ -46,6 +47,7 @@ const ACTION_LABELS: Record<string, string> = {
   "admin.user.update":         "Ma'lumot yangilandi",
   "admin.user.set_active":     "Holat o'zgartirildi",
   "admin.user.reset_password": "Parol tiklandi",
+  "admin.chat.read":           "Suhbat ko'rildi",
   "auth.login":                "Tizimga kirish",
   "auth.logout":               "Tizimdan chiqish",
   "auth.failed_login":         "Noto'g'ri parol",
@@ -55,13 +57,14 @@ const ACTION_LABELS: Record<string, string> = {
 // ─── Form types ──────────────────────────────────────────────────────────────
 interface UserForm {
   username: string; display_name: string; role: "user" | "admin";
+  password: string;
   rank_title: string; unit_code: string;
   okrug_name: string; okrug_code: string;
   unit_name: string; division_name: string; division_code: string;
   display_short: string;
 }
 const EMPTY_FORM: UserForm = {
-  username: "", display_name: "", role: "user",
+  username: "", display_name: "", role: "user", password: "",
   rank_title: "", unit_code: "",
   okrug_name: "", okrug_code: "",
   unit_name: "", division_name: "", division_code: "", display_short: "",
@@ -163,6 +166,16 @@ function UserModal({
                 <input className={s.input} value={form.rank_title} onChange={f("rank_title")} placeholder="kursant / mayor…"/>
               </div>
               <div className={s.field}>
+                <label className={s.label}>{isNew ? "Parol" : "Yangi parol"}</label>
+                <PasswordInput
+                  value={form.password}
+                  onChange={(v) => setForm((p) => ({ ...p, password: v }))}
+                  placeholder={isNew ? "Bo'sh qoldirsangiz avtomatik yaratiladi" : "O'zgartirmasangiz bo'sh qoldiring"}
+                  autoComplete="new-password"
+                  disabled={busy || creating}
+                />
+              </div>
+              <div className={s.field}>
                 <label className={s.label}>Qisqa ko'rinish</label>
                 <input className={s.input} value={form.display_short} onChange={f("display_short")} placeholder="k-nt Ibroximov V.A."/>
               </div>
@@ -245,7 +258,7 @@ function PasswordModal({ username, pass, onClose }: { username: string; pass: st
           </div>
           <p className={s.passNote}>
             Foydalanuvchiga xavfsiz kanal orqali yetkazing.<br/>
-            Birinchi kirishda parolni almashtirishga majburlanadi.
+            Birinchi kirishda parolni o&apos;zgartirish taklif qilinadi.
           </p>
         </div>
         <div className={s.modalFoot}>
@@ -360,11 +373,18 @@ function UsersSection({ token }: { token: string }) {
   const handleSave = async (form: UserForm) => {
     setCreating(true);
     try {
+      const { password, ...rest } = form;
+      const payload = {
+        ...rest,
+        ...(password.trim() ? { password: password.trim() } : {}),
+      };
       if (modal === "create") {
-        const r = await adminApi.createUser(token, form);
-        setPassInfo({ username: form.username, pass: r.temporary_password });
+        const r = await adminApi.createUser(token, payload);
+        if (!password.trim()) {
+          setPassInfo({ username: form.username, pass: r.temporary_password });
+        }
       } else if (editUser) {
-        await adminApi.updateUser(token, editUser.id, form);
+        await adminApi.updateUser(token, editUser.id, payload);
       }
       await load();
       closeModal();
@@ -384,7 +404,8 @@ function UsersSection({ token }: { token: string }) {
 
   const toForm = (u: User): UserForm => ({
     username: u.username, display_name: u.display_name,
-    role: u.role, rank_title: u.rank_title ?? "",
+    role: u.role, password: "",
+    rank_title: u.rank_title ?? "",
     unit_code: u.unit_code ?? "", okrug_name: u.okrug_name ?? "",
     okrug_code: u.okrug_code ?? "", unit_name: u.unit_name ?? "",
     division_name: u.division_name ?? "", division_code: u.division_code ?? "",
@@ -514,10 +535,136 @@ function UsersSection({ token }: { token: string }) {
 }
 
 // ─── SECTION: Chats ───────────────────────────────────────────────────────────
+function adminMsgTypeLabel(t: number): string {
+  if (t === 2) return "Fayl";
+  return "Matn";
+}
+
+function ChatViewerModal({
+  chat, token, onClose,
+}: {
+  chat: AdminChat;
+  token: string;
+  onClose: () => void;
+}) {
+  const [detail, setDetail]       = useState<AdminChatDetail | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [err, setErr]             = useState("");
+
+  const load = useCallback(async (offset = 0, append = false) => {
+    if (offset === 0) setLoading(true);
+    else setLoadingMore(true);
+    setErr("");
+    try {
+      const data = await adminApi.chatMessages(token, chat.id, { limit: 100, offset });
+      setDetail((prev) =>
+        append && prev
+          ? { ...data, messages: [...prev.messages, ...data.messages] }
+          : data
+      );
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : "Xabarlar yuklanmadi");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [token, chat.id]);
+
+  useEffect(() => { void load(0); }, [load]);
+
+  const title = detail?.chat.title || chat.title || `Suhbat ${chat.id.slice(0, 8)}`;
+  const hasMore = detail != null && detail.messages.length < detail.total;
+
+  return (
+    <div className={s.overlay} onClick={onClose}>
+      <div className={s.chatViewer} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+        <div className={s.modalHead}>
+          <div>
+            <h2 className={s.modalTitle}>{title}</h2>
+            <p className={s.chatViewerSub}>
+              {chat.type === "group" ? "Guruh" : "Shaxsiy"} · {detail?.total ?? chat.message_count} xabar
+            </p>
+          </div>
+          <button className={s.modalClose} onClick={onClose} aria-label="Yopish">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {detail && detail.chat.members.length > 0 && (
+          <div className={s.chatMembers}>
+            {detail.chat.members.map((m) => (
+              <span key={m.id} className={s.memberChip}>@{m.username}</span>
+            ))}
+          </div>
+        )}
+
+        <div className={s.e2eeBanner}>
+          🔒 Xabarlar E2EE bilan shifrlangan — server faqat metadata va hajmni saqlaydi, matn ochiq emas.
+        </div>
+
+        <div className={s.chatMsgList}>
+          {loading ? (
+            <Spinner />
+          ) : err ? (
+            <p className={s.formError}>{err}</p>
+          ) : detail && detail.messages.length === 0 ? (
+            <p className={s.emptySmall}>Xabarlar yo&apos;q</p>
+          ) : (
+            detail?.messages.map((msg) => (
+              <AdminChatMessageRow key={msg.msg_id} msg={msg} />
+            ))
+          )}
+        </div>
+
+        {hasMore && (
+          <div className={s.chatViewerFoot}>
+            <button
+              type="button"
+              className={s.btnSecondary}
+              disabled={loadingMore}
+              onClick={() => void load(detail!.messages.length, true)}
+            >
+              {loadingMore ? "Yuklanmoqda…" : `Yana yuklash (${detail!.messages.length}/${detail!.total})`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminChatMessageRow({ msg }: { msg: AdminChatMessage }) {
+  const time = fmtDateShort(msg.created_at);
+  return (
+    <div className={s.chatMsgItem}>
+      <div className={s.chatMsgAvatar} style={{ background: gradientCssFor(msg.sender_name) }}>
+        {msg.sender_name.charAt(0).toUpperCase()}
+      </div>
+      <div className={s.chatMsgBody}>
+        <div className={s.chatMsgHead}>
+          <span className={s.chatMsgSender}>@{msg.sender_username}</span>
+          <span className={s.chatMsgTime}>{time}</span>
+        </div>
+        <div className={s.chatMsgMeta}>
+          <Badge variant="default">{adminMsgTypeLabel(msg.msg_type)}</Badge>
+          <span className={s.chatMsgSize}>{msg.size_bytes} bayt</span>
+          {msg.delivered && <span className={s.chatMsgStatus}>✓ yetkazildi</span>}
+          {msg.read && <span className={s.chatMsgStatusRead}>✓✓ o&apos;qilgan</span>}
+        </div>
+        <div className={s.chatMsgCipher}>🔒 Shifrlangan xabar (E2EE)</div>
+      </div>
+    </div>
+  );
+}
+
 function ChatsSection({ token }: { token: string }) {
   const [chats, setChats] = useState<AdminChat[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
+  const [viewChat, setViewChat] = useState<AdminChat | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -556,10 +703,15 @@ function ChatsSection({ token }: { token: string }) {
               <th>Xabarlar</th>
               <th>So'nggi faollik</th>
               <th>Yaratilgan</th>
+              <th style={{ width: 90 }}>Amal</th>
             </tr></thead>
             <tbody>
               {filtered.map(c => (
-                <tr key={c.id}>
+                <tr
+                  key={c.id}
+                  className={c.message_count > 0 ? s.clickableRow : undefined}
+                  onClick={() => c.message_count > 0 && setViewChat(c)}
+                >
                   <td>
                     <div className={s.chatTitleCell}>
                       <div className={s.chatAvatar} style={{ background: gradientCssFor(c.title || c.id) }}>
@@ -576,12 +728,29 @@ function ChatsSection({ token }: { token: string }) {
                   <td className={s.numCell}>{c.message_count}</td>
                   <td className={s.cellSm}>{ago(c.last_activity)}</td>
                   <td className={s.cellSm}>{fmtDate(c.created_at)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className={s.actionBtn}
+                      title="Xabarlarni ko'rish"
+                      disabled={c.message_count === 0}
+                      onClick={(e) => { e.stopPropagation(); setViewChat(c); }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           {filtered.length === 0 && <p className={s.emptyTable}>Suhbatlar topilmadi</p>}
         </div>
+      )}
+      {viewChat && (
+        <ChatViewerModal chat={viewChat} token={token} onClose={() => setViewChat(null)} />
       )}
     </div>
   );
@@ -591,6 +760,7 @@ function ChatsSection({ token }: { token: string }) {
 const AUDIT_ACTIONS = [
   "admin.user.create", "admin.user.update",
   "admin.user.set_active", "admin.user.reset_password",
+  "admin.chat.read",
   "auth.login", "auth.logout", "auth.failed_login", "auth.locked",
 ];
 

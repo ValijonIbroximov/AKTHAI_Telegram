@@ -1,0 +1,136 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  width: 100%;
+  max-width: 400px;
+  padding: 24px;
+  border-radius: var(--r-lg, 12px);
+  background: var(--panel-bg-real, var(--bg-panel));
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.question {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.question strong {
+  color: var(--text-1);
+}
+
+.profileCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.profileInfo {
+  min-width: 0;
+}
+
+.profileName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.profileMeta {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.profileId {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: ui-monospace, monospace;
+}
+
+.note {
+  margin: 0 0 20px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.btnNo,
+.btnYes {
+  min-width: 96px;
+  padding: 10px 16px;
+  border-radius: var(--r-md, 8px);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--t-fast), opacity var(--t-fast);
+}
+
+.btnNo {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+
+.btnNo:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.btnYes {
+  background: var(--danger, #dc2626);
+  border: none;
+  color: #fff;
+}
+
+.btnYes:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btnNo:disabled,
+.btnYes:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
