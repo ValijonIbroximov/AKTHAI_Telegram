@@ -1,24 +1,36 @@
-const KEY = "harbiy-server-url";
+// Eski API — devServer.ts ga yo'naltiriladi.
+import {
+  getApiBaseUrl,
+  buildWsUrl,
+  setDevServerHost,
+  resolveDevServerHost,
+  hasDevServerHost,
+} from "./devServer";
 
 export function getServerUrl(): string {
-  return localStorage.getItem(KEY) ?? "";
+  const host = resolveDevServerHost();
+  if (host === "127.0.0.1" || host === "localhost") return "";
+  return `https://${host}:8443`;
 }
 
 export function setServerUrl(url: string): void {
-  localStorage.setItem(KEY, url.replace(/\/+$/, ""));
+  const h = url.replace(/\/+$/, "");
+  try {
+    const u = new URL(h.startsWith("http") ? h : `https://${h}`);
+    setDevServerHost(u.hostname, u.port || "8443");
+  } catch {
+    setDevServerHost(h.replace(/^https?:\/\//, "").split(":")[0] ?? h);
+  }
 }
 
 export function hasServerUrl(): boolean {
-  return !!localStorage.getItem(KEY);
+  return hasDevServerHost();
 }
 
 export function getApiBase(): string {
-  const url = getServerUrl();
-  return url ? `${url}/api/v1` : "/api/v1";
+  return getApiBaseUrl();
 }
 
 export function getWsUrl(): string {
-  const url = getServerUrl();
-  if (!url) return "ws://localhost:1420/ws";
-  return url.replace(/^https/, "wss").replace(/^http/, "ws") + "/ws";
+  return buildWsUrl("");
 }

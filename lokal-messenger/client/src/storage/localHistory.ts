@@ -128,14 +128,30 @@ async function idbLoadByChat(chatId: string): Promise<StoredMessage[]> {
     const req = idx.getAll(chatId);
     req.onsuccess = () => {
       const rows = (req.result as StoredMessage[]) ?? [];
-      rows.sort((a, b) => a.created_at.localeCompare(b.created_at));
+      rows.sort((a, b) => messageTimestamp(a.created_at) - messageTimestamp(b.created_at));
       res(rows);
     };
     req.onerror = () => res([]);
   });
 }
 
-// ── Mahalliy ↔ server moslash ───────────────────────────────────────────────
+// ── Vaqt bo'yicha tartiblash ─────────────────────────────────────────────────
+
+/** Server/mahalliy created_at qiymatini millisekundga aylantiradi */
+export function messageTimestamp(createdAt: string | undefined | null): number {
+  if (!createdAt) return 0;
+  const t = Date.parse(createdAt);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Xabarlarni yozilgan vaqt bo'yicha o'sish tartibida saralaydi (barqaror) */
+export function sortMessagesByTime(msgs: Message[]): Message[] {
+  return [...msgs].sort((a, b) => {
+    const diff = messageTimestamp(a.created_at) - messageTimestamp(b.created_at);
+    if (diff !== 0) return diff;
+    return a.id.localeCompare(b.id);
+  });
+}
 
 /** Server xabari uchun mahalliy nusxa (ID yoki ciphertext bo'yicha) */
 export function findLocalMatch(local: Message[], remote: Message): Message | null {
@@ -186,10 +202,16 @@ export function mergeMessages(local: Message[], remote: Message[]): Message[] {
     const existing = map.get(m.id);
     if (existing) {
       map.set(m.id, { ...existing, plaintext: m.plaintext, status: m.status ?? existing.status });
-    } else {
-      // Faqat mahalliyda bor (hali server tarixida ko'rinmagan)
-      map.set(m.id, m);
+      continue;
     }
+    // local_* ID (ACK oldin) ↔ server uuid dublikatini ciphertext bo'yicha filtrlash
+    if (m.ciphertext?.trim()) {
+      const dup = [...map.values()].some(
+        (r) => r.ciphertext === m.ciphertext && r.chat_id === m.chat_id
+      );
+      if (dup) continue;
+    }
+    map.set(m.id, m);
   }
 
   // Ciphertext bo'yicha fallback: server xabarlari uchun mahalliy ochiq matn topish
@@ -200,7 +222,7 @@ export function mergeMessages(local: Message[], remote: Message[]): Message[] {
     if (hit) map.set(r.id, { ...r, plaintext: hit.plaintext, status: hit.status ?? r.status });
   }
 
-  return [...map.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return sortMessagesByTime([...map.values()]);
 }
 
 // ── Umumiy API ──────────────────────────────────────────────────────────────
@@ -272,12 +294,10 @@ export async function loadLocalMessages(chatId: string): Promise<Message[]> {
         chatId,
         userId: userId ?? "",
       });
-      return (rows ?? [])
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map(fromStored);
+      return sortMessagesByTime((rows ?? []).map(fromStored));
     }
     const rows = await idbLoadByChat(chatId);
-    return rows.map(fromStored);
+    return sortMessagesByTime(rows.map(fromStored));
   } catch (e) {
     console.error("[LocalHistory] loadLocalMessages FAILED:", e);
     return [];   // xato bo'lsa bo'sh qaytaramiz — UI ishini to'xtatmaymiz

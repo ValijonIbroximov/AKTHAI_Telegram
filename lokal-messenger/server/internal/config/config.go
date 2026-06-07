@@ -61,11 +61,50 @@ type Argon2Params struct {
 	KeyLength   uint32 `yaml:"key_length"`
 }
 
+const (
+	DefaultMaxMessageSizeBytes = 65536              // 64 KB shifrlangan matn xabari
+	DefaultMaxFileSizeBytes    = 50 * 1024 * 1024   // 50 MB fayl yuklash
+)
+
 // LimitsConfig — xabar va fayl o'lchamlari, kirish chastotasi chegaralari.
 type LimitsConfig struct {
 	MaxMessageSizeBytes int64 `yaml:"max_message_size_bytes"`
 	MaxFileSizeBytes    int64 `yaml:"max_file_size_bytes"`
 	RateLoginPer5Min    int   `yaml:"rate_login_per_5min"`
+}
+
+// Normalize — bo'sh cheklovlarga standart qiymatlar beriladi.
+func (l *LimitsConfig) Normalize() {
+	if l.MaxMessageSizeBytes <= 0 {
+		l.MaxMessageSizeBytes = DefaultMaxMessageSizeBytes
+	}
+	if l.MaxFileSizeBytes <= 0 {
+		l.MaxFileSizeBytes = DefaultMaxFileSizeBytes
+	}
+}
+
+// HTTPBodyLimit — Fiber BodyLimit: multipart fayl yuklash uchun max_file_size ishlatiladi.
+func (l LimitsConfig) HTTPBodyLimit() int {
+	file := l.MaxFileSizeBytes
+	if file <= 0 {
+		file = DefaultMaxFileSizeBytes
+	}
+	msg := l.MaxMessageSizeBytes
+	if msg <= 0 {
+		msg = DefaultMaxMessageSizeBytes
+	}
+	if file > msg {
+		return int(file)
+	}
+	return int(msg)
+}
+
+// MaxUploadBytes — handler darajasidagi fayl hajmi cheklovi.
+func (l LimitsConfig) MaxUploadBytes() int64 {
+	if l.MaxFileSizeBytes <= 0 {
+		return DefaultMaxFileSizeBytes
+	}
+	return l.MaxFileSizeBytes
 }
 
 // Load — berilgan yo'ldagi YAML fayli o'qilib, Config strukturasi qaytariladi.
@@ -78,5 +117,6 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
+	cfg.Limits.Normalize()
 	return &cfg, nil
 }

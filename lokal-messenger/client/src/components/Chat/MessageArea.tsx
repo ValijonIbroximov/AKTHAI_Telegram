@@ -1,10 +1,12 @@
 // O'ng panel — Telegram Desktop uslubidagi chat oynasi.
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore, PENDING_DECRYPT_LABEL } from "@/store/chatStore";
 import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
+import { parseMediaPayload } from "@/crypto/fileCrypto";
 import Avatar            from "@/components/Common/Avatar";
 import MessageBubble     from "./MessageBubble";
+import ImageViewer       from "./ImageViewer";
 import InputBar          from "./InputBar";
 import s                 from "./MessageArea.module.css";
 
@@ -15,11 +17,22 @@ export default function MessageArea() {
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const [resetting, setResetting]       = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [viewerMessageId, setViewerMessageId] = useState<string | null>(null);
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
   const peerId     = activeChat?.peer_user_id ?? null;
   const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
+
+  const chatImages = useMemo(() => {
+    const out: { messageId: string; payload: NonNullable<ReturnType<typeof parseMediaPayload>> }[] = [];
+    for (const m of msgs) {
+      if (m.msg_type !== "image") continue;
+      const payload = parseMediaPayload(m.plaintext);
+      if (payload) out.push({ messageId: m.id, payload });
+    }
+    return out;
+  }, [msgs]);
 
   const hasSessionIssue = msgs.some(
     (m) => m.plaintext === PENDING_DECRYPT_LABEL || m.plaintext === DECRYPT_ERROR_LABEL
@@ -28,6 +41,10 @@ export default function MessageArea() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
+
+  useEffect(() => {
+    setViewerMessageId(null);
+  }, [activeChatId]);
 
   // Menyu tashqariga bosish → yopish
   useEffect(() => {
@@ -186,6 +203,7 @@ export default function MessageArea() {
               key={msg.id}
               message={msg}
               isOwn={msg.sender_id === userId || msg.sender_id === "me"}
+              onImageOpen={setViewerMessageId}
             />
           ))
         )}
@@ -198,6 +216,15 @@ export default function MessageArea() {
         recipientId={activeChat.peer_user_id ?? activeChat.id}
         token={token ?? ""}
       />
+
+      {viewerMessageId && token && chatImages.length > 0 && (
+        <ImageViewer
+          images={chatImages}
+          initialMessageId={viewerMessageId}
+          token={token}
+          onClose={() => setViewerMessageId(null)}
+        />
+      )}
     </div>
   );
 }

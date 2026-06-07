@@ -1,15 +1,6 @@
 // WebSocket ulanishini boshqaruvchi singleton.
-// Multi-account: har switch da eski ulanish to'liq yopiladi, yangi JWT bilan qayta ulanadi.
 import type { WsEvent } from "@/types";
-
-function getWsEndpoint(): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  // Dev yoki SPA bir xil origin — proxy orqali
-  if (import.meta.env.DEV || window.location.port === "8443") {
-    return `${proto}//${window.location.host}/ws`;
-  }
-  return `wss://${window.location.hostname}:8443/ws`;
-}
+import { buildWsUrl } from "@/config/devServer";
 const PING_INTERVAL_MS   = 25_000;
 const RECONNECT_DELAY_MS = 3_000;
 const MAX_RECONNECTS     = 10;
@@ -100,7 +91,7 @@ class WsClient {
 
   private _openAndWait(): Promise<void> {
     const myEpoch = this.epoch;
-    const url     = `${getWsEndpoint()}?token=${encodeURIComponent(this.token)}`;
+    const url     = buildWsUrl(this.token);
 
     return new Promise((resolve, reject) => {
       const sock = new WebSocket(url);

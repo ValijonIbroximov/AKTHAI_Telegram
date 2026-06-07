@@ -9,7 +9,7 @@ import { x25519 } from "@noble/curves/ed25519.js";
 import { peerBundleIkToX25519 } from "./ikConvert";
 import { DecryptError } from "./cryptoErrors";
 import { scopedIdbName, getActiveCryptoUserId } from "./userScope";
-import { getApiBaseUrl } from "@/api/http";
+import { getApiBaseUrl } from "@/config/devServer";
 
 // ── Yordamchi ──────────────────────────────────────────────────────────────
 
@@ -275,6 +275,90 @@ async function getIdentity(): Promise<WebIdentity | null> {
   return idbGet<WebIdentity>("identity", "self");
 }
 
+/** IDB'dagi OTPK ochiq kalitlar (eng yangi 10 tasi) */
+async function listOtpksFromIdb(): Promise<{ key_id: number; public_key: string }[]> {
+  const db = await openIdb();
+  return new Promise((res) => {
+    const req = db.transaction("identity", "readonly").objectStore("identity").getAll();
+    req.onsuccess = () => {
+      const rows = (req.result as Array<{ id: string; pkB64: string }>) ?? [];
+      const otpks = rows
+        .filter((r) => r.id.startsWith("otpk_"))
+        .map((r) => ({
+          key_id:     parseInt(r.id.slice("otpk_".length), 10),
+          public_key: r.pkB64,
+        }))
+        .filter((o) => Number.isFinite(o.key_id))
+        .sort((a, b) => b.key_id - a.key_id)
+        .slice(0, 10);
+      res(otpks);
+    };
+    req.onerror = () => res([]);
+  });
+}
+
+async function uploadKeyBundle(
+  token: string,
+  ikPk: Uint8Array,
+  spkKeyId: number,
+  spkPk: Uint8Array,
+  otpks: { key_id: number; public_key: string }[],
+  forceOverwrite: boolean,
+): Promise<void> {
+  const dummySig = b64(new Uint8Array(64));
+  const bundle = {
+    registration_id:     ((Math.random() * 16380) | 0) + 1,
+    identity_key:        b64(ikPk),
+    identity_key_x25519: b64(ikPk),
+    force_overwrite:     forceOverwrite,
+    signed_prekey:       { key_id: spkKeyId, public_key: b64(spkPk), signature: dummySig },
+    one_time_prekeys:    otpks,
+  };
+
+  const resp = await fetch(`${getApiBaseUrl()}/keys/upload`, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body:    JSON.stringify(bundle),
+  });
+
+  if (!resp.ok && resp.status !== 204) {
+    const errBody = await resp.text().catch(() => "");
+    throw new Error(`Kalit yuklash muvaffaqiyatsiz: ${resp.status} — ${errBody}`);
+  }
+}
+
+/** Mavjud IDB kalitlarini serverga sinxronlaydi (OTPK'larni o'chirmaydi) */
+async function syncExistingKeysToServer(
+  token: string,
+  ident: WebIdentity,
+  spk: { keyId?: number; skB64: string; pkB64: string },
+): Promise<void> {
+  const ikPk = fromb64(ident.ikPkB64);
+  const spkPk = fromb64(spk.pkB64);
+  const spkKeyId = spk.keyId ?? 1;
+
+  // Har login da 5 ta yangi OTPK (server: ON CONFLICT DO NOTHING — ishlatilganlar saqlanadi)
+  const baseId = (Date.now() % 900_000) + 100_000;
+  const fresh: { key_id: number; public_key: string }[] = [];
+  for (let i = 0; i < 5; i++) {
+    const keyId = baseId + i;
+    const k = genX25519();
+    await idbPut("identity", { id: `otpk_${keyId}`, skB64: b64(k.sk), pkB64: b64(k.pk) });
+    fresh.push({ key_id: keyId, public_key: b64(k.pk) });
+  }
+
+  const existing = await listOtpksFromIdb();
+  const toUpload = [...fresh, ...existing]
+    .filter((o, i, arr) => arr.findIndex((x) => x.key_id === o.key_id) === i)
+    .sort((a, b) => b.key_id - a.key_id)
+    .slice(0, 10);
+
+  await uploadKeyBundle(token, ikPk, spkKeyId, spkPk, toUpload, false);
+  console.log(
+    `[WebCrypto] ✅ Kalitlar serverga sinxronlandi (${toUpload.length} OTPK, +${fresh.length} yangi)`
+  );
+}
+
 // ── Sessiya mavjudligi ─────────────────────────────────────────────────────
 
 export async function webHasSession(peerId: string): Promise<boolean> {
@@ -326,16 +410,28 @@ export interface KeyInitResult {
 }
 
 export async function webInitSignalKeys(token: string): Promise<KeyInitResult> {
+  return runKeyInitOnce(() => webInitSignalKeysImpl(token));
+}
+
+let keyInitChain: Promise<KeyInitResult> | null = null;
+
+function runKeyInitOnce(fn: () => Promise<KeyInitResult>): Promise<KeyInitResult> {
+  if (!keyInitChain) {
+    keyInitChain = fn().finally(() => { keyInitChain = null; });
+  }
+  return keyInitChain;
+}
+
+async function webInitSignalKeysImpl(token: string): Promise<KeyInitResult> {
   // ── Identity Key: IDB'da bor bo'lsa ishlatiladi, yo'q bo'lsa yangi ──────
   let ikSk: Uint8Array, ikPk: Uint8Array;
   const existingIdent = await getIdentity();
   const existingSpk = await idbGet<{ id: string; keyId?: number; skB64: string; pkB64: string }>("identity", "spk");
   const regenerated = !existingIdent || !existingSpk;
 
-  // Mavjud kalitlar IDB'da — har login'da qayta yuklash OTPK'larni serverda
-  // almashtirib, in-flight PreKey xabarlarini buzadi.
+  // Mavjud kalitlar — server bilan sinxron (OTPK o'chirilmaydi)
   if (existingIdent && existingSpk) {
-    console.log("[WebCrypto] Kalitlar IDB'da mavjud — serverga qayta yuklash o'tkazildi");
+    await syncExistingKeysToServer(token, existingIdent, existingSpk);
     return { regenerated: false };
   }
 
@@ -384,33 +480,11 @@ export async function webInitSignalKeys(token: string): Promise<KeyInitResult> {
   }
 
   // ── Server'ga yuklash (UPSERT) ─────────────────────────────────────────
-  const dummySig = b64(new Uint8Array(64));
-  const bundle = {
-    registration_id: ((Math.random() * 16380) | 0) + 1,
-    identity_key:          b64(ikPk),
-    identity_key_x25519:   b64(ikPk),
-    force_overwrite:       regenerated,
-    signed_prekey:   { key_id: spkKeyId, public_key: b64(spkPk), signature: dummySig },
-    one_time_prekeys: otpks,
-  };
-
-  const BASE = getApiBaseUrl();
-  const resp = await fetch(`${BASE}/keys/upload`, {
-    method:  "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body:    JSON.stringify(bundle),
-  });
-
-  if (resp.ok || resp.status === 204) {
-    console.log(
-      `[WebCrypto] ✅ Kalit bundle serverga yuklandi (${otpks.length} OTPKs, ` +
-      `baseId=${baseId}, force_overwrite=${regenerated})`
-    );
-  } else {
-    const errBody = await resp.text().catch(() => "");
-    console.error(`[WebCrypto] ❌ Kalit yuklash xatoligi: HTTP ${resp.status} — ${errBody}`);
-    throw new Error(`Kalit yuklash muvaffaqiyatsiz: ${resp.status}`);
-  }
+  await uploadKeyBundle(token, ikPk, spkKeyId, spkPk, otpks, regenerated);
+  console.log(
+    `[WebCrypto] ✅ Kalit bundle serverga yuklandi (${otpks.length} OTPKs, ` +
+    `baseId=${baseId}, force_overwrite=${regenerated})`
+  );
 
   return { regenerated };
 }

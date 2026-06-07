@@ -116,6 +116,8 @@ func (h *Hub) handleInbound(ctx context.Context, env inboundEnvelope) {
 		h.markDelivered(ctx, env)
 	case "msg.read":
 		h.markRead(ctx, env)
+	case "session.rekey_request":
+		h.routeSessionRekey(env)
 	case "ping":
 		// Ping — e'tiborsiz
 	default:
@@ -146,11 +148,12 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 	// Ciphertext JSON string sifatida keladi (Rust va browser ikkalasi ham JSON qaytaradi).
 	// decode('json','base64') ishlamaydi — to'g'ridan-to'g'ri bytea sifatida saqlaymiz.
 	var msgID string
+	var createdAt time.Time
 	err := h.db.QueryRow(ctx, `
 		INSERT INTO messages (chat_id, sender_id, recipient_id, ciphertext, msg_type)
 		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
-		RETURNING id::text
-	`, p.ChatID, env.From, p.RecipientID, []byte(p.CiphertextB64), p.MsgType).Scan(&msgID)
+		RETURNING id::text, created_at
+	`, p.ChatID, env.From, p.RecipientID, []byte(p.CiphertextB64), p.MsgType).Scan(&msgID, &createdAt)
 	if err != nil {
 		log.Printf("[WS] ✗ Xabar bazaga saqlanmadi: %v", err)
 		return
@@ -170,6 +173,7 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 		"sender_id":  env.From,
 		"ciphertext": p.CiphertextB64,
 		"msg_type":   p.MsgType,
+		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 	})
 
 	if delivered {
@@ -185,7 +189,7 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 func (h *Hub) flushPending(ctx context.Context, c *Client) {
 	rows, err := h.db.Query(ctx, `
 		SELECT id::text, chat_id::text, sender_id::text,
-		       ciphertext, msg_type
+		       ciphertext, msg_type, created_at
 		  FROM messages
 		 WHERE recipient_id = $1::uuid AND delivered_at IS NULL
 		 ORDER BY created_at ASC
@@ -201,7 +205,8 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 		var msgID, chatID, senderID string
 		var ctBytes []byte
 		var mtype int
-		if err := rows.Scan(&msgID, &chatID, &senderID, &ctBytes, &mtype); err != nil {
+		var createdAt time.Time
+		if err := rows.Scan(&msgID, &chatID, &senderID, &ctBytes, &mtype, &createdAt); err != nil {
 			continue
 		}
 		if h.sendTo(c.UserID, "msg.recv", map[string]any{
@@ -210,6 +215,7 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 			"sender_id":  senderID,
 			"ciphertext": string(ctBytes),
 			"msg_type":   mtype,
+			"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 		}) {
 			_, _ = h.db.Exec(ctx,
 				`UPDATE messages SET delivered_at = NOW() WHERE id = $1::uuid`, msgID)
@@ -261,6 +267,25 @@ func (h *Hub) markRead(ctx context.Context, env inboundEnvelope) {
 	_, _ = h.db.Exec(ctx,
 		`UPDATE messages SET read_at = NOW()
 		    WHERE id = $1::uuid AND recipient_id = $2::uuid`, p.MsgID, env.From)
+}
+
+// routeSessionRekey — qabul qiluvchi sessiya yo'qligini bildiradi; yuboruvchi keyingi xabarda PreKey ishlatadi.
+func (h *Hub) routeSessionRekey(env inboundEnvelope) {
+	var p struct {
+		PeerID string `json:"peer_id"`
+		ChatID string `json:"chat_id"`
+	}
+	if err := json.Unmarshal(env.Payload, &p); err != nil || p.PeerID == "" {
+		log.Printf("[WS] ✗ session.rekey_request parse xatoligi (from=%s)", env.From)
+		return
+	}
+	// peer_id = qayta kalit so'rayotgan foydalanuvchi; xabar shu ID ga yetkaziladi
+	if h.sendTo(p.PeerID, "session.rekey_request", map[string]any{
+		"from_user_id": env.From,
+		"chat_id":      p.ChatID,
+	}) {
+		log.Printf("[WS] 🔑 session.rekey_request: %s → %s (chat=%s)", env.From, p.PeerID, p.ChatID)
+	}
 }
 
 func (h *Hub) Inbound() chan<- inboundEnvelope  { return h.inbound }

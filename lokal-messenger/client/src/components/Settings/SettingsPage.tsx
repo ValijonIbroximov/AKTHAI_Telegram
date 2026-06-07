@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import ChangePasswordModal from "./ChangePasswordModal";
+import { hasDevServerHost, resolveDevServerHost, setDevServerHost } from "@/config/devServer";
 import { useTheme, FONT_LABELS, RADIUS_LABELS, type FontChoice, type RadiusPreset } from "@/contexts/ThemeContext";
 import { THEMES } from "@/themes";
 import type { ThemeId } from "@/themes";
@@ -325,8 +326,25 @@ function PrivacySection() {
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pin, setPin]         = useState("");
   const [pinMsg, setPinMsg]   = useState<string | null>(null);
+  const [serverIp, setServerIp] = useState(() => {
+    const h = resolveDevServerHost();
+    return h === "127.0.0.1" ? "" : h;
+  });
+  const [serverMsg, setServerMsg] = useState<string | null>(null);
   const setAccountPin         = useAuthStore((st) => st.setAccountPin);
   const active                = useAuthStore((st) => st.accounts.find((a) => a.userId === st.activeAccountId));
+  const isDev                 = import.meta.env.DEV;
+
+  const saveServerIp = () => {
+    setServerMsg(null);
+    const ip = serverIp.trim();
+    if (!ip) {
+      setServerMsg("Server IP kiritilmagan");
+      return;
+    }
+    setDevServerHost(ip);
+    setServerMsg("Saqlandi — rasm yuborish uchun sahifani yangilang (F5)");
+  };
 
   const savePin = async () => {
     setPinMsg(null);
@@ -376,6 +394,30 @@ function PrivacySection() {
         {active?.pinHash && <p className={s.pinOk}>✓ PIN o'rnatilgan</p>}
         {pinMsg && <p className={s.pinMsg}>{pinMsg}</p>}
       </div>
+
+      {isDev && (
+        <div className={s.groupBox}>
+          <div className={s.groupTitle}>Server IP (LAN dev)</div>
+          <p className={s.groupDesc}>
+            Server boshqa mashinada bo&apos;lsa kiriting. Hozir:{" "}
+            {hasDevServerHost() ? resolveDevServerHost() : "localhost (proxy)"}
+          </p>
+          <div className={s.pinRow}>
+            <input
+              type="text"
+              className={s.pinInput}
+              placeholder="192.168.101.32"
+              value={serverIp}
+              onChange={(e) => setServerIp(e.target.value)}
+              spellCheck={false}
+            />
+            <button type="button" className={s.pinSaveBtn} onClick={saveServerIp}>
+              Saqlash
+            </button>
+          </div>
+          {serverMsg && <p className={s.pinMsg}>{serverMsg}</p>}
+        </div>
+      )}
 
       <div className={s.groupBox}>
         <div className={s.groupTitle}>E2EE</div>

@@ -1,7 +1,6 @@
 // Asosiy ilova komponenti.
 import { useState, useCallback, useEffect } from "react";
 import { useAuthStore }  from "@/store/authStore";
-import { useChatStore }  from "@/store/chatStore";
 import LoginPage         from "@/components/Auth/LoginPage";
 import AccountUnlockModal from "@/components/Auth/AccountUnlockModal";
 import ChatList          from "@/components/Chat/ChatList";
@@ -21,26 +20,21 @@ export default function App() {
   const userId   = useAuthStore((s) => s.userId);
   const uiMode   = useAuthStore((s) => s.uiMode);
   const bootstrap = useAuthStore((s) => s.bootstrap);
-  const loadChats = useChatStore((s) => s.loadChats);
   const [drawerOpen, setDrawerOpen]     = useState(false);
   const [mainView, setMainView]         = useState<MainView>("chat");
   const [activeFolder, setActiveFolder] = useState<FolderId>("all");
 
   useEffect(() => {
     void initNotifications();
-    bootstrap().then(() => {
-      const t = useAuthStore.getState().token;
-      if (t) loadChats(t);
-    });
+    void bootstrap();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Akkaunt almashganda chatlar qayta yuklanadi (holat onAccountSwitch da tozalanadi)
+  // Akkaunt almashganda asosiy ko'rinish
   useEffect(() => {
     if (!token || !userId) return;
-    void loadChats(token);
     setMainView("chat");
-  }, [userId, token, loadChats]);
+  }, [userId, token]);
 
   const openSettings = useCallback(() => {
     setDrawerOpen(false);

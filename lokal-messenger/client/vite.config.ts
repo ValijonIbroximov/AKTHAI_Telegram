@@ -3,6 +3,9 @@ import react from "@vitejs/plugin-react";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import path from "path";
 
+const apiHost = process.env.VITE_API_HOST || "127.0.0.1";
+const apiTarget = `https://${apiHost}:8443`;
+
 // Dev server HTTPS — crypto.subtle (WebCrypto) LAN'da ishlashi uchun.
 export default defineConfig({
   plugins: [react(), basicSsl()],
@@ -22,12 +25,17 @@ export default defineConfig({
     proxy: {
       // REST so'rovlari
       "/api": {
-        target:       "https://127.0.0.1:8443",
+        target:       apiTarget,
+        changeOrigin: true,
+        secure:       false,
+      },
+      "/healthz": {
+        target:       apiTarget,
         changeOrigin: true,
         secure:       false,
       },
       "/ws": {
-        target:       "https://127.0.0.1:8443",
+        target:       apiTarget,
         changeOrigin: true,
         secure:   false,
         ws:       true,

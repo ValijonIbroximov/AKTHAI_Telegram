@@ -19,6 +19,7 @@ import {
   classifyDecryptError,
   logDecryptError,
 } from "@/crypto/adapter";
+import { normalizePayload } from "@/crypto/webCrypto";
 import { chatApi, keysApi, userApi, mediaApi } from "@/api/http";
 import { encryptFile, parseMediaPayload, fcToB64, type MediaPayload } from "@/crypto/fileCrypto";
 import { wsClient } from "@/api/ws";
@@ -28,6 +29,7 @@ import {
   mergeMessages,
   hydrateFromLocal,
   migrateLocalMessageId,
+  sortMessagesByTime,
 } from "@/storage/localHistory";
 import {
   isReadablePlaintext,
@@ -41,7 +43,7 @@ import {
 } from "@/utils/notifications";
 import type {
   Chat, Message, User,
-  WsEvent, WsMsgRecv, WsMsgAck,
+  WsEvent, WsMsgRecv, WsMsgAck, WsSessionRekeyRequest,
 } from "@/types";
 
 interface ChatState {
@@ -71,6 +73,129 @@ export { PENDING_DECRYPT_LABEL };
 // ── Modul darajasidagi holat ────────────────────────────────────────────────
 /** Joriy faol akkaunt (multi-account uchun) */
 let activeAccountId: string | null = null;
+
+function activeChatStorageKey(userId: string): string {
+  return `harbiy-active-chat-${userId}`;
+}
+
+function saveActiveChatId(userId: string, chatId: string): void {
+  try {
+    sessionStorage.setItem(activeChatStorageKey(userId), chatId);
+  } catch { /* sessionStorage bloklangan */ }
+}
+
+function loadSavedActiveChatId(userId: string): string | null {
+  try {
+    return sessionStorage.getItem(activeChatStorageKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function clearSavedActiveChatId(userId: string): void {
+  try {
+    sessionStorage.removeItem(activeChatStorageKey(userId));
+  } catch { /* ignore */ }
+}
+
+function forcePreKeyStorageKey(userId: string, peerId: string): string {
+  return `e2ee-force-prekey-${userId}-${peerId}`;
+}
+
+function setForcePreKey(userId: string, peerId: string): void {
+  try {
+    sessionStorage.setItem(forcePreKeyStorageKey(userId, peerId), "1");
+  } catch { /* ignore */ }
+}
+
+function consumeForcePreKey(userId: string, peerId: string): boolean {
+  try {
+    const k = forcePreKeyStorageKey(userId, peerId);
+    if (sessionStorage.getItem(k) === "1") {
+      sessionStorage.removeItem(k);
+      return true;
+    }
+  } catch { /* ignore */ }
+  return false;
+}
+
+const rekeyRequestSentAt = new Map<string, number>();
+const REKEY_COOLDOWN_MS = 15_000;
+
+function isPreKeyCiphertext(ciphertext: string): boolean {
+  try {
+    const val = JSON.parse(normalizePayload(ciphertext)) as { type?: number; prekey?: unknown; inner?: string };
+    return val.type === 3 && !!val.prekey && !!val.inner;
+  } catch {
+    return false;
+  }
+}
+
+/** Qabul qiluvchi sessiya yo'q — yuboruvchiga PreKey talab qiladi */
+function requestSessionRekey(peerId: string, chatId: string): void {
+  const now = Date.now();
+  const last = rekeyRequestSentAt.get(peerId) ?? 0;
+  if (now - last < REKEY_COOLDOWN_MS) return;
+  rekeyRequestSentAt.set(peerId, now);
+  console.log(`[E2EE] 🔑 session.rekey_request → ${peerId}`);
+  wsClient.send("session.rekey_request", { peer_id: peerId, chat_id: chatId });
+}
+
+/** Xabar shifrlash: sessiya yo'q / tiklanganda PreKey, xato bo'lsa avtomatik qayta urinish */
+async function prepareOutgoingCiphertext(
+  chatId:      string,
+  recipientId: string,
+  plaintext:   string,
+  token:       string,
+): Promise<{ ciphertext: string; msgTypeNum: number }> {
+  const authUserId = useAuthStore.getState().userId;
+  const forcePreKey = authUserId ? consumeForcePreKey(authUserId, recipientId) : false;
+
+  const sendPreKey = async () => {
+    console.log(`[E2EE] 🔑 PreKeyMessage → ${recipientId}`);
+    const bundle = await keysApi.getBundle(token, recipientId);
+    return {
+      ciphertext: await encryptFirstMessage(
+        chatId,
+        recipientId,
+        JSON.stringify(bundle),
+        plaintext,
+      ),
+      msgTypeNum: 3,
+    };
+  };
+
+  if (forcePreKey) {
+    await clearSession(recipientId).catch(() => {});
+    return sendPreKey();
+  }
+
+  const sessionExists = await hasSession(recipientId).catch(() => false);
+  if (!sessionExists) return sendPreKey();
+
+  try {
+    return {
+      ciphertext: await encryptMessage(chatId, recipientId, plaintext),
+      msgTypeNum: 1,
+    };
+  } catch (e) {
+    console.warn("[E2EE] SignalMessage xato, PreKey ga o'tilmoqda:", e);
+    await clearSession(recipientId).catch(() => {});
+    return sendPreKey();
+  }
+}
+
+function isOwnMessage(msg: Message, authUserId: string | null): boolean {
+  if (!authUserId) return msg.sender_id === "me";
+  return msg.sender_id === authUserId || msg.sender_id === "me";
+}
+
+function applyMediaType(msg: Message): Message {
+  const mp = parseMediaPayload(msg.plaintext);
+  if (!mp) return msg;
+  const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
+  return { ...msg, msg_type: mt };
+}
 
 // ── Yordamchi funksiyalar ───────────────────────────────────────────────────
 
@@ -138,6 +263,62 @@ async function decryptForHistory(
   }
 }
 
+async function decryptHistoryMessage(
+  chatId:     string,
+  msg:        Message,
+  local:      Message[],
+  authUserId: string | null,
+): Promise<Message> {
+  if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
+
+  const hydrated = hydrateFromLocal(local, msg);
+  if (isReadablePlaintext(hydrated.plaintext)) {
+    return applyMediaType(hydrated);
+  }
+
+  // O'z yuborgan xabar — recv zanjir bilan ochilmaydi; faqat mahalliy plaintext
+  if (isOwnMessage(msg, authUserId)) {
+    return {
+      ...msg,
+      plaintext: hydrated.plaintext?.trim()
+        ? hydrated.plaintext
+        : MISSING_PLAINTEXT_LABEL,
+    };
+  }
+
+  const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+  return applyMediaType({ ...msg, plaintext: pt });
+}
+
+/** PreKey dan oldingi ochilmaydigan xabarlarni belgilash */
+function annotateObsoletePending(merged: Message[], authUserId: string | null): Message[] {
+  let lastPeerPreKeyAt: string | null = null;
+  for (const m of merged) {
+    if (
+      m.sender_id !== authUserId &&
+      m.sender_id !== "me" &&
+      isPreKeyCiphertext(m.ciphertext) &&
+      isReadablePlaintext(m.plaintext) &&
+      (!lastPeerPreKeyAt || m.created_at > lastPeerPreKeyAt)
+    ) {
+      lastPeerPreKeyAt = m.created_at;
+    }
+  }
+  if (!lastPeerPreKeyAt) return merged;
+
+  return merged.map((m) => {
+    if (
+      m.sender_id !== authUserId &&
+      m.sender_id !== "me" &&
+      m.created_at < lastPeerPreKeyAt! &&
+      (isPendingDecrypt(m.plaintext) || isDecryptFailure(m.plaintext))
+    ) {
+      return { ...m, plaintext: "🔒 Eski sessiya xabari" };
+    }
+    return m;
+  });
+}
+
 /** Suhbatdagi deshifrlanmagan xabarlarni qayta ochish (sessiya yangilanganida) */
 async function redDecryptChatMessages(
   chatId: string,
@@ -147,19 +328,25 @@ async function redDecryptChatMessages(
   const msgs = get().messages[chatId];
   if (!msgs?.length) return;
 
-  const updated: Message[] = [];
-  for (const msg of msgs) {
-    if (msg.msg_type !== "text" || !msg.ciphertext) {
-      updated.push(msg);
-      continue;
-    }
-    if (isReadablePlaintext(msg.plaintext)) {
-      updated.push(msg);
-      continue;
-    }
-    const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
-    updated.push({ ...msg, plaintext: pt });
-  }
+  const authUserId = useAuthStore.getState().userId;
+  const local      = await loadLocalMessages(chatId).catch(() => [] as Message[]);
+
+  const updated = annotateObsoletePending(
+    sortMessagesByTime(
+      await (async () => {
+        const out: Message[] = [];
+        for (const msg of msgs) {
+          if (isReadablePlaintext(msg.plaintext)) {
+            out.push(msg);
+            continue;
+          }
+          out.push(await decryptHistoryMessage(chatId, msg, local, authUserId));
+        }
+        return out;
+      })()
+    ),
+    authUserId,
+  );
 
   const last = updated[updated.length - 1];
   set((s) => ({
@@ -188,6 +375,22 @@ async function redDecryptChatMessages(
   }
 }
 
+async function handlePeerRekeyRequest(
+  fromUserId: string,
+  chatId: string | undefined,
+  set: (partial: Partial<ChatState> | ((s: ChatState) => Partial<ChatState>)) => void,
+  get: () => ChatState,
+): Promise<void> {
+  const authUserId = useAuthStore.getState().userId;
+  if (!authUserId) return;
+  console.log(`[E2EE] 🔑 session.rekey_request qabul qilindi: from=${fromUserId}`);
+  setForcePreKey(authUserId, fromUserId);
+  await clearSession(fromUserId).catch(() => {});
+  if (chatId) {
+    await redDecryptChatMessages(chatId, set, get);
+  }
+}
+
 // ── Store ───────────────────────────────────────────────────────────────────
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -203,17 +406,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadChats: async (token) => {
     set({ loading: true });
     try {
-      const chats = await chatApi.list(token);
-      set({ chats, loading: false });
+      const list = await chatApi.list(token);
+      set({ chats: list ?? [], loading: false });
+
+      const userId = useAuthStore.getState().userId;
+      const saved  = userId ? loadSavedActiveChatId(userId) : null;
+      if (saved && !get().activeChatId && (list ?? []).some((c) => c.id === saved)) {
+        await get().selectChat(saved, token);
+      }
     } catch (e) {
       console.error("[Chat] loadChats xatoligi:", e);
       set({ loading: false });
     }
   },
 
-  // Suhbat tanlanganida tarixi yuklanadi (mahalliy + server)
+  // Suhbat tanlanganida tarixi yuklanadi (mahalliy + server, bir martalik)
   selectChat: async (chatId, token) => {
     set({ activeChatId: chatId });
+
+    const userId = useAuthStore.getState().userId;
+    if (userId) saveActiveChatId(userId, chatId);
 
     const chat = get().chats.find((c) => c.id === chatId);
     const peerId = chat?.peer_user_id ?? null;
@@ -225,68 +437,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
       );
     }
 
-    // 1) Mahalliy tarix — refresh dan keyin darhol ko'rinadi
     try {
-      const local = await loadLocalMessages(chatId);
-      if (local.length) {
-        const localSorted = [...local].sort((a, b) => a.created_at.localeCompare(b.created_at));
-        set((s) => ({ messages: { ...s.messages, [chatId]: localSorted } }));
-        const lastLocal = localSorted[localSorted.length - 1];
-        if (lastLocal.plaintext) {
-          set((s) => ({
-            chats: s.chats.map((c) =>
-              c.id === chatId
-                ? {
-                    ...c,
-                    last_message: {
-                      sender_id:  lastLocal.sender_id,
-                      preview:    previewFromMessage(lastLocal),
-                      created_at: lastLocal.created_at,
-                    },
-                    updated_at: lastLocal.created_at,
-                  }
-                : c
-            ),
-          }));
-        }
-      }
-    } catch (e) {
-      console.warn("[Chat] mahalliy tarix o'qilmadi:", e);
-    }
-
-    // 2) Serverdan shifrlangan tarix — mahalliy ochiq matn ustun
-    try {
-      const local = await loadLocalMessages(chatId);
+      const local   = await loadLocalMessages(chatId);
       const rawMsgs = await chatApi.history(token, chatId);
 
       const decrypted: Message[] = [];
       for (const msg of rawMsgs) {
-        if (msg.msg_type !== "text" || !msg.ciphertext) {
-          decrypted.push(msg);
-          continue;
-        }
-        const hydrated = hydrateFromLocal(local, msg);
-        if (isReadablePlaintext(hydrated.plaintext)) {
-          const mp = parseMediaPayload(hydrated.plaintext);
-          if (mp) {
-            const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
-            decrypted.push({ ...hydrated, msg_type: mt });
-          } else {
-            decrypted.push(hydrated);
-          }
-          continue;
-        }
-        const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
-        const mp = parseMediaPayload(pt);
-        const finalType: Message["msg_type"] = mp
-          ? (mp.mime_type.startsWith("image/") ? "image" : "file")
-          : msg.msg_type;
-        decrypted.push({ ...msg, plaintext: pt, msg_type: finalType });
+        decrypted.push(await decryptHistoryMessage(chatId, msg, local, userId));
       }
 
-      const merged = mergeMessages(local, decrypted)
-        .sort((a, b) => a.created_at.localeCompare(b.created_at));
-      const last = merged[merged.length - 1];
+      const merged = annotateObsoletePending(
+        sortMessagesByTime(mergeMessages(local, decrypted)),
+        userId,
+      );
+      const last   = merged[merged.length - 1];
+
+      // O'qilgan deb belgilash — faqat ochilgan matn uchun
+      for (const msg of merged) {
+        if (
+          msg.sender_id !== userId &&
+          msg.sender_id !== "me" &&
+          !msg.id.startsWith("local_") &&
+          isReadablePlaintext(msg.plaintext)
+        ) {
+          wsClient.send("msg.read", { msg_id: msg.id });
+        }
+      }
 
       set((s) => ({
         messages: { ...s.messages, [chatId]: merged },
@@ -301,10 +477,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
                       created_at: last.created_at,
                     },
                     updated_at: last.created_at,
+                    unread_count: 0,
                   }
                 : c
             )
-          : s.chats,
+          : s.chats.map((c) =>
+              c.id === chatId ? { ...c, unread_count: 0 } : c
+            ),
       }));
 
       for (const msg of merged) {
@@ -314,8 +493,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
           );
         }
       }
+
+      // Sherikdan ochilmagan xabarlar — avtomatik PreKey so'rovi
+      if (peerId) {
+        const needsRekey = merged.some(
+          (m) =>
+            m.sender_id === peerId &&
+            (isPendingDecrypt(m.plaintext) || isDecryptFailure(m.plaintext))
+        );
+        if (needsRekey) {
+          requestSessionRekey(peerId, chatId);
+        }
+      }
     } catch (e) {
       console.error("[Chat] server tarixi yuklanmadi:", e);
+      // Server ishlamasa — faqat mahalliy tarix
+      try {
+        const local = await loadLocalMessages(chatId);
+        if (local.length) {
+          const sorted = sortMessagesByTime(local);
+          set((s) => ({ messages: { ...s.messages, [chatId]: sorted } }));
+        }
+      } catch {
+        /* ignore */
+      }
     }
   },
 
@@ -378,26 +579,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const sessionExists = await hasSession(recipientId).catch(() => false);
-      let ciphertext: string;
-      let msgTypeNum: number;
-
-      if (!sessionExists) {
-        // ── Sessiya yo'q: PreKeyMessage (X3DH + shifrlash inline) ──────────
-        console.log(`[E2EE] 🔑 PreKeyMessage → ${recipientId} (sessiya yangi)`);
-        const bundle = await keysApi.getBundle(token, recipientId);
-        ciphertext = await encryptFirstMessage(
-          chatId,
-          recipientId,
-          JSON.stringify(bundle),
-          plaintext,
-        );
-        msgTypeNum = 3; // PreKeySignalMessage
-      } else {
-        // ── Sessiya mavjud: oddiy SignalMessage ────────────────────────────
-        ciphertext = await encryptMessage(chatId, recipientId, plaintext);
-        msgTypeNum = 1;
-      }
+      const { ciphertext, msgTypeNum } = await prepareOutgoingCiphertext(
+        chatId, recipientId, plaintext, token
+      );
 
       wsClient.send("msg.send", {
         chat_id:       chatId,
@@ -500,19 +684,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const plaintext = JSON.stringify(payload);
 
       // 4) Signal Protocol: sessiya bor → SignalMessage, yo'q → PreKeyMessage
-      const sessionExists = await hasSession(recipientId).catch(() => false);
-      let ciphertext: string;
-      let msgTypeNum: number;
-
-      if (!sessionExists) {
-        console.log(`[E2EE] 🔑 Media PreKeyMessage → ${recipientId}`);
-        const bundle = await keysApi.getBundle(token, recipientId);
-        ciphertext = await encryptFirstMessage(chatId, recipientId, JSON.stringify(bundle), plaintext);
-        msgTypeNum = 3;
-      } else {
-        ciphertext = await encryptMessage(chatId, recipientId, plaintext);
-        msgTypeNum = 1;
-      }
+      const { ciphertext, msgTypeNum } = await prepareOutgoingCiphertext(
+        chatId, recipientId, plaintext, token
+      );
 
       wsClient.send("msg.send", {
         chat_id:       chatId,
@@ -601,6 +775,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
               err.code === "SESSION_NOT_FOUND"
                 ? PENDING_DECRYPT_LABEL
                 : DECRYPT_ERROR_LABEL;
+
+            // Type-1 yuboruvchi eski sessiyada — PreKey talab qilamiz
+            if (
+              !isPreKeyCiphertext(m.ciphertext) &&
+              (err.code === "SESSION_NOT_FOUND" || err.code === "AES_GCM_FAILED")
+            ) {
+              requestSessionRekey(m.sender_id, m.chat_id);
+            }
           }
 
           // Media xabar ekanligini deshifrlangan plaintext JSON'dan aniqlaymiz
@@ -617,7 +799,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             plaintext,
             msg_type:   detectedType,
             status:     "delivered",
-            created_at: new Date().toISOString(),
+            created_at: m.created_at ?? new Date().toISOString(),
           };
 
           // ── Ochiq matnni mahalliy bazaga saqlash (qayta deshifrlashni oldini olish) ──
@@ -631,29 +813,62 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
 
           // ── Store / UI yangilash ──────────────────────────────────────────
-          set((s) => ({
-            messages: {
-              ...s.messages,
-              [m.chat_id]: [...(s.messages[m.chat_id] ?? []), newMsg],
-            },
-            chats: s.chats.map((c) =>
-              c.id === m.chat_id
-                ? {
-                    ...c,
+          const token = useAuthStore.getState().token;
+          const isActiveChat = get().activeChatId === m.chat_id;
+          const chatKnownBefore = get().chats.some((c) => c.id === m.chat_id);
+
+          set((s) => {
+            const merged = sortMessagesByTime([...(s.messages[m.chat_id] ?? []), newMsg]);
+            const chatKnown = s.chats.some((c) => c.id === m.chat_id);
+            const chats = chatKnown
+              ? s.chats.map((c) =>
+                  c.id === m.chat_id
+                    ? {
+                        ...c,
+                        last_message: {
+                          sender_id:  m.sender_id,
+                          preview:    previewFromMessage(newMsg),
+                          created_at: newMsg.created_at,
+                        },
+                        unread_count: isActiveChat ? 0 : c.unread_count + 1,
+                        updated_at:   newMsg.created_at,
+                      }
+                    : c
+                )
+              : [
+                  {
+                    id:           m.chat_id,
+                    type:         "direct" as const,
+                    title:        m.sender_id.slice(0, 8) + "…",
+                    peer_user_id: m.sender_id,
                     last_message: {
                       sender_id:  m.sender_id,
                       preview:    previewFromMessage(newMsg),
                       created_at: newMsg.created_at,
                     },
-                    unread_count:
-                      c.id === get().activeChatId
-                        ? c.unread_count
-                        : c.unread_count + 1,
-                    updated_at: newMsg.created_at,
-                  }
-                : c
-            ),
-          }));
+                    unread_count: isActiveChat ? 0 : 1,
+                    updated_at:   newMsg.created_at,
+                  },
+                  ...s.chats,
+                ];
+            return {
+              messages: { ...s.messages, [m.chat_id]: merged },
+              chats,
+            };
+          });
+
+          if (!chatKnownBefore && token) {
+            void get().loadChats(token);
+          }
+
+          if (isActiveChat && isReadablePlaintext(plaintext)) {
+            wsClient.send("msg.read", { msg_id: m.msg_id });
+          }
+
+          // PreKey qabul qilinganda — kutilayotgan xabarlarni qayta ochish
+          if (isReadablePlaintext(plaintext) && isPreKeyCiphertext(m.ciphertext)) {
+            await redDecryptChatMessages(m.chat_id, set, get);
+          }
 
           // ── Tauri OS bildirishnomasi ──────────────────────────────────────
           if (isReadablePlaintext(plaintext)) {
@@ -714,6 +929,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         set((s) => ({ presenceMap: { ...s.presenceMap, [p.user_id]: p.online } }));
         break;
       }
+
+      case "session.rekey_request": {
+        const p = event.payload as WsSessionRekeyRequest;
+        void handlePeerRekeyRequest(p.from_user_id, p.chat_id, set, get);
+        break;
+      }
     }
   },
 
@@ -734,16 +955,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // ── Akkaunt almashinuvi ───────────────────────────────────────────────────
   onAccountSwitch: (userId) => {
+    const prev = activeAccountId;
     activeAccountId = userId;
-    set({
-      chats:        [],
-      messages:     {},
-      activeChatId: null,
-      presenceMap:  {},
-      userResults:  [],
-    });
+
+    // Faqat boshqa akkauntga o'tganda holat tozalanadi (refresh emas)
+    if (prev !== null && prev !== userId) {
+      clearSavedActiveChatId(prev);
+      set({
+        chats:        [],
+        messages:     {},
+        activeChatId: null,
+        presenceMap:  {},
+        userResults:  [],
+      });
+      console.log(`[Chat] onAccountSwitch: ${prev} → ${userId}, holat tozalandi`);
+    } else {
+      console.log(`[Chat] onAccountSwitch: ${userId} (refresh yoki birinchi faollashtirish)`);
+    }
     void initNotifications();
-    console.log(`[Chat] onAccountSwitch: ${userId}, state tozalandi`);
   },
 
   // ── Sessiyani qayta tiklash ───────────────────────────────────────────────
@@ -752,7 +981,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // yaratadi — alohida 'session.rekey_request' WS event kerak emas.
   resetSessionWithPeer: async (chatId, peerId, _token) => {
     console.log(`[E2EE] Sessiyani qayta tiklash: peer=${peerId}`);
+    const authUserId = useAuthStore.getState().userId;
+    if (authUserId) setForcePreKey(authUserId, peerId);
     await clearSession(peerId);
+    requestSessionRekey(peerId, chatId);
 
     // UI'dagi xato xabarlarni "qayta tiklandi" belgisi bilan almashtirish
     set((s) => ({

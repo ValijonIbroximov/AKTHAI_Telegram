@@ -96,13 +96,14 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 		return internalError("[KEYS] upsert signed_prekeys", err)
 	}
 
-	// Split-brain oldini olish: har upload da eski OTPK'lar tozalanadi.
-	// Jadval: one_time_prekeys (migration 0001_init.sql)
-	_, err = tx.Exec(c.Context(), `
-		DELETE FROM one_time_prekeys WHERE user_id = $1::uuid
-	`, userID)
-	if err != nil {
-		return internalError("[KEYS] delete one_time_prekeys", err)
+	// OTPK tozalash faqat force_overwrite da — oddiy sinxron OTPK'larni saqlaydi
+	if req.ForceOverwrite {
+		_, err = tx.Exec(c.Context(), `
+			DELETE FROM one_time_prekeys WHERE user_id = $1::uuid
+		`, userID)
+		if err != nil {
+			return internalError("[KEYS] delete one_time_prekeys", err)
+		}
 	}
 
 	// force_overwrite: eski SPK yozuvlari ham tozalanadi (faqat yangi SPK qoladi)
@@ -116,20 +117,28 @@ func (h *Handlers) UploadKeyBundle(c *fiber.Ctx) error {
 		}
 	}
 
-	// Bir martalik oldindan-kalitlar yangi to'plam sifatida kiritiladi
+	// Bir martalik oldindan-kalitlar kiritiladi (force_overwrite → yangilash, aks holda qo'shish)
 	for _, otpk := range req.OneTimePreKeys {
 		pub, decErr := base64.StdEncoding.DecodeString(otpk.PublicKey)
 		if decErr != nil || len(pub) == 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "one_time_prekeys.public_key noaniq")
 		}
-		_, err = tx.Exec(c.Context(), `
-			INSERT INTO one_time_prekeys (user_id, key_id, public_key, used)
-			VALUES ($1::uuid, $2, $3, FALSE)
-			ON CONFLICT (user_id, key_id) DO UPDATE
-			    SET public_key = EXCLUDED.public_key,
-			        used       = FALSE,
-			        created_at = NOW()
-		`, userID, otpk.KeyID, pub)
+		if req.ForceOverwrite {
+			_, err = tx.Exec(c.Context(), `
+				INSERT INTO one_time_prekeys (user_id, key_id, public_key, used)
+				VALUES ($1::uuid, $2, $3, FALSE)
+				ON CONFLICT (user_id, key_id) DO UPDATE
+				    SET public_key = EXCLUDED.public_key,
+				        used       = FALSE,
+				        created_at = NOW()
+			`, userID, otpk.KeyID, pub)
+		} else {
+			_, err = tx.Exec(c.Context(), `
+				INSERT INTO one_time_prekeys (user_id, key_id, public_key, used)
+				VALUES ($1::uuid, $2, $3, FALSE)
+				ON CONFLICT (user_id, key_id) DO NOTHING
+			`, userID, otpk.KeyID, pub)
+		}
 		if err != nil {
 			return internalError("[KEYS] insert one_time_prekeys", err)
 		}

@@ -1,13 +1,8 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
 import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage } from "@/types";
+import { getApiBaseUrl } from "@/config/devServer";
 
-export function getApiBaseUrl(): string {
-  // Dev yoki SPA Go server bilan bir xil portda — Vite proxy / relative yo'l
-  if (import.meta.env.DEV || window.location.port === "8443") {
-    return "/api/v1";
-  }
-  return `https://${window.location.hostname}:8443/api/v1`;
-}
+export { getApiBaseUrl };
 
 function headers(token?: string): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
@@ -83,6 +78,13 @@ function msgTypeNum(n: number): Message["msg_type"] {
   return "text"; // 1 va 3 ikkisi ham text — deshifrlash adapter ichida avtomatik
 }
 
+function normalizeCreatedAt(v: unknown): string {
+  if (typeof v === "string" && v.trim()) return v;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === "number" && Number.isFinite(v)) return new Date(v).toISOString();
+  return new Date().toISOString();
+}
+
 function msgStatus(delivered: boolean, read: boolean): Message["status"] {
   if (read) return "read";
   if (delivered) return "delivered";
@@ -116,7 +118,7 @@ export const chatApi = {
     const raw = await request<RawMessage[]>(
       "GET", `/chats/${chatId}/messages?limit=${limit}`, token
     );
-    return (raw ?? []).reverse().map((m) => ({
+    return (raw ?? []).map((m) => ({
       id:         m.msg_id,
       chat_id:    chatId,
       sender_id:  m.sender_id,
@@ -124,9 +126,7 @@ export const chatApi = {
       plaintext:  null,
       msg_type:   msgTypeNum(m.msg_type),
       status:     msgStatus(m.delivered, m.read),
-      created_at: typeof m.created_at === "string"
-        ? m.created_at
-        : new Date(m.created_at as unknown as number).toISOString(),
+      created_at: normalizeCreatedAt(m.created_at),
     }));
   },
 };
@@ -157,6 +157,11 @@ function mediaOrigin(): string {
   }
 }
 
+/** POST /api/v1/upload — to'liq manzil (proxy yoki to'g'ridan-to'g'ri) */
+function uploadEndpoint(): string {
+  return `${getApiBaseUrl()}/upload`;
+}
+
 export const mediaApi = {
   /**
    * Shifrlangan blob'ni serverga yuklaydi.
@@ -168,11 +173,25 @@ export const mediaApi = {
     const form = new FormData();
     form.append("data", blob, "encrypted.bin");
 
-    const res = await fetch(`${getApiBaseUrl()}/upload`, {
-      method:  "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body:    form,
-    });
+    const url = uploadEndpoint();
+    let res: Response;
+    try {
+      // MUHIM: Content-Type qo'lda BERILMAYDI — brauzer multipart boundary ni o'zi qo'shadi.
+      // Faqat Authorization sarlavhasi qoldiriladi.
+      res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (url.startsWith("/")) {
+        throw new Error(
+          `Fayl yuklanmadi: server topilmadi. Login ekranida Server IP ni kiriting (masalan 192.168.101.32). (${msg})`
+        );
+      }
+      throw new Error(`Fayl yuklanmadi: serverga ulanib bo'lmadi (${msg})`);
+    }
 
     if (!res.ok) {
       const txt = await res.text().catch(() => String(res.status));

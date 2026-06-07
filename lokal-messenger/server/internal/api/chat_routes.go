@@ -209,33 +209,38 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 
 	file, err := c.FormFile("data")
 	if err != nil {
+		log.Printf("[Upload] Upload Error: %v", err)
 		return fiber.NewError(fiber.StatusBadRequest, "fayl topilmadi (maydon nomi: 'data')")
 	}
 
-	const maxSize = 50 << 20 // 50 MB
+	maxSize := h.deps.Config.Limits.MaxUploadBytes()
 	if file.Size > maxSize {
+		log.Printf("[Upload] Upload Error: fayl juda katta (%d bayt, limit=%d)", file.Size, maxSize)
 		return fiber.NewError(fiber.StatusRequestEntityTooLarge, "fayl 50 MB dan oshmasligi kerak")
 	}
 
 	// ── 1. Papkani eng avval yaratish — keyingi qadamlardan oldin ────────────
 	dir, err := uploadsDir()
 	if err != nil {
+		log.Printf("[Upload] Upload Error: %v", err)
 		return internalError("UploadFile abs", err)
 	}
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.Printf("[Upload] MkdirAll MUVAFFAQIYATSIZ: dir=%s err=%v", dir, err)
+		log.Printf("[Upload] Upload Error: MkdirAll dir=%s err=%v", dir, err)
 		return internalError("UploadFile mkdir", err)
 	}
 
 	// ── 2. Fayl baytlarini o'qish ─────────────────────────────────────────
 	f, err := file.Open()
 	if err != nil {
+		log.Printf("[Upload] Upload Error: open temp file: %v", err)
 		return internalError("UploadFile open", err)
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
+		log.Printf("[Upload] Upload Error: read body: %v", err)
 		return internalError("UploadFile read", err)
 	}
 
@@ -249,13 +254,14 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 		 VALUES ($1::uuid, 'pending', $2, $3) RETURNING id::text`,
 		uploaderID, file.Size, hash[:],
 	).Scan(&fileID); err != nil {
+		log.Printf("[Upload] Upload Error: DB insert: %v", err)
 		return internalError("UploadFile insert", err)
 	}
 
 	// ── 4. Faylni to'liq (absolute) yo'l bilan diskka yozish ─────────────
 	storagePath := filepath.Join(dir, fileID)
 	if err := os.WriteFile(storagePath, data, 0o644); err != nil {
-		log.Printf("[Upload] WriteFile MUVAFFAQIYATSIZ: path=%s err=%v", storagePath, err)
+		log.Printf("[Upload] Upload Error: WriteFile path=%s err=%v", storagePath, err)
 		// Orphan DB yozuvini o'chirish (best-effort)
 		_, _ = h.deps.DB.Exec(c.Context(),
 			`DELETE FROM files WHERE id = $1::uuid`, fileID)
@@ -267,6 +273,7 @@ func (h *Handlers) UploadFile(c *fiber.Ctx) error {
 		`UPDATE files SET storage_key = $1 WHERE id = $2::uuid`,
 		storagePath, fileID,
 	); err != nil {
+		log.Printf("[Upload] Upload Error: DB update_key: %v", err)
 		return internalError("UploadFile update_key", err)
 	}
 
@@ -319,8 +326,8 @@ func (h *Handlers) GetFile(c *fiber.Ctx) error {
 }
 
 // ChatHistory — suhbatdagi xabarlar tarixi qaytariladi.
-// Faqat joriy foydalanuvchi ochishi mumkin bo'lgan ciphertext yozuvlari yuboriladi
-// (recipient_id = joriy foydalanuvchi). Ochish mijozda amalga oshiriladi.
+// Foydalanuvchi yuborgan va qabul qilgan barcha xabarlar (vaqt bo'yicha ASC).
+// Ochish mijozda amalga oshiriladi.
 func (h *Handlers) ChatHistory(c *fiber.Ctx) error {
 	selfID, _ := c.Locals("user_id").(string)
 	chatID := c.Params("id")
@@ -342,8 +349,9 @@ func (h *Handlers) ChatHistory(c *fiber.Ctx) error {
         SELECT id::text, sender_id::text, convert_from(ciphertext, 'UTF8'), msg_type,
                created_at, delivered_at IS NOT NULL, read_at IS NOT NULL
           FROM messages
-         WHERE chat_id = $1::uuid AND recipient_id = $2::uuid
-         ORDER BY created_at DESC
+         WHERE chat_id = $1::uuid
+           AND (sender_id = $2::uuid OR recipient_id = $2::uuid)
+         ORDER BY created_at ASC
          LIMIT $3`, chatID, selfID, limit)
 	if err != nil {
 		return err

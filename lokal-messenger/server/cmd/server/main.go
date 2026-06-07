@@ -8,10 +8,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
@@ -64,12 +66,35 @@ func main() {
 		DisableStartupMessage: true,
 		ReadTimeout:           30 * time.Second,
 		WriteTimeout:          30 * time.Second,
-		BodyLimit:             int(cfg.Limits.MaxMessageSizeBytes),
+		BodyLimit:             cfg.Limits.HTTPBodyLimit(),
 		ErrorHandler:          api.ErrorHandler,
 	})
 
 	// Logger va panic-recovery middleware'lari ulanadi
 	app.Use(recover.New())
+	// LAN dev: brauzer boshqa mashinadan (masalan .19:1420 → .32:8443) to'g'ridan API chaqiradi
+	app.Use(cors.New(cors.Config{
+		AllowOriginsFunc: func(origin string) bool {
+			if origin == "" {
+				return true
+			}
+			o := strings.ToLower(origin)
+			return strings.Contains(o, "localhost") ||
+				strings.Contains(o, "127.0.0.1") ||
+				strings.Contains(o, "192.168.") ||
+				strings.Contains(o, "10.") ||
+				strings.Contains(o, "172.16.") ||
+				strings.Contains(o, "172.17.") ||
+				strings.Contains(o, "172.18.") ||
+				strings.Contains(o, "172.19.") ||
+				strings.Contains(o, "172.2") ||
+				strings.Contains(o, "172.30.") ||
+				strings.Contains(o, "172.31.")
+		},
+		AllowHeaders:     "Authorization, Content-Type",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowCredentials: false,
+	}))
 	app.Use(logger.New(logger.Config{
 		Format: "[${time}] ${status} ${method} ${path} (${ip}) ${latency}\n",
 		Output: os.Stdout,

@@ -77,7 +77,13 @@ export interface Message {
 export type WsEvent =
   | { type: "msg.recv";  payload: WsMsgRecv }
   | { type: "msg.ack";   payload: WsMsgAck }
-  | { type: "presence";  payload: WsPresence };
+  | { type: "presence";  payload: WsPresence }
+  | { type: "session.rekey_request"; payload: WsSessionRekeyRequest };
+
+export interface WsSessionRekeyRequest {
+  from_user_id: string;
+  chat_id?:     string;
+}
 
 // Client → Server (wsClient.sendMsg orqali yuboriladi)
 export interface WsSendPayload {
@@ -98,11 +104,13 @@ export interface WsMsgRecv {
   chat_id:    string;
   sender_id:  string;
   ciphertext: string;
+  /** Server DB vaqti (RFC3339) — tartiblash uchun */
+  created_at?: string;
   /**
    * 1 = SignalMessage
    * 3 = PreKeySignalMessage (decryptMessage ichida avtomatik X3DH)
    */
-  msg_type:   number;
+  msg_type?:  number;
 }
 
 export interface WsMsgAck {

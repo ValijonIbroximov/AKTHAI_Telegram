@@ -32,6 +32,6 @@ auth:
     key_length: 32
 
 limits:
-  max_message_size_bytes: 65536
-  max_file_size_bytes: 52428800
+  max_message_size_bytes: 65536 # 64 KB shifrlangan matn xabari (WebSocket)
+  max_file_size_bytes: 52428800 # 50 MB — Fiber BodyLimit ham shu qiymatdan olinadi
   rate_login_per_5min: 5

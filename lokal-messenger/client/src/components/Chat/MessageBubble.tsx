@@ -15,12 +15,10 @@ import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
 import { MISSING_PLAINTEXT_LABEL, PENDING_DECRYPT_LABEL } from "@/utils/messageText";
 import {
   parseMediaPayload,
-  decryptFile,
   formatFileSize,
-  fcFromB64,
   type MediaPayload,
 } from "@/crypto/fileCrypto";
-import { mediaApi } from "@/api/http";
+import { loadDecryptedMedia } from "@/utils/mediaLoader";
 import s from "./MessageBubble.module.css";
 
 // ── Yordamchi ─────────────────────────────────────────────────────────────
@@ -54,11 +52,12 @@ type MediaState =
   | { status: "error"; message: string };
 
 interface MediaContentProps {
-  payload:  MediaPayload;
-  msgType:  "image" | "file";
+  payload:       MediaPayload;
+  msgType:       "image" | "file";
+  onImageClick?: () => void;
 }
 
-function MediaContent({ payload, msgType }: MediaContentProps) {
+function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
   const [state, setState] = useState<MediaState>({ status: "idle" });
   // Revoke uchun ref — state'dan mustaqil
   const objUrlRef = useRef<string | null>(null);
@@ -90,18 +89,7 @@ function MediaContent({ payload, msgType }: MediaContentProps) {
       const { token } = (await import("@/store/authStore")).useAuthStore.getState();
       if (!token) throw new Error("Autentifikatsiya token'i yo'q");
 
-      // 1. Serverdan shifrlangan blob'ni yuklab olish
-      const encBlob = await mediaApi.downloadFile(token, payload.url);
-
-      // 2. AES-256-GCM bilan deshifrlash
-      const keyBytes = fcFromB64(payload.aes_key);
-      const ivBytes  = fcFromB64(payload.iv);
-      const decBlob  = await decryptFile(encBlob, keyBytes, ivBytes);
-
-      // 3. Mime type bilan yangi Blob yaratish (to'g'ri ko'rsatish uchun)
-      const typedBlob = new Blob([decBlob], { type: payload.mime_type || "application/octet-stream" });
-
-      // 4. Vaqtinchalik URL yaratish
+      const typedBlob = await loadDecryptedMedia(token, payload);
       const objUrl = URL.createObjectURL(typedBlob);
       objUrlRef.current = objUrl;
       setState({ status: "ready", objectUrl: objUrl });
@@ -173,7 +161,7 @@ function MediaContent({ payload, msgType }: MediaContentProps) {
             alt={payload.file_name}
             className={s.mediaImg}
             loading="lazy"
-            onClick={() => window.open(state.objectUrl, "_blank")}
+            onClick={() => onImageClick?.()}
             title={`${payload.file_name} (${formatFileSize(payload.size)})`}
           />
         </div>
@@ -234,9 +222,13 @@ function MediaContent({ payload, msgType }: MediaContentProps) {
 
 // ── MessageBubble (asosiy komponent) ──────────────────────────────────────
 
-interface Props { message: Message; isOwn: boolean; }
+interface Props {
+  message:      Message;
+  isOwn:        boolean;
+  onImageOpen?: (messageId: string) => void;
+}
 
-export default function MessageBubble({ message, isOwn }: Props) {
+export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
   const pt = message.plaintext ?? "";
 
   const isSendError    = pt.startsWith("⚠ Yuborilmadi");
@@ -293,6 +285,7 @@ export default function MessageBubble({ message, isOwn }: Props) {
           <MediaContent
             payload={mediaPayload}
             msgType={isImageMsg ? "image" : "file"}
+            onImageClick={isImageMsg && onImageOpen ? () => onImageOpen(message.id) : undefined}
           />
 
         ) : isMedia && !mediaPayload ? (
