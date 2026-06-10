@@ -43,6 +43,13 @@ func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS unit_name VARCHAR(128);
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS division_name VARCHAR(128);
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS division_code VARCHAR(64);
-		ALTER TABLE users ADD COLUMN IF NOT EXISTS display_short VARCHAR(64);`)
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS display_short VARCHAR(64);
+		ALTER TABLE users
+		    ADD COLUMN IF NOT EXISTS can_create_channel BOOLEAN NOT NULL DEFAULT TRUE;
+
+		ALTER TABLE chats ADD COLUMN IF NOT EXISTS description TEXT;
+		ALTER TABLE chats DROP CONSTRAINT IF EXISTS chats_type_check;
+		ALTER TABLE chats ADD CONSTRAINT chats_type_check
+		    CHECK (type IN ('private', 'group', 'channel'));`)
 	return err
 }

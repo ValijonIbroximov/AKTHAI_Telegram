@@ -17,6 +17,7 @@ export interface User {
   display_short?:    string | null;
   is_active?:   boolean;
   has_avatar?:  boolean;
+  can_create_channel?: boolean;
   last_seen_at?: string | null;
 }
 
@@ -198,6 +199,7 @@ export interface RawChat {
   id:                 string;
   type:               ChatType;
   title:              string;
+  description?:       string | null;
   peer_user_id:       string | null;
   last_time:          string | null;
   unread:             number;

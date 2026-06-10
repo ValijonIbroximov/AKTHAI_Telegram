@@ -22,7 +22,15 @@ import {
 } from "@/crypto/adapter";
 import { normalizePayload } from "@/crypto/webCrypto";
 import { chatApi, keysApi, userApi, mediaApi } from "@/api/http";
-import { encryptFile, parseMediaPayload, fcToB64, type MediaPayload } from "@/crypto/fileCrypto";
+import { encryptFile, parseMediaPayload, fcToB64, mediaKindFromMime, type MediaPayload } from "@/crypto/fileCrypto";
+import {
+  CHANNEL_MSG_TYPE,
+  encryptChannelPayload,
+  decryptChannelPayload,
+  initChannelKey,
+  isChannelMsgType,
+} from "@/crypto/channelCrypto";
+import { albumPreviewText } from "@/utils/messageAlbum";
 import { wsClient } from "@/api/ws";
 import {
   persistLocalMessage,
@@ -36,6 +44,8 @@ import {
   isReadablePlaintext,
   PENDING_DECRYPT_LABEL,
   MISSING_PLAINTEXT_LABEL,
+  SESSION_SYNC_PLAINTEXT,
+  isSessionSyncPlaintext,
 } from "@/utils/messageText";
 import {
   initNotifications,
@@ -63,8 +73,29 @@ interface ChatState {
   selectChat:       (chatId: string, token: string) => Promise<void>;
   closeChat:        () => void;
   createChat:       (peer: User, token: string) => Promise<void>;
+  createChannel:    (title: string, description: string, token: string) => Promise<void>;
   sendMessage:      (chatId: string, recipientId: string, plaintext: string, token: string) => Promise<void>;
-  sendFileMessage:  (chatId: string, recipientId: string, file: File, token: string) => Promise<void>;
+  sendFileMessage:  (
+    chatId: string,
+    recipientId: string,
+    file: File,
+    token: string,
+    options?: {
+      caption?: string;
+      asDocument?: boolean;
+      spoiler?: boolean;
+      albumId?: string;
+      albumIndex?: number;
+      albumCount?: number;
+    },
+  ) => Promise<void>;
+  sendFileMessages: (
+    chatId: string,
+    recipientId: string,
+    files: { file: File; spoiler?: boolean }[],
+    token: string,
+    options?: { caption?: string; asDocument?: boolean },
+  ) => Promise<void>;
   handleWsEvent:    (event: WsEvent) => void;
   searchUsers:      (query: string, token: string) => Promise<void>;
   clearUserResults: () => void;
@@ -124,7 +155,9 @@ function consumeForcePreKey(userId: string, peerId: string): boolean {
 }
 
 const rekeyRequestSentAt = new Map<string, number>();
+const rekeyReceivedFromAt = new Map<string, number>();
 const REKEY_COOLDOWN_MS = 15_000;
+const REKEY_RECEIVE_SUPPRESS_MS = 45_000;
 
 function isPreKeyCiphertext(ciphertext: string): boolean {
   try {
@@ -138,11 +171,60 @@ function isPreKeyCiphertext(ciphertext: string): boolean {
 /** Qabul qiluvchi sessiya yo'q — yuboruvchiga PreKey talab qiladi */
 function requestSessionRekey(peerId: string, chatId: string): void {
   const now = Date.now();
-  const last = rekeyRequestSentAt.get(peerId) ?? 0;
-  if (now - last < REKEY_COOLDOWN_MS) return;
+  const lastSent = rekeyRequestSentAt.get(peerId) ?? 0;
+  if (now - lastSent < REKEY_COOLDOWN_MS) return;
+  const lastRecv = rekeyReceivedFromAt.get(peerId) ?? 0;
+  if (now - lastRecv < REKEY_RECEIVE_SUPPRESS_MS) {
+    console.log(`[E2EE] session.rekey_request o'tkazildi (peer allaqachon sinxronlashmoqda): ${peerId}`);
+    return;
+  }
   rekeyRequestSentAt.set(peerId, now);
   console.log(`[E2EE] 🔑 session.rekey_request → ${peerId}`);
   wsClient.send("session.rekey_request", { peer_id: peerId, chat_id: chatId });
+}
+
+/** Ko'rinmas PreKey xabar — qarama-qarshi tomonga sessiyani tiklaydi */
+async function sendSessionSyncPreKey(
+  chatId:      string,
+  peerId:      string,
+  token:       string,
+): Promise<void> {
+  const { ciphertext, msgTypeNum, recipientId: rid } = await prepareOutgoingPayload(
+    chatId, peerId, SESSION_SYNC_PLAINTEXT, token,
+  );
+  wsClient.send("msg.send", {
+    chat_id:       chatId,
+    recipient_id:  rid,
+    ciphertext,
+    msg_type:      msgTypeNum,
+    client_msg_id: `sync_${Date.now()}`,
+  });
+  console.log(`[E2EE] 🔑 PreKey sinxron xabari yuborildi → ${peerId}`);
+}
+
+function isChannelChat(chatId: string): boolean {
+  return useChatStore.getState().chats.find((c) => c.id === chatId)?.type === "channel";
+}
+
+/** Kanal yoki Signal — xabar shifrlash */
+async function prepareOutgoingPayload(
+  chatId:      string,
+  recipientId: string,
+  plaintext:   string,
+  token:       string,
+): Promise<{ ciphertext: string; msgTypeNum: number; recipientId: string }> {
+  const authUserId = useAuthStore.getState().userId;
+  if (isChannelChat(chatId) && authUserId) {
+    return {
+      ciphertext:  await encryptChannelPayload(authUserId, chatId, plaintext),
+      msgTypeNum:  CHANNEL_MSG_TYPE,
+      recipientId: authUserId,
+    };
+  }
+  const { ciphertext, msgTypeNum } = await prepareOutgoingCiphertext(
+    chatId, recipientId, plaintext, token,
+  );
+  return { ciphertext, msgTypeNum, recipientId };
 }
 
 /** Xabar shifrlash: sessiya yo'q / tiklanganda PreKey, xato bo'lsa avtomatik qayta urinish */
@@ -211,7 +293,7 @@ function isOwnMessage(msg: Message, authUserId: string | null): boolean {
 function applyMediaType(msg: Message): Message {
   const mp = parseMediaPayload(msg.plaintext);
   if (!mp) return msg;
-  const mt: Message["msg_type"] = mp.mime_type.startsWith("image/") ? "image" : "file";
+  const mt: Message["msg_type"] = mediaKindFromMime(mp.mime_type);
   return { ...msg, msg_type: mt };
 }
 
@@ -233,9 +315,14 @@ function previewFromMessage(msg: Message): string {
   // Media xabar uchun chiroyli preview
   const media = parseMediaPayload(msg.plaintext);
   if (media) {
-    return media.mime_type.startsWith("image/")
-      ? `🖼 ${media.file_name}`
-      : `📎 ${media.file_name}`;
+    const cap = media.caption?.trim();
+    if (media.album_count && media.album_count > 1) {
+      return albumPreviewText(media.album_count, cap);
+    }
+    if (cap) return cap.length > 80 ? cap.slice(0, 77) + "…" : cap;
+    if (media.mime_type.startsWith("image/")) return `🖼 ${media.file_name}`;
+    if (media.mime_type.startsWith("video/")) return `🎬 ${media.file_name}`;
+    return `📎 ${media.file_name}`;
   }
   return msg.plaintext ?? "";
 }
@@ -249,8 +336,16 @@ async function decryptPlaintext(
   chatId:     string,
   senderId:   string,
   ciphertext: string,
+  msgTypeNum?: number,
 ): Promise<string> {
   if (!ciphertext?.trim()) return "";
+
+  const authUserId = useAuthStore.getState().userId;
+  if (isChannelChat(chatId) || (msgTypeNum !== undefined && isChannelMsgType(msgTypeNum))) {
+    if (!authUserId) throw new Error("Kanal xabarini ochish uchun kirish kerak");
+    return decryptChannelPayload(authUserId, chatId, ciphertext);
+  }
+
   try {
     return await decryptMessage(chatId, senderId, ciphertext);
   } catch (e) {
@@ -271,9 +366,10 @@ async function decryptForHistory(
   chatId:     string,
   senderId:   string,
   ciphertext: string,
+  msgTypeNum?: number,
 ): Promise<string> {
   try {
-    return await decryptPlaintext(chatId, senderId, ciphertext);
+    return await decryptPlaintext(chatId, senderId, ciphertext, msgTypeNum);
   } catch (e) {
     const code = classifyDecryptError(e).code;
     if (code === "SESSION_NOT_FOUND") return PENDING_DECRYPT_LABEL;
@@ -286,16 +382,26 @@ async function decryptHistoryMessage(
   msg:        Message,
   local:      Message[],
   authUserId: string | null,
+  rawMsgType?: number,
 ): Promise<Message> {
-  if (msg.msg_type !== "text" || !msg.ciphertext) return msg;
+  const channel = isChannelChat(chatId);
+  if (!msg.ciphertext?.trim()) return msg;
 
   const hydrated = hydrateFromLocal(local, msg);
   if (isReadablePlaintext(hydrated.plaintext)) {
     return applyMediaType(hydrated);
   }
 
-  // O'z yuborgan xabar — recv zanjir bilan ochilmaydi; faqat mahalliy plaintext
+  // O'z yuborgan xabar — mahalliy plaintext yoki kanal kaliti bilan
   if (isOwnMessage(msg, authUserId)) {
+    if (channel && msg.ciphertext) {
+      try {
+        const pt = await decryptChannelPayload(authUserId!, chatId, msg.ciphertext);
+        return applyMediaType({ ...msg, plaintext: pt });
+      } catch {
+        /* fallback */
+      }
+    }
     return {
       ...msg,
       plaintext: hydrated.plaintext?.trim()
@@ -304,8 +410,32 @@ async function decryptHistoryMessage(
     };
   }
 
-  const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext);
+  const pt = await decryptForHistory(chatId, msg.sender_id, msg.ciphertext, rawMsgType);
   return applyMediaType({ ...msg, plaintext: pt });
+}
+
+/** Tarix xabarlarini vaqt tartibida deshifrlash (Signal ratchet ketma-ketligi) */
+async function decryptHistoryBatch(
+  chatId:     string,
+  rawMsgs:    Message[],
+  serverTypes: Map<string, number>,
+  local:      Message[],
+  authUserId: string | null,
+): Promise<Message[]> {
+  const sorted = sortMessagesByTime([...rawMsgs]);
+  const out: Message[] = [];
+  for (const msg of sorted) {
+    out.push(
+      await decryptHistoryMessage(
+        chatId,
+        msg,
+        local,
+        authUserId,
+        serverTypes.get(msg.id),
+      ),
+    );
+  }
+  return out;
 }
 
 /** PreKey dan oldingi ochilmaydigan xabarlarni belgilash */
@@ -400,12 +530,21 @@ async function handlePeerRekeyRequest(
   get: () => ChatState,
 ): Promise<void> {
   const authUserId = useAuthStore.getState().userId;
+  const token = useAuthStore.getState().token;
   if (!authUserId) return;
+  rekeyReceivedFromAt.set(fromUserId, Date.now());
   console.log(`[E2EE] 🔑 session.rekey_request qabul qilindi: from=${fromUserId}`);
   setForcePreKey(authUserId, fromUserId);
   await clearSession(fromUserId).catch(() => {});
   if (chatId) {
     await redDecryptChatMessages(chatId, set, get);
+  }
+  if (token && chatId) {
+    try {
+      await sendSessionSyncPreKey(chatId, fromUserId, token);
+    } catch (e) {
+      console.warn("[E2EE] PreKey sinxron xabari yuborib bo'lmadi:", e);
+    }
   }
 }
 
@@ -472,26 +611,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       const local   = await loadLocalMessages(chatId);
-      const rawMsgs = await chatApi.history(token, chatId);
+      const rawRows = await chatApi.historyRaw(token, chatId);
+      const rawMsgs = rawRows.map((r) => r.message);
+      const serverTypes = new Map(rawRows.map((r) => [r.message.id, r.serverMsgType]));
 
-      const decrypted: Message[] = [];
-      for (const msg of rawMsgs) {
-        decrypted.push(await decryptHistoryMessage(chatId, msg, local, userId));
-      }
+      const decrypted = await decryptHistoryBatch(
+        chatId, rawMsgs, serverTypes, local, userId,
+      );
 
       const merged = annotateObsoletePending(
-        sortMessagesByTime(mergeMessages(local, decrypted)),
+        sortMessagesByTime(mergeMessages(local, decrypted)).filter(
+          (m) => !isSessionSyncPlaintext(m.plaintext),
+        ),
         userId,
       );
       const last   = merged[merged.length - 1];
 
-      // O'qilgan deb belgilash — faqat ochilgan matn uchun
+      // O'qilgan deb belgilash — faqat ochilgan va hali read bo'lmagan xabarlar
       for (const msg of merged) {
         if (
           msg.sender_id !== userId &&
           msg.sender_id !== "me" &&
           !msg.id.startsWith("local_") &&
-          isReadablePlaintext(msg.plaintext)
+          !msg.id.startsWith("sync_") &&
+          msg.status !== "read" &&
+          isReadablePlaintext(msg.plaintext) &&
+          !isSessionSyncPlaintext(msg.plaintext)
         ) {
           wsClient.send("msg.read", { msg_id: msg.id });
         }
@@ -520,15 +665,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
 
       for (const msg of merged) {
-        if (isReadablePlaintext(msg.plaintext)) {
+        if (isReadablePlaintext(msg.plaintext) && !isSessionSyncPlaintext(msg.plaintext)) {
           await persistLocalMessage(msg).catch((e) =>
             console.warn("[Chat] persistLocalMessage:", e)
           );
         }
       }
 
-      // Sherikdan ochilmagan xabarlar — avtomatik PreKey so'rovi
-      if (peerId) {
+      // Sherikdan ochilmagan xabarlar — avtomatik PreKey so'rovi (qarama-qarshi rekey tsiklini oldini olish bilan)
+      if (peerId && !isChannelChat(chatId)) {
         const needsRekey = merged.some(
           (m) =>
             m.sender_id === peerId &&
@@ -584,6 +729,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  createChannel: async (title, description, token) => {
+    const authUserId = useAuthStore.getState().userId;
+    if (!authUserId) return;
+
+    try {
+      const { id: chatId } = await chatApi.createChannel(token, title, description);
+      initChannelKey(authUserId, chatId);
+
+      const now = new Date().toISOString();
+      const newChat: Chat = {
+        id:           chatId,
+        type:         "channel",
+        title,
+        description:  description || null,
+        peer_user_id: null,
+        last_message: null,
+        unread_count: 0,
+        updated_at:   now,
+      };
+
+      set((s) => ({
+        chats: [newChat, ...s.chats.filter((c) => c.id !== chatId)],
+      }));
+      await get().selectChat(chatId, token);
+    } catch (e) {
+      console.error("[Chat] createChannel xatoligi:", e);
+      throw e;
+    }
+  },
+
   // ── Xabar yuborish ────────────────────────────────────────────────────────
   //
   // Signal Protocol:
@@ -618,13 +793,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const { ciphertext, msgTypeNum } = await prepareOutgoingCiphertext(
+      const { ciphertext, msgTypeNum, recipientId: rid } = await prepareOutgoingPayload(
         chatId, recipientId, plaintext, token
       );
 
       wsClient.send("msg.send", {
         chat_id:       chatId,
-        recipient_id:  recipientId,
+        recipient_id:  rid,
         ciphertext,
         msg_type:      msgTypeNum,
         client_msg_id: localId,
@@ -679,13 +854,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // 4. Client: { url, aes_key, iv, file_name, mime_type, size } JSON Signal bilan shifrlanadi.
   // 5. Server: ciphertext-ni DB ga saqlaydi (hech narsani bilmaydi).
   // 6. Qabul qiluvchi: Signal deshifrlaydi → JSON → AES kalit bilan faylni deshifrlaydi.
-  sendFileMessage: async (chatId, recipientId, file, token) => {
+  sendFileMessage: async (chatId, recipientId, file, token, options) => {
     const localId = `local_${Date.now()}`;
     const now     = new Date().toISOString();
-    const isImage = file.type.startsWith("image/");
-    // "image" yoki "file" — MessageBubble shu qiymatga tayanadi
-    const mediaType: Message["msg_type"] = isImage ? "image" : "file";
-    const displayPreview = isImage ? `🖼 ${file.name}` : `📎 ${file.name}`;
+    const asDocument = options?.asDocument ?? false;
+    const kind = mediaKindFromMime(file.type, asDocument);
+    const mediaType: Message["msg_type"] = kind;
+    const caption = options?.caption?.trim() ?? "";
+    const albumCount = options?.albumCount ?? 0;
+    const isAlbum = albumCount > 1;
+    const displayPreview = isAlbum && options?.albumIndex === albumCount - 1
+      ? albumPreviewText(albumCount, caption)
+      : caption
+        ? caption
+        : kind === "image" ? `🖼 ${file.name}`
+          : kind === "video" ? `🎬 ${file.name}`
+            : `📎 ${file.name}`;
 
     // UI'da "yuklanmoqda" holati
     const tempMsg: Message = {
@@ -719,17 +903,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
         file_name: fileName,
         mime_type: mimeType,
         size,
+        ...(caption ? { caption } : {}),
+        ...(options?.spoiler ? { spoiler: true } : {}),
+        ...(options?.albumId ? {
+          album_id:    options.albumId,
+          album_index: options.albumIndex ?? 0,
+          album_count: options.albumCount ?? 1,
+        } : {}),
       };
       const plaintext = JSON.stringify(payload);
 
-      // 4) Signal Protocol: sessiya bor → SignalMessage, yo'q → PreKeyMessage
-      const { ciphertext, msgTypeNum } = await prepareOutgoingCiphertext(
+      const { ciphertext, msgTypeNum, recipientId: rid } = await prepareOutgoingPayload(
         chatId, recipientId, plaintext, token
       );
 
       wsClient.send("msg.send", {
         chat_id:       chatId,
-        recipient_id:  recipientId,
+        recipient_id:  rid,
         ciphertext,
         msg_type:      msgTypeNum,
         client_msg_id: localId,
@@ -743,20 +933,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
         status:   "sent",
       };
 
+      const isLastAlbumItem =
+        !options?.albumId ||
+        options.albumIndex === undefined ||
+        options.albumIndex >= (options.albumCount ?? 1) - 1;
+
       set((s) => ({
         messages: {
           ...s.messages,
           [chatId]: (s.messages[chatId] ?? []).map((m) => m.id === localId ? sentMsg : m),
         },
-        chats: s.chats.map((c) =>
-          c.id === chatId
-            ? {
-                ...c,
-                last_message: { sender_id: "me", preview: displayPreview, created_at: now },
-                updated_at:   now,
-              }
-            : c
-        ),
+        chats: isLastAlbumItem
+          ? s.chats.map((c) =>
+              c.id === chatId
+                ? {
+                    ...c,
+                    last_message: { sender_id: "me", preview: displayPreview, created_at: now },
+                    updated_at:   now,
+                  }
+                : c
+            )
+          : s.chats,
       }));
 
       await persistLocalMessage(sentMsg).catch(() => {});
@@ -774,6 +971,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ),
         },
       }));
+    }
+  },
+
+  sendFileMessages: async (chatId, recipientId, files, token, options) => {
+    if (files.length === 0) return;
+    const albumId = files.length > 1 ? crypto.randomUUID() : undefined;
+    const caption = options?.caption?.trim() ?? "";
+    for (let i = 0; i < files.length; i++) {
+      const item = files[i]!;
+      await get().sendFileMessage(chatId, recipientId, item.file, token, {
+        asDocument: options?.asDocument,
+        spoiler:    item.spoiler ?? false,
+        caption:    i === files.length - 1 ? caption : undefined,
+        albumId,
+        albumIndex: i,
+        albumCount: files.length,
+      });
     }
   },
 
@@ -802,11 +1016,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           //   2. Ichki xabarni deshifrlaydi
           // Oddiy xabar (Type 1): mavjud sessiya bilan deshifrlaydi.
           let plaintext: string;
+          const channelMsg = isChannelChat(m.chat_id) || (m.msg_type != null && isChannelMsgType(m.msg_type));
           try {
-            plaintext = await decryptMessage(m.chat_id, m.sender_id, m.ciphertext);
-            console.log(`[WS] ✅ Deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
+            if (channelMsg) {
+              const authUserId = useAuthStore.getState().userId;
+              if (!authUserId) throw new Error("auth");
+              plaintext = await decryptChannelPayload(authUserId, m.chat_id, m.ciphertext);
+              console.log(`[WS] ✅ Kanal deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
+            } else {
+              plaintext = await decryptMessage(m.chat_id, m.sender_id, m.ciphertext);
+              console.log(`[WS] ✅ Deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
+            }
           } catch (e) {
-            const err = classifyDecryptError(e);
+            const err = channelMsg
+              ? { code: "AES_GCM_FAILED" as const }
+              : classifyDecryptError(e);
             console.warn(`[WS] ❌ Deshifrlash xatosi: id=${m.msg_id} code=${err.code}`);
             // SESSION_NOT_FOUND: sessiya yo'q (Type 1 message, eski sessiya)
             // Boshqa xato: noto'g'ri kalit yoki buzilgan xabar
@@ -817,6 +1041,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             // Type-1 yuboruvchi eski sessiyada — PreKey talab qilamiz
             if (
+              !channelMsg &&
               !isPreKeyCiphertext(m.ciphertext) &&
               (err.code === "SESSION_NOT_FOUND" || err.code === "AES_GCM_FAILED")
             ) {
@@ -824,11 +1049,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
           }
 
+          const isActiveChat = get().activeChatId === m.chat_id;
+
+          // Ko'rinmas sessiya sinxronizatsiyasi — UI ga qo'shilmaydi
+          if (isSessionSyncPlaintext(plaintext)) {
+            wsClient.send("msg.delivered", { msg_id: m.msg_id });
+            if (isActiveChat) {
+              wsClient.send("msg.read", { msg_id: m.msg_id });
+            }
+            if (isPreKeyCiphertext(m.ciphertext)) {
+              await redDecryptChatMessages(m.chat_id, set, get);
+            }
+            return;
+          }
+
           // Media xabar ekanligini deshifrlangan plaintext JSON'dan aniqlaymiz
           // msg_type: "image" | "file" | "text" — MessageBubble shu qiymatga tayanadi
           const mediaP = parseMediaPayload(plaintext);
           const detectedType: Message["msg_type"] = mediaP
-            ? (mediaP.mime_type.startsWith("image/") ? "image" : "file")
+            ? mediaKindFromMime(mediaP.mime_type)
             : "text";
           const newMsg: Message = {
             id:         m.msg_id,
@@ -853,7 +1092,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           // ── Store / UI yangilash ──────────────────────────────────────────
           const token = useAuthStore.getState().token;
-          const isActiveChat = get().activeChatId === m.chat_id;
           const chatKnownBefore = get().chats.some((c) => c.id === m.chat_id);
 
           set((s) => {

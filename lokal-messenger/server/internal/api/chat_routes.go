@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -116,6 +117,7 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
             ch.id::text,
             ch.type,
             ch.title,
+            ch.description,
             peer.id::text          AS peer_id,
             peer.display_name      AS peer_name,
             peer.last_seen_at      AS peer_last_seen,
@@ -133,6 +135,7 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
                LIMIT 1
           ) peer ON ch.type = 'private'
          WHERE EXISTS (SELECT 1 FROM messages msg WHERE msg.chat_id = ch.id)
+            OR ch.type IN ('group', 'channel')
          ORDER BY last_time DESC NULLS LAST`, selfID)
 	if err != nil {
 		return err
@@ -142,12 +145,12 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 	out := make([]fiber.Map, 0)
 	for rows.Next() {
 		var id, ctype string
-		var title, peerID, peerName *string
+		var title, description, peerID, peerName *string
 		var peerLastSeen *time.Time
 		var peerHideLastSeen *bool
 		var lastTime any
 		var unread int
-		if err := rows.Scan(&id, &ctype, &title, &peerID, &peerName, &peerLastSeen, &peerHideLastSeen, &lastTime, &unread); err != nil {
+		if err := rows.Scan(&id, &ctype, &title, &description, &peerID, &peerName, &peerLastSeen, &peerHideLastSeen, &lastTime, &unread); err != nil {
 			log.Printf("[CHAT] ListChats scan xatoligi: %v", err)
 			continue
 		}
@@ -168,6 +171,9 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 			"last_time":    lastTime,
 			"unread":       unread,
 		}
+		if description != nil && *description != "" {
+			item["description"] = *description
+		}
 		if peerID != nil && *peerID != "" {
 			item["peer_online"] = h.deps.Hub.IsOnline(*peerID)
 			if peerHideLastSeen != nil && *peerHideLastSeen {
@@ -185,9 +191,10 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 }
 
 type createChatRequest struct {
-	Type       string `json:"type"`         // 'private' yoki 'group'
-	PeerUserID string `json:"peer_user_id"` // shaxsiy suhbat uchun
-	Title      string `json:"title"`        // guruh uchun
+	Type        string `json:"type"`         // 'private', 'group' yoki 'channel'
+	PeerUserID  string `json:"peer_user_id"` // shaxsiy suhbat uchun
+	Title       string `json:"title"`        // guruh/kanal uchun
+	Description string `json:"description"`  // kanal tavsifi (ixtiyoriy)
 }
 
 // CreateChat — yangi suhbat yaratiladi. Shaxsiy suhbat allaqachon mavjud bo'lsa,
@@ -199,8 +206,23 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov noto'g'ri")
 	}
-	if req.Type != "private" && req.Type != "group" {
+	if req.Type != "private" && req.Type != "group" && req.Type != "channel" {
 		return fiber.NewError(fiber.StatusBadRequest, "suhbat turi noto'g'ri")
+	}
+
+	if req.Type == "channel" {
+		if strings.TrimSpace(req.Title) == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "kanal nomi talab qilinadi")
+		}
+		var canCreate bool
+		if err := h.deps.DB.QueryRow(c.Context(),
+			`SELECT COALESCE(can_create_channel, TRUE) FROM users WHERE id = $1::uuid`, selfID,
+		).Scan(&canCreate); err != nil {
+			return internalError("CreateChat can_create_channel", err)
+		}
+		if !canCreate {
+			return fiber.NewError(fiber.StatusForbidden, "kanal yaratish huquqingiz cheklangan")
+		}
 	}
 
 	if req.Type == "private" {
@@ -231,10 +253,10 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 
 	var chatID string
 	err = tx.QueryRow(c.Context(), `
-        INSERT INTO chats (type, title, created_by)
-        VALUES ($1, NULLIF($2, ''), $3::uuid)
+        INSERT INTO chats (type, title, description, created_by)
+        VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4::uuid)
         RETURNING id::text
-    `, req.Type, req.Title, selfID).Scan(&chatID)
+    `, req.Type, req.Title, req.Description, selfID).Scan(&chatID)
 	if err != nil {
 		return err
 	}
@@ -420,13 +442,23 @@ func (h *Handlers) ChatHistory(c *fiber.Ctx) error {
 	}
 
 	rows, err := h.deps.DB.Query(c.Context(), `
-        SELECT id::text, sender_id::text, convert_from(ciphertext, 'UTF8'), msg_type,
-               created_at, delivered_at IS NOT NULL, read_at IS NOT NULL
-          FROM messages
-         WHERE chat_id = $1::uuid
-           AND (sender_id = $2::uuid OR recipient_id = $2::uuid)
-         ORDER BY created_at ASC
-         LIMIT $3`, chatID, selfID, limit)
+        SELECT id, sender_id, ciphertext, msg_type, created_at, delivered, read
+          FROM (
+            SELECT m.id::text, m.sender_id::text,
+                   convert_from(m.ciphertext, 'UTF8') AS ciphertext,
+                   m.msg_type, m.created_at,
+                   m.delivered_at IS NOT NULL AS delivered,
+                   m.read_at IS NOT NULL AS read
+              FROM messages m
+             WHERE m.chat_id = $1::uuid
+               AND (
+                 EXISTS (SELECT 1 FROM chats c WHERE c.id = m.chat_id AND c.type = 'channel')
+                 OR m.sender_id = $2::uuid OR m.recipient_id = $2::uuid
+               )
+             ORDER BY m.created_at DESC
+             LIMIT $3
+          ) recent
+         ORDER BY created_at ASC`, chatID, selfID, limit)
 	if err != nil {
 		return err
 	}

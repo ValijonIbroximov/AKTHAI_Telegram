@@ -6,13 +6,19 @@ import { loadDecryptedMedia } from "@/utils/mediaLoader";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import s from "./ImageViewer.module.css";
 
-export interface ViewerImage {
+export interface ViewerMedia {
   messageId: string;
   payload:   MediaPayload;
+  kind:      "image" | "video";
 }
 
+/** @deprecated ViewerMedia ishlating */
+export type ViewerImage = ViewerMedia;
+
 interface Props {
-  images:           ViewerImage[];
+  items:            ViewerMedia[];
+  /** @deprecated items ishlating */
+  images?:            ViewerMedia[];
   initialMessageId: string;
   token:            string;
   onClose:          () => void;
@@ -59,8 +65,9 @@ function zoomAtPoint(
   return { scale: newScale, panX: newPanX, panY: newPanY };
 }
 
-export default function ImageViewer({ images, initialMessageId, token, onClose }: Props) {
-  const startIndex = Math.max(0, images.findIndex((i) => i.messageId === initialMessageId));
+export default function ImageViewer({ items, images, initialMessageId, token, onClose }: Props) {
+  const mediaItems = items ?? images ?? [];
+  const startIndex = Math.max(0, mediaItems.findIndex((i) => i.messageId === initialMessageId));
   const [index, setIndex] = useState(startIndex);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [scale, setScale]   = useState(MIN_SCALE);
@@ -69,12 +76,16 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
   const [panning, setPanning] = useState(false);
 
   const cacheRef      = useRef<Map<string, string>>(new Map());
+  const [cacheVersion, setCacheVersion] = useState(0);
   const stageRef      = useRef<HTMLDivElement>(null);
+  const thumbStripRef = useRef<HTMLDivElement>(null);
+  const videoRef      = useRef<HTMLVideoElement>(null);
   const pointerRef    = useRef({ x: 0, y: 0 });
   const dragRef       = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
   const zoomStateRef  = useRef({ scale: MIN_SCALE, panX: 0, panY: 0 });
 
-  const current = images[index];
+  const current = mediaItems[index];
+  const isVideo = current?.kind === "video";
 
   zoomStateRef.current = { scale, panX, panY };
 
@@ -89,6 +100,28 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     return true;
   }, [onClose]);
   useRegisterBackHandler(handleEscapeBack, true, BACK_PRIORITY.imageViewer);
+
+  useEffect(() => {
+    const i = mediaItems.findIndex((img) => img.messageId === initialMessageId);
+    if (i >= 0) setIndex(i);
+  }, [initialMessageId, mediaItems]);
+
+  // Album / guruh media oldindan yuklash (thumbnail strip)
+  useEffect(() => {
+    if (mediaItems.length <= 1) return;
+    let cancelled = false;
+    for (const item of mediaItems) {
+      if (cacheRef.current.has(item.messageId)) continue;
+      loadDecryptedMedia(token, item.payload)
+        .then((blob) => {
+          if (cancelled) return;
+          cacheRef.current.set(item.messageId, URL.createObjectURL(blob));
+          setCacheVersion((v) => v + 1);
+        })
+        .catch(() => { /* placeholder */ });
+    }
+    return () => { cancelled = true; };
+  }, [mediaItems, token]);
 
   const applyZoom = useCallback((px: number, py: number, factor: number) => {
     const stage = stageRef.current;
@@ -124,6 +157,18 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     resetZoom();
   }, [index, resetZoom]);
 
+  useEffect(() => {
+    if (mediaItems.length <= 1) return;
+    const strip = thumbStripRef.current;
+    if (!strip) return;
+    const active = strip.querySelector(`.${s.thumbActive}`) as HTMLElement | null;
+    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [index, mediaItems.length]);
+
+  useEffect(() => {
+    videoRef.current?.pause();
+  }, [index]);
+
   // Joriy rasmni yuklash
   useEffect(() => {
     if (!current) return;
@@ -143,6 +188,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
         const objUrl = URL.createObjectURL(blob);
         cacheRef.current.set(current.messageId, objUrl);
         setLoadState({ status: "ready", objectUrl: objUrl });
+        setCacheVersion((v) => v + 1);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -160,8 +206,8 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
   }, []);
 
   const goNext = useCallback(() => {
-    setIndex((i) => Math.min(images.length - 1, i + 1));
-  }, [images.length]);
+    setIndex((i) => Math.min(mediaItems.length - 1, i + 1));
+  }, [mediaItems.length]);
 
   const handleSave = useCallback(() => {
     if (loadState.status !== "ready" || !current) return;
@@ -183,6 +229,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     if (!stage) return;
 
     const onWheel = (e: WheelEvent) => {
+      if (isVideo) return;
       if (!e.ctrlKey && !e.metaKey) return;
       if (loadState.status !== "ready") return;
       e.preventDefault();
@@ -194,10 +241,10 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
 
     stage.addEventListener("wheel", onWheel, { passive: false });
     return () => stage.removeEventListener("wheel", onWheel);
-  }, [loadState.status, applyZoom, trackPointer]);
+  }, [loadState.status, applyZoom, trackPointer, isVideo]);
 
-  // Zoom qilinganda sudrab ko'chirish (nav tugmalari bundan mustasno)
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (isVideo) return;
     if ((e.target as HTMLElement).closest("button")) return;
     if (loadState.status !== "ready" || scale <= MIN_SCALE) return;
     if (e.button !== 0) return;
@@ -205,7 +252,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
     dragRef.current = { startX: e.clientX, startY: e.clientY, panX, panY };
     setPanning(true);
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [loadState.status, scale, panX, panY, trackPointer]);
+  }, [loadState.status, scale, panX, panY, trackPointer, isVideo]);
 
   const stopNavPointer = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
@@ -233,7 +280,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
       if (mod && (e.key === "+" || e.key === "=" || e.key === "-")) {
         e.preventDefault();
         e.stopPropagation();
-        if (loadState.status !== "ready") return;
+        if (loadState.status !== "ready" || isVideo) return;
         const factor = (e.key === "-") ? 1 / ZOOM_FACTOR : ZOOM_FACTOR;
         const { x, y } = pointerRef.current;
         const stage = stageRef.current;
@@ -264,18 +311,19 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
   if (!current) return null;
 
   const hasPrev = index > 0;
-  const hasNext = index < images.length - 1;
-  const zoomed  = scale > MIN_SCALE;
+  const hasNext = index < mediaItems.length - 1;
+  const zoomed  = !isVideo && scale > MIN_SCALE;
+  void cacheVersion;
 
   return createPortal(
-    <div className={s.overlay} role="dialog" aria-modal="true" aria-label="Rasm ko'rish">
+    <div className={s.overlay} role="dialog" aria-modal="true" aria-label="Media ko'rish">
       <div className={s.toolbar}>
         <span className={s.title} title={current.payload.file_name}>
           {current.payload.file_name}
         </span>
-        {images.length > 1 && (
+        {mediaItems.length > 1 && (
           <span className={s.counter}>
-            {index + 1} / {images.length}
+            {index + 1} / {mediaItems.length}
           </span>
         )}
         {zoomed && (
@@ -298,7 +346,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
           className={`${s.btn} ${s.btnSave}`}
           onClick={handleSave}
           disabled={loadState.status !== "ready"}
-          title="Saqlash (Ctrl+scroll — zoom)"
+          title="Saqlash"
           aria-label="Saqlash"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -324,7 +372,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
 
       <div
         ref={stageRef}
-        className={`${s.stage} ${zoomed ? s.stageZoomed : ""} ${panning ? s.stagePanning : ""}`}
+        className={`${s.stage} ${zoomed ? s.stageZoomed : ""} ${panning ? s.stagePanning : ""} ${isVideo ? s.stageVideo : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -337,7 +385,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
           onClick={goPrev}
           onPointerDown={stopNavPointer}
           disabled={!hasPrev}
-          aria-label="Oldingi rasm"
+          aria-label="Oldingi"
           title="Oldingi"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -354,12 +402,27 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
 
         {loadState.status === "error" && (
           <div className={s.error}>
-            <span>Rasmni ochib bo'lmadi</span>
+            <span>{isVideo ? "Videoni ochib bo'lmadi" : "Rasmni ochib bo'lmadi"}</span>
             <span>{loadState.message}</span>
           </div>
         )}
 
-        {loadState.status === "ready" && (
+        {loadState.status === "ready" && isVideo && (
+          <div className={s.videoWrap}>
+            <video
+              ref={videoRef}
+              key={current.messageId}
+              src={loadState.objectUrl}
+              className={s.video}
+              controls
+              autoPlay
+              playsInline
+              title={`${current.payload.file_name} (${formatFileSize(current.payload.size)})`}
+            />
+          </div>
+        )}
+
+        {loadState.status === "ready" && !isVideo && (
           <div
             className={s.imageWrap}
             style={{
@@ -382,7 +445,7 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
           onClick={goNext}
           onPointerDown={stopNavPointer}
           disabled={!hasNext}
-          aria-label="Keyingi rasm"
+          aria-label="Keyingi"
           title="Keyingi"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -390,6 +453,47 @@ export default function ImageViewer({ images, initialMessageId, token, onClose }
           </svg>
         </button>
       </div>
+
+      {mediaItems.length > 1 && (
+        <div className={s.thumbStrip}>
+          <div className={s.thumbScroll} ref={thumbStripRef}>
+            {mediaItems.map((item, i) => {
+              const thumbUrl = cacheRef.current.get(item.messageId);
+              return (
+                <button
+                  key={item.messageId}
+                  type="button"
+                  className={`${s.thumb} ${i === index ? s.thumbActive : ""}`}
+                  onClick={() => setIndex(i)}
+                  aria-label={`${item.kind === "video" ? "Video" : "Rasm"} ${i + 1}`}
+                  title={item.payload.file_name}
+                >
+                  {thumbUrl ? (
+                    item.kind === "video" ? (
+                      <span className={s.thumbVideoWrap}>
+                        <video
+                          src={thumbUrl}
+                          className={s.thumbImg}
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                        <span className={s.thumbPlay} aria-hidden>▶</span>
+                      </span>
+                    ) : (
+                      <img src={thumbUrl} alt="" className={s.thumbImg} draggable={false} />
+                    )
+                  ) : (
+                    <span className={s.thumbPlaceholder}>
+                      {item.kind === "video" ? "▶" : ""}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );

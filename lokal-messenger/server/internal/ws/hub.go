@@ -181,15 +181,40 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 		"server_msg_id": msgID,
 	})
 
-	// Adresatga yetkazish
-	delivered := h.sendTo(p.RecipientID, "msg.recv", map[string]any{
+	recvPayload := map[string]any{
 		"msg_id":     msgID,
 		"chat_id":    p.ChatID,
 		"sender_id":  env.From,
 		"ciphertext": p.CiphertextB64,
 		"msg_type":   p.MsgType,
 		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
-	})
+	}
+
+	// Kanal xabarlari barcha a'zolarga uzatiladi
+	var chatType string
+	_ = h.db.QueryRow(ctx, `SELECT type FROM chats WHERE id = $1::uuid`, p.ChatID).Scan(&chatType)
+	if chatType == "channel" {
+		rows, qErr := h.db.Query(ctx, `
+			SELECT user_id::text FROM chat_members
+			 WHERE chat_id = $1::uuid AND user_id <> $2::uuid
+		`, p.ChatID, env.From)
+		if qErr == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var memberID string
+				if err := rows.Scan(&memberID); err != nil {
+					continue
+				}
+				if h.sendTo(memberID, "msg.recv", recvPayload) {
+					log.Printf("[WS] ✓ kanal msg.recv: to=%s", memberID)
+				}
+			}
+		}
+		return
+	}
+
+	// Shaxsiy/guruh: bitta adresatga yetkazish
+	delivered := h.sendTo(p.RecipientID, "msg.recv", recvPayload)
 
 	if delivered {
 		log.Printf("[WS] ✓ msg.recv yetkazildi: to=%s", p.RecipientID)

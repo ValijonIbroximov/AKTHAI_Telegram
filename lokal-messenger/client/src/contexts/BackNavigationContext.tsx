@@ -24,6 +24,7 @@ const Ctx = createContext<BackNavCtx | null>(null);
 /** Katta raqam = Escape da birinchi tekshiriladi */
 export const BACK_PRIORITY = {
   imageViewer: 100,
+  modal: 95,
   sideDrawer: 80,
   settings: 60,
   chat: 50,

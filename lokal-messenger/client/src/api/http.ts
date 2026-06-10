@@ -76,9 +76,10 @@ export const authApi = {
 
 // ── Foydalanuvchilar ──────────────────────────────────────────────────────────
 interface MeResponse {
-  user_id:        string;
-  role:           string;
-  hide_last_seen: boolean;
+  user_id:            string;
+  role:               string;
+  hide_last_seen:     boolean;
+  can_create_channel?: boolean;
 }
 
 export const userApi = {
@@ -263,6 +264,11 @@ function msgStatus(delivered: boolean, read: boolean): Message["status"] {
   return "sent";
 }
 
+export interface HistoryRow {
+  message:       Message;
+  serverMsgType: number;
+}
+
 export const chatApi = {
   list: async (token: string): Promise<Chat[]> => {
     const raw = await request<RawChat[]>("GET", "/chats", token);
@@ -270,6 +276,7 @@ export const chatApi = {
       id:                 c.id,
       type:               c.type,
       title:              c.title || "Nomsiz",
+      description:        c.description ?? null,
       peer_user_id:       c.peer_user_id ?? null,
       peer_online:           c.peer_online,
       peer_last_seen_at:     c.peer_last_seen_at ?? null,
@@ -289,19 +296,39 @@ export const chatApi = {
       peer_user_id: peerUserId,
     }),
 
+  createChannel: async (
+    token: string,
+    title: string,
+    description?: string,
+  ): Promise<{ id: string; existing: boolean }> =>
+    request<{ id: string; existing: boolean }>("POST", "/chats", token, {
+      type:        "channel",
+      title,
+      description: description ?? "",
+    }),
+
   history: async (token: string, chatId: string, limit = 100): Promise<Message[]> => {
+    const rows = await chatApi.historyRaw(token, chatId, limit);
+    return rows.map((r) => r.message);
+  },
+
+  /** Server msg_type bilan birga — kanal (10) va Signal (1/3) deshifrlash uchun */
+  historyRaw: async (token: string, chatId: string, limit = 100): Promise<HistoryRow[]> => {
     const raw = await request<RawMessage[]>(
       "GET", `/chats/${chatId}/messages?limit=${limit}`, token
     );
     return (raw ?? []).map((m) => ({
-      id:         m.msg_id,
-      chat_id:    chatId,
-      sender_id:  m.sender_id,
-      ciphertext: m.ciphertext,
-      plaintext:  null,
-      msg_type:   msgTypeNum(m.msg_type),
-      status:     msgStatus(m.delivered, m.read),
-      created_at: normalizeCreatedAt(m.created_at),
+      serverMsgType: m.msg_type,
+      message: {
+        id:         m.msg_id,
+        chat_id:    chatId,
+        sender_id:  m.sender_id,
+        ciphertext: m.ciphertext,
+        plaintext:  null,
+        msg_type:   msgTypeNum(m.msg_type),
+        status:     msgStatus(m.delivered, m.read),
+        created_at: normalizeCreatedAt(m.created_at),
+      },
     }));
   },
 };

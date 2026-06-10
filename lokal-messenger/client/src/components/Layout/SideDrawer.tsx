@@ -15,6 +15,8 @@ interface Props {
   onClose:    () => void;
   onSettings: () => void;
   onAdmin?:   () => void;
+  onCreateChannel?: () => void;
+  canCreateChannel?: boolean;
 }
 
 const AVATAR_COLORS = [
@@ -33,7 +35,7 @@ interface NavItem {
   danger?: boolean;
 }
 
-export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props) {
+export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreateChannel, canCreateChannel = true }: Props) {
   const {
     username, role, userId, activeAccountId, accounts, token,
     logoutAccount, beginAddAccount, beginSwitchAccount, validateAccounts,
@@ -75,6 +77,7 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
 
   const handleSettings = useCallback(() => { onClose(); onSettings(); }, [onClose, onSettings]);
   const handleAdmin    = useCallback(() => { onClose(); onAdmin?.(); }, [onClose, onAdmin]);
+  const handleCreateChannel = useCallback(() => { onClose(); onCreateChannel?.(); }, [onClose, onCreateChannel]);
   const handleLogoutClick = useCallback(() => setLogoutOpen(true), []);
   const handleLogoutCancel = useCallback(() => setLogoutOpen(false), []);
   const handleLogoutConfirm = useCallback(async () => {
@@ -109,16 +112,16 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin }: Props
         </svg>
       ),
     },
-    {
+    ...(canCreateChannel ? [{
       label: "Yangi Kanal",
-      onClick: onClose,
+      onClick: handleCreateChannel,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M22 16.92v3a2 2 0 01-2.18 2A19.79 19.79 0 0112 18.43a19.5 19.5 0 01-5-5 19.79 19.79 0 01-3.49-7.84 2 2 0 011.99-2.18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L9.09 11a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.34 1.85.573 2.81.7A2 2 0 0122 16.92z" strokeLinecap="round"/>
           <path d="M14.5 2C16.4 2.8 18 4.4 18.5 6.5M14.5 6c1 .5 1.8 1.3 2 2.5" strokeLinecap="round"/>
         </svg>
       ),
-    },
+    }] : []),
     {
       label: "Kontaktlar",
       onClick: onClose,

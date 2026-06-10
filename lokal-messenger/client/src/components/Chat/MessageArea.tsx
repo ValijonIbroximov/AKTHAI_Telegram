@@ -1,5 +1,6 @@
 // O'ng panel — Telegram Desktop uslubidagi chat oynasi.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
+import type { Message } from "@/types";
 import { useAuthStore }  from "@/store/authStore";
 import { useChatStore, PENDING_DECRYPT_LABEL } from "@/store/chatStore";
 import { adminApi } from "@/api/http";
@@ -9,17 +10,31 @@ import { formatPeerStatus } from "@/utils/presence";
 import { useRegisterBackHandler, BACK_PRIORITY } from "@/contexts/BackNavigationContext";
 import Avatar            from "@/components/Common/Avatar";
 import MessageBubble     from "./MessageBubble";
-import ImageViewer       from "./ImageViewer";
+import MediaAlbumBubble  from "./MediaAlbumBubble";
+import ImageViewer, { type ViewerMedia } from "./ImageViewer";
 import InputBar          from "./InputBar";
+import { segmentMessages } from "@/utils/messageAlbum";
 import s                 from "./MessageArea.module.css";
 
 const BOTTOM_THRESHOLD = 80;
 const ADMIN_PEEK_MS = 5000;
 
+function toViewerMedia(m: Message): ViewerMedia | null {
+  if (m.msg_type !== "image" && m.msg_type !== "video") return null;
+  const payload = parseMediaPayload(m.plaintext);
+  if (!payload) return null;
+  return {
+    messageId: m.id,
+    payload,
+    kind: m.msg_type === "video" ? "video" : "image",
+  };
+}
+
 export default function MessageArea() {
   const { userId, token, role } = useAuthStore();
   const { activeChatId, chats, messages, presenceMap, lastSeenMap, lastSeenHiddenMap, resetSessionWithPeer, closeChat } = useChatStore();
   const messagesRef  = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
   const scrollingToBottomRef = useRef(false);
   const chatEnteringRef = useRef(false);
@@ -36,6 +51,7 @@ export default function MessageArea() {
   const isAdmin = role === "admin";
 
   const activeChat = chats.find(c => c.id === activeChatId);
+  const isChannel  = activeChat?.type === "channel";
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
   const peerId     = activeChat?.peer_user_id ?? null;
   const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
@@ -47,31 +63,64 @@ export default function MessageArea() {
     : false;
   const isPeeking = peekUntil !== null && Date.now() < peekUntil;
   const showHiddenStatus = lastSeenHidden && !isPeeking;
-  const statusText = formatPeerStatus(
-    isOnline,
-    peekLastSeen ?? lastSeen,
-    showHiddenStatus,
-  );
-  const canPeekHidden = isAdmin && lastSeenHidden && !isOnline && !!peerId;
+  const statusText = isChannel
+    ? (activeChat?.description?.trim() || "Kanal")
+    : formatPeerStatus(
+        isOnline,
+        peekLastSeen ?? lastSeen,
+        showHiddenStatus,
+      );
+  const canPeekHidden = !isChannel && isAdmin && lastSeenHidden && !isOnline && !!peerId;
 
-  const chatImages = useMemo(() => {
-    const out: { messageId: string; payload: NonNullable<ReturnType<typeof parseMediaPayload>> }[] = [];
+  const chatVisualMedia = useMemo((): ViewerMedia[] => {
+    const out: ViewerMedia[] = [];
     for (const m of msgs) {
-      if (m.msg_type !== "image") continue;
-      const payload = parseMediaPayload(m.plaintext);
-      if (payload) out.push({ messageId: m.id, payload });
+      const item = toViewerMedia(m);
+      if (item) out.push(item);
     }
     return out;
   }, [msgs]);
 
-  const hasSessionIssue = msgs.some(
+  const messageSegments = useMemo(() => segmentMessages(msgs), [msgs]);
+
+  const viewerMedia = useMemo((): ViewerMedia[] => {
+    if (!viewerMessageId) return [];
+    for (const seg of messageSegments) {
+      if (seg.kind === "album") {
+        const visual = seg.messages.filter((m) => m.msg_type === "image" || m.msg_type === "video");
+        if (visual.some((m) => m.id === viewerMessageId)) {
+          const out: ViewerMedia[] = [];
+          for (const m of visual) {
+            const item = toViewerMedia(m);
+            if (item) out.push(item);
+          }
+          return out;
+        }
+      }
+      if (seg.kind === "single" && seg.message.id === viewerMessageId) {
+        if (seg.message.msg_type === "image" || seg.message.msg_type === "video") {
+          const item = toViewerMedia(seg.message);
+          if (item) return [item];
+        }
+      }
+    }
+    return chatVisualMedia;
+  }, [viewerMessageId, messageSegments, chatVisualMedia]);
+
+  const hasSessionIssue = !isChannel && msgs.some(
     (m) => m.plaintext === PENDING_DECRYPT_LABEL || m.plaintext === DECRYPT_ERROR_LABEL
   );
 
   const snapToBottom = useCallback((): boolean => {
     const el = messagesRef.current;
     if (!el) return false;
+
+    const anchor = bottomAnchorRef.current;
+    if (anchor) {
+      anchor.scrollIntoView({ block: "end", behavior: "auto" });
+    }
     el.scrollTop = el.scrollHeight;
+
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     const near = dist <= BOTTOM_THRESHOLD;
     if (near) {
@@ -135,12 +184,13 @@ export default function MessageArea() {
       pinnedToBottomRef.current = true;
       scrollingToBottomRef.current = false;
       setShowScrollDown(false);
+      if (messagesRef.current) messagesRef.current.scrollTop = 0;
     }
 
     if (chatEnteringRef.current || pinnedToBottomRef.current) {
       snapToBottom();
     }
-  }, [activeChatId, msgs.length, lastMsg?.id, lastMsg?.plaintext, snapToBottom]);
+  }, [activeChatId, msgs, msgs.length, lastMsg?.id, lastMsg?.plaintext, snapToBottom]);
 
   // DOM balandligi o'zgarganda (rasm, kech yuklangan tarix) — qayta urinish
   useEffect(() => {
@@ -158,12 +208,8 @@ export default function MessageArea() {
     const t1 = window.setTimeout(() => retrySnap(8), 50);
     const t2 = window.setTimeout(() => retrySnap(8), 200);
     const t3 = window.setTimeout(() => retrySnap(8), 500);
-    const t4 = window.setTimeout(() => {
-      if (chatEnteringRef.current) {
-        snapToBottom();
-        chatEnteringRef.current = false;
-      }
-    }, 1200);
+    const t4 = window.setTimeout(() => retrySnap(12), 1200);
+    const t5 = window.setTimeout(() => retrySnap(8), 2500);
 
     const el = messagesRef.current;
     if (!el) {
@@ -173,6 +219,7 @@ export default function MessageArea() {
         clearTimeout(t2);
         clearTimeout(t3);
         clearTimeout(t4);
+        clearTimeout(t5);
       };
     }
 
@@ -187,9 +234,10 @@ export default function MessageArea() {
       clearTimeout(t2);
       clearTimeout(t3);
       clearTimeout(t4);
+      clearTimeout(t5);
       ro.disconnect();
     };
-  }, [activeChatId, msgs.length, snapToBottom]);
+  }, [activeChatId, msgs, msgs.length, snapToBottom]);
 
   useEffect(() => {
     setViewerMessageId(null);
@@ -432,20 +480,34 @@ export default function MessageArea() {
           ref={messagesRef}
           onScroll={handleMessagesScroll}
         >
-          {msgs.length === 0 ? (
-            <div className={s.noMsgs}>
-              <div className={s.noMsgsBox}>Suhbat boshlash uchun xabar yuboring</div>
-            </div>
-          ) : (
-            msgs.map(msg => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                isOwn={msg.sender_id === userId || msg.sender_id === "me"}
-                onImageOpen={setViewerMessageId}
-              />
-            ))
-          )}
+          <div className={s.messagesInner}>
+            {msgs.length === 0 ? (
+              <div className={s.noMsgs}>
+                <div className={s.noMsgsBox}>
+                  {isChannel ? "Kanalga birinchi xabarni yuboring" : "Suhbat boshlash uchun xabar yuboring"}
+                </div>
+              </div>
+            ) : (
+              messageSegments.map((seg) =>
+                seg.kind === "album" ? (
+                  <MediaAlbumBubble
+                    key={seg.messages[0]!.id}
+                    messages={seg.messages}
+                    isOwn={seg.messages[0]!.sender_id === userId || seg.messages[0]!.sender_id === "me"}
+                    onImageOpen={setViewerMessageId}
+                  />
+                ) : (
+                  <MessageBubble
+                    key={seg.message.id}
+                    message={seg.message}
+                    isOwn={seg.message.sender_id === userId || seg.message.sender_id === "me"}
+                    onImageOpen={setViewerMessageId}
+                  />
+                )
+              )
+            )}
+            <div ref={bottomAnchorRef} className={s.bottomAnchor} aria-hidden="true" />
+          </div>
         </div>
 
         {showScrollDown && (
@@ -466,13 +528,13 @@ export default function MessageArea() {
       {/* Kiritish paneli */}
       <InputBar
         chatId={activeChatId ?? ""}
-        recipientId={activeChat.peer_user_id ?? activeChat.id}
+        recipientId={isChannel ? (userId ?? "") : (activeChat.peer_user_id ?? activeChat.id)}
         token={token ?? ""}
       />
 
-      {viewerMessageId && token && chatImages.length > 0 && (
+      {viewerMessageId && token && viewerMedia.length > 0 && (
         <ImageViewer
-          images={chatImages}
+          items={viewerMedia}
           initialMessageId={viewerMessageId}
           token={token}
           onClose={() => setViewerMessageId(null)}

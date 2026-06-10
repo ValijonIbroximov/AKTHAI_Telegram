@@ -7,6 +7,7 @@ import AccountUnlockModal from "@/components/Auth/AccountUnlockModal";
 import FirstLoginPasswordPrompt from "@/components/Auth/FirstLoginPasswordPrompt";
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
+import CreateChannelModal from "@/components/Chat/CreateChannelModal";
 import SideDrawer        from "@/components/Layout/SideDrawer";
 import ChatFolders, { type FolderId } from "@/components/Layout/ChatFolders";
 import TitleBar          from "@/components/Layout/TitleBar";
@@ -58,8 +59,11 @@ function ChatApp() {
   const token    = useAuthStore((s) => s.token);
   const userId   = useAuthStore((s) => s.userId);
   const uiMode   = useAuthStore((s) => s.uiMode);
+  const canCreateChannel = useAuthStore((s) => s.canCreateChannel);
+  const createChannel = useChatStore((s) => s.createChannel);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen]     = useState(false);
+  const [channelModalOpen, setChannelModalOpen] = useState(false);
   const [mainView, setMainView]         = useState<MainView>("chat");
   const [activeFolder, setActiveFolder] = useState<FolderId>("all");
 
@@ -101,6 +105,16 @@ function ChatApp() {
     navigate("/admin");
   }, [navigate]);
 
+  const openCreateChannel = useCallback(() => {
+    setChannelModalOpen(true);
+  }, []);
+
+  const handleCreateChannel = useCallback(async (title: string, description: string) => {
+    if (!token) throw new Error("Tizimga kiring");
+    await createChannel(title, description, token);
+    setActiveFolder("channels");
+  }, [token, createChannel]);
+
   const showLogin = !token || uiMode === "add_account";
 
   if (showLogin) {
@@ -127,6 +141,13 @@ function ChatApp() {
             onClose={() => setDrawerOpen(false)}
             onSettings={openSettings}
             onAdmin={openAdmin}
+            onCreateChannel={openCreateChannel}
+            canCreateChannel={canCreateChannel}
+          />
+          <CreateChannelModal
+            open={channelModalOpen}
+            onClose={() => setChannelModalOpen(false)}
+            onCreate={handleCreateChannel}
           />
           <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
           {mainView === "settings" ? (

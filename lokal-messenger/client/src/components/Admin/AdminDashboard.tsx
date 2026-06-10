@@ -67,12 +67,14 @@ interface UserForm {
   okrug_name: string; okrug_code: string;
   unit_name: string; division_name: string; division_code: string;
   display_short: string;
+  can_create_channel: boolean;
 }
 const EMPTY_FORM: UserForm = {
   username: "", display_name: "", role: "user", password: "",
   rank_title: "", unit_code: "",
   okrug_name: "", okrug_code: "",
   unit_name: "", division_name: "", division_code: "", display_short: "",
+  can_create_channel: true,
 };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -184,6 +186,19 @@ function UserModal({
                 <label className={s.label}>Qisqa ko'rinish</label>
                 <input className={s.input} value={form.display_short} onChange={f("display_short")} placeholder="k-nt Ibroximov V.A."/>
               </div>
+              {!isNew && (
+                <div className={s.field} style={{ gridColumn: "1 / -1" }}>
+                  <label className={s.label}>
+                    <input
+                      type="checkbox"
+                      checked={form.can_create_channel}
+                      onChange={(e) => setForm((p) => ({ ...p, can_create_channel: e.target.checked }))}
+                      disabled={busy || creating}
+                    />
+                    {" "}Kanal yaratishga ruxsat
+                  </label>
+                </div>
+              )}
             </div>
           </fieldset>
 
@@ -429,6 +444,7 @@ function UsersSection({ token }: { token: string }) {
     okrug_code: u.okrug_code ?? "", unit_name: u.unit_name ?? "",
     division_name: u.division_name ?? "", division_code: u.division_code ?? "",
     display_short: u.display_short ?? "",
+    can_create_channel: u.can_create_channel !== false,
   });
 
   return (

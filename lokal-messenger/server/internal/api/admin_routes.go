@@ -97,6 +97,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		       COALESCE(unit_name, ''), COALESCE(division_name, ''), COALESCE(division_code, ''),
 		       COALESCE(display_short, ''),
 		       is_active,
+		       COALESCE(can_create_channel, TRUE),
 		       (avatar_path IS NOT NULL AND avatar_path <> '')
 		FROM users
 		ORDER BY created_at ASC
@@ -107,20 +108,21 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 	defer rows.Close()
 
 	type userRow struct {
-		ID           string `json:"id"`
-		Username     string `json:"username"`
-		DisplayName  string `json:"display_name"`
-		Role         string `json:"role"`
-		RankTitle    string `json:"rank_title"`
-		UnitCode     string `json:"unit_code"`
-		OkrugName    string `json:"okrug_name"`
-		OkrugCode    string `json:"okrug_code"`
-		UnitName     string `json:"unit_name"`
-		DivisionName string `json:"division_name"`
-		DivisionCode string `json:"division_code"`
-		DisplayShort string `json:"display_short"`
-		IsActive     bool   `json:"is_active"`
-		HasAvatar    bool   `json:"has_avatar"`
+		ID               string `json:"id"`
+		Username         string `json:"username"`
+		DisplayName      string `json:"display_name"`
+		Role             string `json:"role"`
+		RankTitle        string `json:"rank_title"`
+		UnitCode         string `json:"unit_code"`
+		OkrugName        string `json:"okrug_name"`
+		OkrugCode        string `json:"okrug_code"`
+		UnitName         string `json:"unit_name"`
+		DivisionName     string `json:"division_name"`
+		DivisionCode     string `json:"division_code"`
+		DisplayShort     string `json:"display_short"`
+		IsActive         bool   `json:"is_active"`
+		CanCreateChannel bool   `json:"can_create_channel"`
+		HasAvatar        bool   `json:"has_avatar"`
 	}
 
 	var result []userRow
@@ -130,7 +132,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 			&u.ID, &u.Username, &u.DisplayName, &u.Role,
 			&u.RankTitle, &u.UnitCode,
 			&u.OkrugName, &u.OkrugCode, &u.UnitName, &u.DivisionName, &u.DivisionCode, &u.DisplayShort,
-			&u.IsActive, &u.HasAvatar,
+			&u.IsActive, &u.CanCreateChannel, &u.HasAvatar,
 		); err != nil {
 			return err
 		}
@@ -146,17 +148,18 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 	targetID := c.Params("id")
 	var req struct {
-		DisplayName  string `json:"display_name"`
-		Role         string `json:"role"`
-		Password     string `json:"password"`
-		RankTitle    string `json:"rank_title"`
-		UnitCode     string `json:"unit_code"`
-		OkrugName    string `json:"okrug_name"`
-		OkrugCode    string `json:"okrug_code"`
-		UnitName     string `json:"unit_name"`
-		DivisionName string `json:"division_name"`
-		DivisionCode string `json:"division_code"`
-		DisplayShort string `json:"display_short"`
+		DisplayName      string `json:"display_name"`
+		Role             string `json:"role"`
+		Password         string `json:"password"`
+		RankTitle        string `json:"rank_title"`
+		UnitCode         string `json:"unit_code"`
+		OkrugName        string `json:"okrug_name"`
+		OkrugCode        string `json:"okrug_code"`
+		UnitName         string `json:"unit_name"`
+		DivisionName     string `json:"division_name"`
+		DivisionCode     string `json:"division_code"`
+		DisplayShort     string `json:"display_short"`
+		CanCreateChannel *bool  `json:"can_create_channel"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov noto'g'ri")
@@ -166,21 +169,23 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 	}
 	_, err := h.deps.DB.Exec(c.Context(), `
 		UPDATE users SET
-			display_name  = COALESCE(NULLIF($2,''), display_name),
-			role          = CASE WHEN $3 != '' THEN $3 ELSE role END,
-			rank_title    = NULLIF($4, ''),
-			unit_code     = NULLIF($5, ''),
-			okrug_name    = NULLIF($6, ''),
-			okrug_code    = NULLIF($7, ''),
-			unit_name     = NULLIF($8, ''),
-			division_name = NULLIF($9, ''),
-			division_code = NULLIF($10,''),
-			display_short = NULLIF($11,'')
+			display_name       = COALESCE(NULLIF($2,''), display_name),
+			role               = CASE WHEN $3 != '' THEN $3 ELSE role END,
+			rank_title         = NULLIF($4, ''),
+			unit_code          = NULLIF($5, ''),
+			okrug_name         = NULLIF($6, ''),
+			okrug_code         = NULLIF($7, ''),
+			unit_name          = NULLIF($8, ''),
+			division_name      = NULLIF($9, ''),
+			division_code      = NULLIF($10,''),
+			display_short      = NULLIF($11,''),
+			can_create_channel = COALESCE($12, can_create_channel)
 		WHERE id = $1::uuid`,
 		targetID, req.DisplayName, req.Role,
 		req.RankTitle, req.UnitCode,
 		req.OkrugName, req.OkrugCode, req.UnitName,
 		req.DivisionName, req.DivisionCode, req.DisplayShort,
+		req.CanCreateChannel,
 	)
 	if err != nil {
 		return internalError("AdminUpdateUser", err)

@@ -75,6 +75,7 @@ interface AuthState {
   loading:           boolean;
   error:             string | null;
   uiMode:            AuthUIMode;
+  canCreateChannel:  boolean;
   /** switch_unlock rejimida qaysi akkauntga o'tilmoqchi */
   unlockTargetId:    string | null;
 
@@ -106,7 +107,7 @@ async function activateSession(
   set({ loading: true, error: null });
 
   try {
-    await userApi.me(account.token);
+    const me = await userApi.me(account.token);
 
     await wsClient.disconnectAsync();
     await activateCryptoContext(account.userId, account.token);
@@ -118,6 +119,7 @@ async function activateSession(
       username:           account.username,
       role:               account.role,
       mustChangePassword: account.mustChangePassword,
+      canCreateChannel:   me.can_create_channel !== false,
       uiMode:             "login",
       unlockTargetId:     null,
       error:              null,
@@ -220,6 +222,7 @@ export const useAuthStore = create<AuthState>()(
       error:              null,
       uiMode:             "login",
       unlockTargetId:     null,
+      canCreateChannel:   true,
 
       login: async (username, password) => {
         set({ loading: true, error: null });

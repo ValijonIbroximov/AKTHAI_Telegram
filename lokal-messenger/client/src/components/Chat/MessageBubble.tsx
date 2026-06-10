@@ -16,6 +16,7 @@ import { MISSING_PLAINTEXT_LABEL, PENDING_DECRYPT_LABEL } from "@/utils/messageT
 import {
   parseMediaPayload,
   formatFileSize,
+  fileTypeLabel,
   type MediaPayload,
 } from "@/crypto/fileCrypto";
 import { loadDecryptedMedia } from "@/utils/mediaLoader";
@@ -48,12 +49,19 @@ type MediaState =
 
 interface MediaContentProps {
   payload:       MediaPayload;
-  msgType:       "image" | "file";
+  msgType:       "image" | "video" | "file";
   onImageClick?: () => void;
+  onMediaClick?: () => void;
+  compact?:      boolean;
+  albumRow?:     boolean;
 }
 
-function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
+export function MediaContent({
+  payload, msgType, onImageClick, onMediaClick, compact = false, albumRow = false,
+}: MediaContentProps) {
+  const openViewer = onMediaClick ?? onImageClick;
   const [state, setState] = useState<MediaState>({ status: "idle" });
+  const [spoilerRevealed, setSpoilerRevealed] = useState(!payload.spoiler);
   // Revoke uchun ref — state'dan mustaqil
   const objUrlRef = useRef<string | null>(null);
 
@@ -67,9 +75,9 @@ function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
     };
   }, []);
 
-  // Rasmlarni sahifaga kirishi bilan avtomatik yuklash
+  // Rasmlar / videolar sahifaga kirishi bilan avtomatik yuklash
   useEffect(() => {
-    if (msgType === "image") {
+    if (msgType === "image" || msgType === "video") {
       fetchAndDecrypt();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,21 +157,118 @@ function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
     }
 
     if (state.status === "ready") {
+      const imgClass = [
+        s.mediaImg,
+        payload.spoiler && !spoilerRevealed ? s.mediaSpoiler : "",
+        payload.spoiler && spoilerRevealed ? s.mediaSpoilerRevealed : "",
+      ].filter(Boolean).join(" ");
+
       return (
-        <div className={s.mediaImgWrap}>
+        <div className={compact ? s.mediaImgWrapCompact : s.mediaImgWrap}>
           <img
             src={state.objectUrl}
             alt={payload.file_name}
-            className={s.mediaImg}
+            className={imgClass + (compact ? ` ${s.mediaImgCompact}` : "")}
             loading="lazy"
-            onClick={() => onImageClick?.()}
-            title={`${payload.file_name} (${formatFileSize(payload.size)})`}
+            onClick={() => {
+              if (payload.spoiler && !spoilerRevealed) {
+                setSpoilerRevealed(true);
+                return;
+              }
+              openViewer?.();
+            }}
+            title={
+              payload.spoiler && !spoilerRevealed
+                ? "Spoiler — ochish uchun bosing"
+                : `${payload.file_name} (${formatFileSize(payload.size)})`
+            }
           />
         </div>
       );
     }
 
-    // idle — yuklanish boshlanmagan (useEffect kech ishlagan bo'lishi mumkin)
+    // idle
+    return (
+      <div className={s.mediaImgPlaceholder}>
+        <div className={s.mediaSpinner} />
+        <span className={s.mediaLoadingText}>{payload.file_name}</span>
+      </div>
+    );
+  }
+
+  // ── Video rendering ─────────────────────────────────────────────────────
+  if (msgType === "video") {
+    if (state.status === "loading") {
+      return (
+        <div className={s.mediaImgPlaceholder}>
+          <div className={s.mediaSpinner} />
+          <span className={s.mediaLoadingText}>{payload.file_name}</span>
+        </div>
+      );
+    }
+
+    if (state.status === "error") {
+      return (
+        <div className={s.mediaError}>
+          <span className={s.mediaErrorIcon}>🎬</span>
+          <span className={s.mediaErrorName}>{payload.file_name}</span>
+          <span className={s.mediaErrorText}>{state.message}</span>
+          <button className={s.mediaRetryBtn} onClick={() => {
+            setState({ status: "idle" });
+            fetchAndDecrypt();
+          }}>
+            Qayta urinish
+          </button>
+        </div>
+      );
+    }
+
+    if (state.status === "ready") {
+      const vidClass = [
+        s.mediaVideo,
+        compact ? s.mediaVideoCompact : "",
+        payload.spoiler && !spoilerRevealed ? s.mediaSpoiler : "",
+        payload.spoiler && spoilerRevealed ? s.mediaSpoilerRevealed : "",
+      ].filter(Boolean).join(" ");
+
+      return (
+        <div
+          className={compact ? s.mediaVideoWrapCompact : s.mediaVideoWrap}
+          onClick={() => {
+            if (payload.spoiler && !spoilerRevealed) {
+              setSpoilerRevealed(true);
+              return;
+            }
+            openViewer?.();
+          }}
+          role={openViewer ? "button" : undefined}
+          tabIndex={openViewer ? 0 : undefined}
+          onKeyDown={openViewer ? (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openViewer();
+            }
+          } : undefined}
+        >
+          <video
+            src={state.objectUrl}
+            className={vidClass}
+            muted
+            playsInline
+            preload="metadata"
+            draggable={false}
+          />
+          {!payload.spoiler || spoilerRevealed ? (
+            <span className={s.mediaPlayBadge} aria-hidden="true">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            </span>
+          ) : null}
+        </div>
+      );
+    }
+
     return (
       <div className={s.mediaImgPlaceholder}>
         <div className={s.mediaSpinner} />
@@ -174,9 +279,14 @@ function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
 
   // ── Hujjat / fayl rendering ─────────────────────────────────────────────
   const isDownloading = state.status === "loading";
+  const docClass = albumRow
+    ? s.mediaDocAlbumRow
+    : compact
+      ? s.mediaDocCompact
+      : s.mediaDoc;
 
   return (
-    <div className={s.mediaDoc}>
+    <div className={docClass}>
       <div className={s.mediaDocIcon}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" strokeWidth="1.6">
@@ -188,8 +298,12 @@ function MediaContent({ payload, msgType, onImageClick }: MediaContentProps) {
       </div>
 
       <div className={s.mediaDocInfo}>
-        <span className={s.mediaDocName}>{payload.file_name}</span>
-        <span className={s.mediaDocSize}>{formatFileSize(payload.size)}</span>
+        <span className={s.mediaDocName} title={payload.file_name}>{payload.file_name}</span>
+        {albumRow ? (
+          <span className={s.mediaDocType}>{fileTypeLabel(payload)}</span>
+        ) : (
+          <span className={s.mediaDocSize}>{formatFileSize(payload.size)}</span>
+        )}
       </div>
 
       <button
@@ -223,6 +337,13 @@ interface Props {
   onImageOpen?: (messageId: string) => void;
 }
 
+function visualMsgType(msg: Message): "image" | "video" | "file" | null {
+  if (msg.msg_type === "image") return "image";
+  if (msg.msg_type === "video") return "video";
+  if (msg.msg_type === "file") return "file";
+  return null;
+}
+
 export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
   const pt = message.plaintext ?? "";
 
@@ -232,10 +353,9 @@ export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
   const isPending      = pt === PENDING_DECRYPT_LABEL;
   const isUploading    = pt.startsWith("⏳");
 
-  // Media xabar: msg_type === "image" yoki "file" VA plaintext MediaPayload JSON
-  const isImageMsg = message.msg_type === "image";
-  const isFileMsg  = message.msg_type === "file";
-  const isMedia    = (isImageMsg || isFileMsg) && !isSendError && !isDecryptError && !isMissing && !isPending;
+  // Media xabar: image / video / file + MediaPayload JSON
+  const visualType = visualMsgType(message);
+  const isMedia    = visualType !== null && !isSendError && !isDecryptError && !isMissing && !isPending;
 
   // MediaPayload'ni parse qilish (faqat media xabarlar uchun)
   const mediaPayload = isMedia ? parseMediaPayload(pt) : null;
@@ -276,12 +396,20 @@ export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
           <p className={s.textPending}>{pt}</p>
 
         ) : isMedia && mediaPayload ? (
-          /* ── Media: rasm yoki hujjat ──────────────────────────────────── */
-          <MediaContent
-            payload={mediaPayload}
-            msgType={isImageMsg ? "image" : "file"}
-            onImageClick={isImageMsg && onImageOpen ? () => onImageOpen(message.id) : undefined}
-          />
+          <>
+            <MediaContent
+              payload={mediaPayload}
+              msgType={visualType!}
+              onMediaClick={
+                (visualType === "image" || visualType === "video") && onImageOpen
+                  ? () => onImageOpen(message.id)
+                  : undefined
+              }
+            />
+            {mediaPayload.caption?.trim() && (
+              <p className={`${s.text} ${s.mediaCaption} selectable`}>{mediaPayload.caption}</p>
+            )}
+          </>
 
         ) : isMedia && !mediaPayload ? (
           /* MediaPayload parse bo'lmadi — fallback matn */

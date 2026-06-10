@@ -22,8 +22,9 @@ function avatarColor(name: string): string {
   return colors[h % colors.length]!;
 }
 
-/** Faqat kamida bitta xabari bor suhbatlar */
-function chatHasMessages(chat: Chat): boolean {
+/** Ro'yxatda ko'rsatiladigan suhbatlar (kanallar xabarsiz ham chiqadi) */
+function chatVisibleInList(chat: Chat): boolean {
+  if (chat.type === "channel") return true;
   return chat.last_message != null;
 }
 
@@ -62,7 +63,7 @@ export default function ChatList({ onMenuOpen, activeFolder = "all" }: Props) {
 
   const folderChats = (() => {
     if (isUsersFolder) return [];
-    const withMessages = chats.filter(chatHasMessages);
+    const withMessages = chats.filter(chatVisibleInList);
     switch (activeFolder) {
       case "groups":   return withMessages.filter((c) => c.type === "group");
       case "channels": return withMessages.filter((c) => c.type === "channel");

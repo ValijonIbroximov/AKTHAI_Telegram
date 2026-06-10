@@ -14,6 +14,12 @@ export interface MediaPayload {
   file_name: string;
   mime_type: string;
   size:      number;  // Asl (deshifrlangan) bayt hajmi
+  caption?:  string;  // Ixtiyoriy izoh (matn)
+  spoiler?:  boolean; // Spoiler (blur) rejimi
+  /** Bir vaqtda yuborilgan media guruhi */
+  album_id?:    string;
+  album_index?: number;
+  album_count?: number;
 }
 
 // ── Base64 yordamchilari ───────────────────────────────────────────────────
@@ -132,4 +138,41 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024)      return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/** Fayl kengaytmasi yoki MIME asosida qisqa tur yorlig'i */
+export function fileTypeLabel(payload: Pick<MediaPayload, "file_name" | "mime_type">): string {
+  const dot = payload.file_name.lastIndexOf(".");
+  if (dot > 0 && dot < payload.file_name.length - 1) {
+    const ext = payload.file_name.slice(dot + 1).toUpperCase();
+    if (ext.length <= 8) return ext;
+  }
+  const mime = payload.mime_type.toLowerCase();
+  const known: Record<string, string> = {
+    "application/pdf":        "PDF",
+    "application/msword":     "DOC",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+    "application/vnd.ms-excel": "XLS",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+    "application/zip":        "ZIP",
+    "text/plain":             "TXT",
+  };
+  if (known[mime]) return known[mime];
+  const sub = mime.split("/")[1];
+  if (sub) return sub.split("+")[0]!.split(".").pop()!.toUpperCase();
+  return "FILE";
+}
+
+export type MediaKind = "image" | "video" | "file";
+
+/** MIME yoki "hujjat sifatida" flag asosida xabar media turi */
+export function mediaKindFromMime(mime: string, asDocument = false): MediaKind {
+  if (asDocument) return "file";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  return "file";
+}
+
+export function isVisualMediaKind(kind: MediaKind): boolean {
+  return kind === "image" || kind === "video";
 }

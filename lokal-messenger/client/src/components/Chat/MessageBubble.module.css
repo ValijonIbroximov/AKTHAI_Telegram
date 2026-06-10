@@ -122,6 +122,14 @@
   max-width: 280px;
   cursor: zoom-in;
 }
+.mediaImgWrapCompact {
+  border-radius: 4px;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  cursor: zoom-in;
+}
 .mediaImg {
   display: block;
   width: 100%;
@@ -129,6 +137,84 @@
   max-height: 320px;
   object-fit: contain;
   border-radius: calc(var(--r-lg) - 4px);
+  transition: filter 0.25s ease;
+}
+.mediaImgCompact {
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.mediaSpoiler {
+  filter: blur(22px);
+  cursor: pointer;
+}
+.mediaSpoilerRevealed {
+  filter: none;
+}
+
+.mediaVideoWrap {
+  position: relative;
+  border-radius: calc(var(--r-lg) - 4px);
+  overflow: hidden;
+  max-width: 280px;
+  cursor: pointer;
+}
+.mediaVideoWrapCompact {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  cursor: pointer;
+}
+.mediaVideo {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: calc(var(--r-lg) - 4px);
+  background: #000;
+  transition: filter 0.25s ease;
+}
+.mediaVideoCompact {
+  max-width: none;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+  border-radius: 4px;
+}
+.mediaPlayBadge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+.mediaCaption {
+  font-size: 14px;
+  color: var(--text-1);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  margin-top: 6px;
+  padding: 0 2px 2px;
 }
 
 /* Rasm yuklanmoqda */
@@ -195,6 +281,43 @@
   padding: 4px 6px;
   min-width: 200px;
   max-width: 280px;
+}
+.mediaDocCompact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  width: 100%;
+  height: 100%;
+  min-height: 80px;
+}
+.mediaDocCompact .mediaDocInfo {
+  text-align: center;
+}
+.mediaDocCompact .mediaDocName {
+  font-size: 10px;
+  max-width: 100%;
+}
+.mediaDocCompact .mediaDocBtn {
+  width: 28px;
+  height: 28px;
+}
+.mediaDocAlbumRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  width: 100%;
+  min-width: 0;
+}
+.mediaDocType {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .mediaDocIcon {
   width: 36px; height: 36px;

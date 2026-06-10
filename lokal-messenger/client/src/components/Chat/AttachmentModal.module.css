@@ -1,0 +1,430 @@
+/* Telegram Desktop uslubidagi biriktirma tasdiqlash modali */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 0.18s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal {
+  width: min(520px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  animation: slideUp 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f0f0;
+  letter-spacing: -0.01em;
+}
+
+.menuWrap {
+  position: relative;
+}
+
+.iconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #eee;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: #2b2b2b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+  animation: popIn 0.12s ease;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 13px;
+  color: #e8e8e8;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.dropdownItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dropdownItemActive {
+  color: var(--accent, #2aabee);
+}
+
+/* ── Preview ── */
+.previewWrap {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  max-height: 48vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #141414;
+  margin: 0;
+  overflow: hidden;
+}
+
+.previewImg,
+.previewVideo {
+  max-width: 100%;
+  max-height: 48vh;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+}
+
+.previewSpoiler {
+  filter: blur(28px);
+  transform: scale(1.05);
+}
+
+.previewDoc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 32px 24px;
+  color: #ccc;
+}
+
+.docIcon {
+  width: 72px;
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  color: var(--accent, #2aabee);
+}
+
+.docName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #eee;
+  word-break: break-all;
+  text-align: center;
+  max-width: 320px;
+}
+
+.docSize {
+  font-size: 12px;
+  color: #888;
+}
+
+.previewControls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+
+.previewControlBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s;
+}
+.previewControlBtn:hover {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.previewMenuWrap {
+  position: relative;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: 12px 16px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: #1e1e1e;
+  flex-shrink: 0;
+}
+
+.hint {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: #777;
+  text-align: center;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #ccc;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent, #2aabee);
+  cursor: pointer;
+}
+
+.captionWrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.captionInput {
+  width: 100%;
+  min-height: 44px;
+  max-height: 100px;
+  padding: 10px 40px 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #2a2a2a;
+  color: #f0f0f0;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: none;
+  font-family: inherit;
+}
+.captionInput::placeholder {
+  color: #666;
+}
+.captionInput:focus {
+  outline: none;
+  border-color: var(--accent, #2aabee);
+  box-shadow: 0 0 0 2px rgba(42, 171, 238, 0.15);
+}
+
+.emojiBtn {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emojiBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ccc;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btnAdd {
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #2a2a2a;
+  color: #ddd;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btnAdd:hover {
+  background: #333;
+}
+
+.spacer { flex: 1; }
+
+.btnCancel {
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnCancel:hover {
+  color: #eee;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.btnSend {
+  padding: 9px 22px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent, #2aabee);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.btnSend:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: scale(1.02);
+}
+.btnSend:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.author {
+  margin: 10px 0 0;
+  font-size: 10px;
+  color: #555;
+  text-align: center;
+}
+
+/* ── Thumbnail strip (multi-attach) ── */
+.thumbStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #181818;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.thumb {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  background: #2a2a2a;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s;
+}
+.thumb:hover { border-color: rgba(255, 255, 255, 0.2); }
+.thumbActive { border-color: var(--accent, #2aabee); }
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumbIcon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #aaa;
+}
+
+.thumbSpoiler {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.thumbAdd {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #aaa;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.thumbAdd:hover:not(:disabled) {
+  border-color: var(--accent, #2aabee);
+  color: var(--accent, #2aabee);
+}
+.thumbAdd:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
