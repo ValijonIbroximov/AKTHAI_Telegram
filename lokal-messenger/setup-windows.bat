@@ -3,7 +3,8 @@ chcp 65001 >nul
 setlocal
 
 set "ROOT=%~dp0"
-set "PS1=%ROOT%deploy\setup_dev.ps1"
+if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "PS1=%ROOT%\deploy\setup_dev.ps1"
 
 title Lokal-Messenger — Windows sozlash
 
@@ -13,13 +14,13 @@ echo   Lokal-Messenger — Windows dev muhiti sozlash
 echo  ============================================================
 echo.
 echo  Bu skript quyidagilarni o'rnatadi / tayyorlaydi:
-echo    - Git, Go, Node.js  (winget orqali)
+echo    - Git, Go, Node.js  (avtomatik o'rnatiladi)
 echo    - PostgreSQL 16, Redis
 echo    - TLS sertifikat, JWT kalit, config.yaml
 echo    - npm install, go build
 echo    - Ma'lumotlar bazasi va admin foydalanuvchi
 echo.
-echo  Internet va ADMIN huquqi kerak.
+echo  Mavjud komponentlar o'tkazib yuboriladi, yo'qlar avtomatik o'rnatiladi.
 echo  Vaqt: taxminan 5-15 daqiqa (birinchi marta).
 echo.
 
@@ -40,10 +41,16 @@ if not exist "%PS1%" (
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" -ProjectRoot "%ROOT%"
+if errorlevel 1 (
+  echo.
+  echo  [X] Sozlash xato bilan tugadi. Log: C:\lokal-msg\tmp\
+  pause
+  exit /b 1
+)
 
 echo.
 echo  ============================================================
-echo   Agar yuqorida xato bo'lmasa — start-all.bat ni ishga tushiring
+echo   SOZLASH MUVAFFAQIYATLI!  start-all.bat ni ishga tushiring
 echo  ============================================================
 echo.
 pause

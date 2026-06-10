@@ -9,7 +9,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Faqat admin foydalanuvchi hisoblarini yarata oladi.
 -- Parol argon2id hash qilinib saqlanadi (clear text emas).
 -- ============================================================
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username                VARCHAR(64) UNIQUE NOT NULL,
     password_hash           TEXT NOT NULL,
@@ -27,14 +27,14 @@ CREATE TABLE users (
     CONSTRAINT users_role_check CHECK (role IN ('admin', 'user'))
 );
 
-CREATE INDEX idx_users_username ON users(username) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE is_active = TRUE;
 
 -- ============================================================
 -- Signal Protocol identifikator kalitlari
 -- Har bir foydalanuvchining doimiy identity public key'i shu yerda saqlanadi.
 -- Server faqat OCHIQ kalitlarni biladi.
 -- ============================================================
-CREATE TABLE identity_keys (
+CREATE TABLE IF NOT EXISTS identity_keys (
     user_id            UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     registration_id    INTEGER NOT NULL,
     identity_key       BYTEA NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE identity_keys (
 -- Imzolangan oldindan-kalit (Signed PreKey)
 -- Vaqtinchalik, mijoz tomonidan davriy yangilanadi.
 -- ============================================================
-CREATE TABLE signed_prekeys (
+CREATE TABLE IF NOT EXISTS signed_prekeys (
     id              BIGSERIAL PRIMARY KEY,
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     key_id          INTEGER NOT NULL,
@@ -55,13 +55,13 @@ CREATE TABLE signed_prekeys (
     UNIQUE (user_id, key_id)
 );
 
-CREATE INDEX idx_signed_prekeys_user ON signed_prekeys(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_signed_prekeys_user ON signed_prekeys(user_id, created_at DESC);
 
 -- ============================================================
 -- Bir martalik oldindan-kalitlar (One-Time PreKeys)
 -- X3DH almashish uchun foydalanilgach, used=TRUE qo'yiladi.
 -- ============================================================
-CREATE TABLE one_time_prekeys (
+CREATE TABLE IF NOT EXISTS one_time_prekeys (
     id              BIGSERIAL PRIMARY KEY,
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     key_id          INTEGER NOT NULL,
@@ -71,13 +71,13 @@ CREATE TABLE one_time_prekeys (
     UNIQUE (user_id, key_id)
 );
 
-CREATE INDEX idx_otpk_user_unused
+CREATE INDEX IF NOT EXISTS idx_otpk_user_unused
     ON one_time_prekeys(user_id) WHERE used = FALSE;
 
 -- ============================================================
 -- Suhbatlar (chats): shaxsiy yoki guruh
 -- ============================================================
-CREATE TABLE chats (
+CREATE TABLE IF NOT EXISTS chats (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type            VARCHAR(16) NOT NULL,
     title           VARCHAR(128),
@@ -89,7 +89,7 @@ CREATE TABLE chats (
 -- ============================================================
 -- Suhbat a'zolari
 -- ============================================================
-CREATE TABLE chat_members (
+CREATE TABLE IF NOT EXISTS chat_members (
     chat_id         UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role            VARCHAR(16) NOT NULL DEFAULT 'member',
@@ -99,13 +99,13 @@ CREATE TABLE chat_members (
     CONSTRAINT chat_members_role_check CHECK (role IN ('owner', 'admin', 'member'))
 );
 
-CREATE INDEX idx_chat_members_user ON chat_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_members_user ON chat_members(user_id);
 
 -- ============================================================
 -- Xabarlar — server faqat shifrlangan ciphertext'ni saqlaydi.
 -- Plain matnni server hech qachon ko'rmaydi.
 -- ============================================================
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id         UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     sender_id       UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
@@ -117,9 +117,9 @@ CREATE TABLE messages (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_messages_chat_time
+CREATE INDEX IF NOT EXISTS idx_messages_chat_time
     ON messages(chat_id, created_at DESC);
-CREATE INDEX idx_messages_undelivered
+CREATE INDEX IF NOT EXISTS idx_messages_undelivered
     ON messages(recipient_id, created_at)
     WHERE delivered_at IS NULL;
 
@@ -127,7 +127,7 @@ CREATE INDEX idx_messages_undelivered
 -- Shifrlangan fayl/medianing metama'lumoti.
 -- Faylning o'zi diskda shifrlangan blob sifatida saqlanadi.
 -- ============================================================
-CREATE TABLE files (
+CREATE TABLE IF NOT EXISTS files (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     uploader_id     UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
     storage_key     TEXT NOT NULL,
@@ -139,7 +139,7 @@ CREATE TABLE files (
 -- ============================================================
 -- Audit jurnali — admin amallari va xavfsizlik hodisalari yoziladi.
 -- ============================================================
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
     id              BIGSERIAL PRIMARY KEY,
     actor_id        UUID REFERENCES users(id) ON DELETE SET NULL,
     action          VARCHAR(64) NOT NULL,
@@ -149,5 +149,5 @@ CREATE TABLE audit_log (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_log_action_time
+CREATE INDEX IF NOT EXISTS idx_audit_log_action_time
     ON audit_log(action, created_at DESC);
