@@ -190,14 +190,15 @@ if (-not (Test-Path $redisExe)) {
     Invoke-WebRequest -Uri $redisUrl -OutFile $redisZip -UseBasicParsing
     New-Item -ItemType Directory -Force -Path "C:\Redis" | Out-Null
     Expand-Archive -Path $redisZip -DestinationPath "C:\Redis" -Force
-    @"
-bind 127.0.0.1
-protected-mode yes
-port 6379
-maxmemory 256mb
-maxmemory-policy allkeys-lru
-"@ | Out-File "C:\Redis\redis.conf" -Encoding ASCII
-    & $redisExe --service-install "C:\Redis\redis.conf" --service-name "Redis" 2>$null
+    $redisCfgPath = "C:\Redis\redis.conf"
+    Set-Content -Path $redisCfgPath -Encoding ASCII -Value @(
+        "bind 127.0.0.1",
+        "protected-mode yes",
+        "port 6379",
+        "maxmemory 256mb",
+        "maxmemory-policy allkeys-lru"
+    )
+    & $redisExe --service-install $redisCfgPath --service-name "Redis" 2>$null
     Start-Service "Redis" -ErrorAction SilentlyContinue
     Write-OK "Redis o'rnatildi"
 } else {
@@ -268,8 +269,8 @@ if (Test-Command go) {
         $env:PGPASSWORD = $DB_PASSWORD
         $cnt = (& $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -t -A -c "SELECT COUNT(*) FROM users WHERE username='admin';").Trim()
         if ($cnt -eq "0") {
-            & $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -c `
-                "INSERT INTO users (username, password_hash, display_name, role, must_change_password) VALUES ('admin', '$hash', 'Bosh Administrator', 'admin', FALSE);"
+            $insertSql = "INSERT INTO users (username, password_hash, display_name, role, must_change_password) VALUES ('admin', '$hash', 'Bosh Administrator', 'admin', FALSE);"
+            & $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -c $insertSql
             Write-OK "Admin: admin / $ADMIN_PASSWORD"
         } else {
             Write-OK "Admin allaqachon mavjud"
