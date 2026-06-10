@@ -1,15 +1,4 @@
 #Requires -RunAsAdministrator
-<#
-.SYNOPSIS
-    Git pull qilingan loyiha — Windows dev muhitini tayyorlaydi.
-    Go, Node.js, Git, PostgreSQL, Redis, TLS, config.yaml, npm/go deps.
-
-.PARAMETER ProjectRoot
-    lokal-messenger papkasi (setup-windows.bat avtomatik beradi).
-
-.EXAMPLE
-    .\setup_dev.ps1 -ProjectRoot "D:\loyiha\lokal-messenger"
-#>
 param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot)
 )
@@ -17,7 +6,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ── Sozlamalar ────────────────────────────────────────────────────────────────
 $DB_PASSWORD    = "STRONG_DB_PASSWORD"
 $ADMIN_PASSWORD = "AdminParol123!"
 $INSTALL_ROOT   = "C:\lokal-msg"
@@ -27,9 +15,8 @@ $PG_DATA        = "C:\Program Files\PostgreSQL\$PG_VERSION\data"
 $SERVER_DIR     = Join-Path $ProjectRoot "server"
 $CLIENT_DIR     = Join-Path $ProjectRoot "client"
 $DEPLOY_DIR     = Join-Path $ProjectRoot "deploy"
-$REPO_ROOT      = Split-Path -Parent $ProjectRoot
 
-function Write-Step { param($m) Write-Host "`n>> $m" -ForegroundColor Cyan }
+function Write-Step { param($m) Write-Host "" ; Write-Host ">> $m" -ForegroundColor Cyan }
 function Write-OK   { param($m) Write-Host "   [OK] $m" -ForegroundColor Green }
 function Write-Warn { param($m) Write-Host "   [!!] $m" -ForegroundColor Yellow }
 function Write-Err  { param($m) Write-Host "   [XX] $m" -ForegroundColor Red }
@@ -42,16 +29,16 @@ function Find-PgBin {
     return $null
 }
 
-function Test-Command { param($n) return [bool](Get-Command $n -ErrorAction SilentlyContinue) }
+function Test-Cmd { param($n) return [bool](Get-Command $n -ErrorAction SilentlyContinue) }
 
 function Install-WingetPackage {
     param([string]$Id, [string]$Label)
-    if (-not (Test-Command winget)) {
-        Write-Warn "winget yo'q — $Label qo'lda o'rnating"
+    if (-not (Test-Cmd winget)) {
+        Write-Warn "winget topilmadi - $Label ni qolda ornating"
         return $false
     }
-    $q = winget list --id $Id -e 2>$null
-    if ($LASTEXITCODE -eq 0 -and $q -match $Id) {
+    $listed = winget list --id $Id -e 2>$null
+    if ($LASTEXITCODE -eq 0 -and ($listed -match [regex]::Escape($Id))) {
         Write-OK "$Label allaqachon o'rnatilgan"
         return $true
     }
@@ -61,7 +48,7 @@ function Install-WingetPackage {
         Write-OK "$Label o'rnatildi"
         return $true
     }
-    Write-Warn "$Label winget orqali o'rnatilmadi — qo'lda o'rnating"
+    Write-Warn "$Label winget orqali o'rnatilmadi"
     return $false
 }
 
@@ -72,9 +59,9 @@ function Refresh-Path {
 }
 
 function Get-LanIPv4 {
-    foreach ($list in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
-        if ($list.OperationalStatus -ne "Up") { continue }
-        foreach ($addr in $list.GetIPProperties().UnicastAddresses) {
+    foreach ($nic in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        if ($nic.OperationalStatus -ne "Up") { continue }
+        foreach ($addr in $nic.GetIPProperties().UnicastAddresses) {
             if ($addr.Address.AddressFamily -ne "InterNetwork") { continue }
             $ip = $addr.Address.ToString()
             if ($ip -match '^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)' -and $ip -ne "127.0.0.1") {
@@ -85,10 +72,9 @@ function Get-LanIPv4 {
     return "127.0.0.1"
 }
 
-# ── Boshlash ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host " ============================================================" -ForegroundColor Cyan
-Write-Host "  Lokal-Messenger — Windows dev sozlash" -ForegroundColor Cyan
+Write-Host "  Lokal-Messenger - Windows dev sozlash" -ForegroundColor Cyan
 Write-Host " ============================================================" -ForegroundColor Cyan
 Write-Host "  Loyiha: $ProjectRoot"
 
@@ -97,30 +83,27 @@ if (-not (Test-Path $SERVER_DIR)) {
     exit 1
 }
 
-# ── 1. Asosiy dasturlar (winget) ─────────────────────────────────────────────
-Write-Step "1/9 — Git, Go, Node.js tekshirilmoqda..."
+Write-Step "1/9 - Git, Go, Node.js tekshirilmoqda..."
 Install-WingetPackage "Git.Git" "Git" | Out-Null
 Install-WingetPackage "Go.Go" "Go" | Out-Null
 Install-WingetPackage "OpenJS.NodeJS.LTS" "Node.js LTS" | Out-Null
 Refresh-Path
 
 foreach ($cmd in @("git", "go", "node", "npm")) {
-    if (Test-Command $cmd) { Write-OK "$cmd topildi" }
-    else { Write-Warn "$cmd topilmadi — terminalni yoping va qayta oching" }
+    if (Test-Cmd $cmd) { Write-OK "$cmd topildi" }
+    else { Write-Warn "$cmd topilmadi - terminalni yoping va qayta oching" }
 }
 
-# ── 2. Papkalar ───────────────────────────────────────────────────────────────
-Write-Step "2/9 — C:\lokal-msg papkalari..."
+Write-Step "2/9 - C:\lokal-msg papkalari..."
 @("$INSTALL_ROOT\tls", "$INSTALL_ROOT\tmp") | ForEach-Object {
     New-Item -ItemType Directory -Force -Path $_ | Out-Null
 }
-Write-OK "TLS va vaqtinchalik papkalar tayyor"
+Write-OK "TLS va tmp papkalar tayyor"
 
-# ── 3. PostgreSQL ─────────────────────────────────────────────────────────────
-Write-Step "3/9 — PostgreSQL..."
+Write-Step "3/9 - PostgreSQL..."
 $pgBinFound = Find-PgBin
 if (-not $pgBinFound -and -not (Test-Path "$PG_BIN\psql.exe")) {
-    Write-Warn "PostgreSQL topilmadi. O'rnatilmoqda (~3-5 daqiqa)..."
+    Write-Warn "PostgreSQL topilmadi. Ornatilmoqda (3-5 daqiqa)..."
     $pgInstaller = "$INSTALL_ROOT\tmp\pg_installer.exe"
     $pgUrl = "https://get.enterprisedb.com/postgresql/postgresql-$PG_VERSION.6-1-windows-x64.exe"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -142,34 +125,39 @@ if (-not $pgBinFound -and -not (Test-Path "$PG_BIN\psql.exe")) {
 $psqlExe = Join-Path $pgBinFound "psql.exe"
 if ($env:PATH -notlike "*$pgBinFound*") {
     $env:PATH = "$pgBinFound;$env:PATH"
-    [Environment]::SetEnvironmentVariable("PATH", "$pgBinFound;" + [Environment]::GetEnvironmentVariable("PATH", "Machine"), "Machine")
+    [Environment]::SetEnvironmentVariable(
+        "PATH",
+        "$pgBinFound;" + [Environment]::GetEnvironmentVariable("PATH", "Machine"),
+        "Machine"
+    )
 }
 
 $pgSvc = Get-Service "postgresql*" -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($pgSvc -and $pgSvc.Status -ne "Running") {
     Start-Service $pgSvc.Name
-    Start-Sleep 3
+    Start-Sleep -Seconds 3
     Write-OK "PostgreSQL xizmati ishga tushirildi"
 }
 
-# Baza va msg foydalanuvchi
 $env:PGPASSWORD = $DB_PASSWORD
-@"
-DO `$`$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'msg') THEN
-    CREATE USER msg WITH PASSWORD '$DB_PASSWORD';
-  ELSE
-    ALTER USER msg WITH PASSWORD '$DB_PASSWORD';
-  END IF;
-END `$`$;
-SELECT 'CREATE DATABASE lokal_messenger OWNER msg'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'lokal_messenger')\gexec
-GRANT ALL PRIVILEGES ON DATABASE lokal_messenger TO msg;
-"@ | & $psqlExe -U postgres -h 127.0.0.1 -p 5432 -d postgres 2>&1 | Out-Null
+$pgSetupSql = Join-Path $INSTALL_ROOT "tmp\pg_setup.sql"
+$pgSetupLines = @(
+    'DO $$',
+    'BEGIN',
+    '  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ''msg'') THEN',
+    "    CREATE USER msg WITH PASSWORD '$DB_PASSWORD';",
+    '  ELSE',
+    "    ALTER USER msg WITH PASSWORD '$DB_PASSWORD';",
+    '  END IF;',
+    'END $$;',
+    'SELECT ''CREATE DATABASE lokal_messenger OWNER msg''',
+    'WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ''lokal_messenger'')\gexec',
+    'GRANT ALL PRIVILEGES ON DATABASE lokal_messenger TO msg;'
+)
+Set-Content -Path $pgSetupSql -Encoding ASCII -Value $pgSetupLines
+& $psqlExe -U postgres -h 127.0.0.1 -p 5432 -d postgres -f $pgSetupSql 2>&1 | Out-Null
 Write-OK "lokal_messenger bazasi tayyor"
 
-# Migratsiyalar
 $migDir = Join-Path $SERVER_DIR "db\migrations"
 if (Test-Path $migDir) {
     Get-ChildItem $migDir -Filter "*.sql" | Sort-Object Name | ForEach-Object {
@@ -178,8 +166,7 @@ if (Test-Path $migDir) {
     Write-OK "SQL migratsiyalar bajarildi"
 }
 
-# ── 4. Redis ──────────────────────────────────────────────────────────────────
-Write-Step "4/9 — Redis..."
+Write-Step "4/9 - Redis..."
 $redisExe = "C:\Redis\redis-server.exe"
 $redisCli = "C:\Redis\redis-cli.exe"
 if (-not (Test-Path $redisExe)) {
@@ -206,14 +193,13 @@ if (-not (Test-Path $redisExe)) {
     if ($rSvc -and $rSvc.Status -ne "Running") { Start-Service "Redis" }
     Write-OK "Redis mavjud"
 }
-Start-Sleep 1
+Start-Sleep -Seconds 1
 if (Test-Path $redisCli) {
     $ping = & $redisCli ping 2>&1
     if ($ping -eq "PONG") { Write-OK "Redis: PONG" } else { Write-Warn "Redis javob bermadi" }
 }
 
-# ── 5. TLS + JWT ──────────────────────────────────────────────────────────────
-Write-Step "5/9 — TLS sertifikat va JWT..."
+Write-Step "5/9 - TLS sertifikat va JWT..."
 $certFile = "$INSTALL_ROOT\tls\server.crt"
 $keyFile  = "$INSTALL_ROOT\tls\server.key"
 $jwtFile  = "$INSTALL_ROOT\jwt.key"
@@ -224,12 +210,13 @@ $openssl  = @(
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if (-not $openssl) {
-    Write-Warn "OpenSSL (Git) topilmadi — TLS qo'lda yarating"
+    Write-Warn "OpenSSL (Git) topilmadi - TLS ni qolda yarating"
 } elseif (-not (Test-Path $certFile)) {
+    $san = "subjectAltName=DNS:server.lokal,IP:${lanIp},IP:127.0.0.1"
     & $openssl req -x509 -newkey rsa:4096 -nodes `
         -keyout $keyFile -out $certFile -days 3650 `
         -subj "/C=UZ/O=Lokal/CN=server.lokal" `
-        -addext "subjectAltName=DNS:server.lokal,IP:$lanIp,IP:127.0.0.1" 2>&1 | Out-Null
+        -addext $san 2>&1 | Out-Null
     Write-OK "TLS sertifikat yaratildi (LAN: $lanIp)"
 } else {
     Write-OK "TLS sertifikat mavjud"
@@ -244,8 +231,7 @@ if (-not (Test-Path $jwtFile)) {
     Write-OK "JWT kalit mavjud"
 }
 
-# ── 6. config.yaml ────────────────────────────────────────────────────────────
-Write-Step "6/9 — server/config.yaml..."
+Write-Step "6/9 - server/config.yaml..."
 $cfgSrc  = Join-Path $DEPLOY_DIR "config.windows.dev.yaml"
 $cfgDest = Join-Path $SERVER_DIR "config.yaml"
 if (-not (Test-Path $cfgSrc)) {
@@ -255,11 +241,10 @@ if (-not (Test-Path $cfgSrc)) {
 Copy-Item $cfgSrc $cfgDest -Force
 Write-OK "config.yaml nusxalandi"
 
-# ── 7. Admin foydalanuvchi ────────────────────────────────────────────────────
-Write-Step "7/9 — Admin foydalanuvchi..."
-if (Test-Command go) {
-    Push-Location $SERVER_DIR
+Write-Step "7/9 - Admin foydalanuvchi..."
+if (Test-Cmd go) {
     $hashtool = Join-Path $SERVER_DIR "cmd\hashtool\hashtool.exe"
+    Push-Location $SERVER_DIR
     if (-not (Test-Path $hashtool)) {
         go build -o $hashtool .\cmd\hashtool\ 2>&1 | Out-Null
     }
@@ -267,41 +252,40 @@ if (Test-Command go) {
     if (Test-Path $hashtool) {
         $hash = & $hashtool $ADMIN_PASSWORD
         $env:PGPASSWORD = $DB_PASSWORD
-        $cnt = (& $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -t -A -c "SELECT COUNT(*) FROM users WHERE username='admin';").Trim()
-        if ($cnt -eq "0") {
-            $insertSql = "INSERT INTO users (username, password_hash, display_name, role, must_change_password) VALUES ('admin', '$hash', 'Bosh Administrator', 'admin', FALSE);"
-            & $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -c $insertSql
-            Write-OK "Admin: admin / $ADMIN_PASSWORD"
+        $countSql = "SELECT COUNT(*) FROM users WHERE username='admin';"
+        $cnt = (& $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -t -A -c $countSql).Trim()
+        if ($cnt -eq '0') {
+            $adminSqlFile = Join-Path $INSTALL_ROOT "tmp\admin_insert.sql"
+            $adminLines = @(
+                "INSERT INTO users (username, password_hash, display_name, role, must_change_password)",
+                "VALUES ('admin', '$hash', 'Bosh Administrator', 'admin', FALSE);"
+            )
+            Set-Content -Path $adminSqlFile -Encoding ASCII -Value $adminLines
+            & $psqlExe -U msg -h 127.0.0.1 -d lokal_messenger -f $adminSqlFile 2>&1 | Out-Null
+            Write-OK "Admin yaratildi: admin / $ADMIN_PASSWORD"
         } else {
             Write-OK "Admin allaqachon mavjud"
         }
     }
 }
 
-# ── 8. Go va npm dependencies ─────────────────────────────────────────────────
-Write-Step "8/9 — Go mod va npm install..."
-if (Test-Command go) {
+Write-Step "8/9 - Go mod va npm install..."
+if (Test-Cmd go) {
     Push-Location $SERVER_DIR
     go mod download 2>&1 | Out-Null
     go build -o lokal-server.exe .\cmd\server\ 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) { Write-OK "lokal-server.exe qurildi" }
-    else { Write-Warn "go build xato — keyinroq qayta urinib ko'ring" }
+    else { Write-Warn "go build xato - keyinroq qayta urinib koring" }
     Pop-Location
 }
-if (Test-Command npm) {
+if (Test-Cmd npm) {
     Push-Location $CLIENT_DIR
-    if (-not (Test-Path "node_modules")) {
-        npm install 2>&1 | Out-Null
-        Write-OK "npm install bajarildi"
-    } else {
-        npm install 2>&1 | Out-Null
-        Write-OK "npm dependencies yangilandi"
-    }
+    npm install 2>&1 | Out-Null
+    Write-OK "npm install bajarildi"
     Pop-Location
 }
 
-# ── 9. hosts fayli ────────────────────────────────────────────────────────────
-Write-Step "9/9 — hosts fayli (server.lokal)..."
+Write-Step "9/9 - hosts fayli (server.lokal)..."
 $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
 $hostsContent = Get-Content $hostsPath -Raw -ErrorAction SilentlyContinue
 if ($hostsContent -notmatch "server\.lokal") {
@@ -311,17 +295,16 @@ if ($hostsContent -notmatch "server\.lokal") {
     Write-OK "hosts: server.lokal allaqachon mavjud"
 }
 
-# ── Yakun ─────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host " ============================================================" -ForegroundColor Green
 Write-Host "  SOZLASH TUGADI!" -ForegroundColor Green
 Write-Host " ============================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Keyingi qadam:" -ForegroundColor Yellow
-Write-Host "    1. Terminalni YOPING va qayta oching (PATH yangilanishi uchun)"
+Write-Host "    1. Terminalni yoping va qayta oching (PATH yangilanishi uchun)"
 Write-Host "    2. Ishga tushiring:  $ProjectRoot\start-all.bat"
 Write-Host "    3. Brauzer:          https://localhost:1420/"
 Write-Host "    4. Login:            admin / $ADMIN_PASSWORD"
 Write-Host ""
-Write-Host "  To'xtatish:           $ProjectRoot\stop-all.bat"
+Write-Host "  Toxtatish:            $ProjectRoot\stop-all.bat"
 Write-Host ""
