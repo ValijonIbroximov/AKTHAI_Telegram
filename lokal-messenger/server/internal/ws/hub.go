@@ -71,6 +71,7 @@ func (h *Hub) Run(ctx context.Context) {
 			_ = h.rdb.Set(ctx, "presence:"+c.UserID, time.Now().Unix(), 90*time.Second).Err()
 			log.Printf("[WS] 🟢 Ulanish: userID=%s | jami=%d", c.UserID, h.clientCount())
 			go h.flushPending(ctx, c)
+			go h.flushGroupKeyRequests(ctx, c)
 			go h.broadcastPresence(c.UserID, true, nil)
 			go h.sendInitialPresence(ctx, c)
 
@@ -190,10 +191,10 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 		"created_at": createdAt.UTC().Format(time.RFC3339Nano),
 	}
 
-	// Kanal xabarlari barcha a'zolarga uzatiladi
+	// Kanal va guruh xabarlari barcha a'zolarga uzatiladi
 	var chatType string
 	_ = h.db.QueryRow(ctx, `SELECT type FROM chats WHERE id = $1::uuid`, p.ChatID).Scan(&chatType)
-	if chatType == "channel" {
+	if chatType == "channel" || chatType == "group" {
 		rows, qErr := h.db.Query(ctx, `
 			SELECT user_id::text FROM chat_members
 			 WHERE chat_id = $1::uuid AND user_id <> $2::uuid
@@ -206,7 +207,7 @@ func (h *Hub) routeMessage(ctx context.Context, env inboundEnvelope) {
 					continue
 				}
 				if h.sendTo(memberID, "msg.recv", recvPayload) {
-					log.Printf("[WS] ✓ kanal msg.recv: to=%s", memberID)
+					log.Printf("[WS] ✓ %s msg.recv: to=%s", chatType, memberID)
 				}
 			}
 		}
@@ -265,6 +266,99 @@ func (h *Hub) flushPending(ctx context.Context, c *Client) {
 	if count > 0 {
 		log.Printf("[WS] 📬 flushPending: %d ta xabar yetkazildi: to=%s", count, c.UserID)
 	}
+}
+
+// NotifyGroupKeyNeeded — kaliti yo'q a'zoga kalit ulashish kerakligini kalit egalariga bildiradi.
+func (h *Hub) NotifyGroupKeyNeeded(ctx context.Context, chatID, memberID string) {
+	rows, err := h.db.Query(ctx, `
+		SELECT DISTINCT uid::text FROM (
+		  SELECT cm.user_id AS uid
+		    FROM chat_members cm
+		   WHERE cm.chat_id = $1::uuid
+		     AND cm.role IN ('owner', 'admin')
+		     AND cm.user_id <> $2::uuid
+		  UNION
+		  SELECT gke.user_id AS uid
+		    FROM group_key_envelopes gke
+		   WHERE gke.chat_id = $1::uuid
+		     AND gke.user_id <> $2::uuid
+		  UNION
+		  SELECT gkv.updated_by AS uid
+		    FROM group_key_vault gkv
+		   WHERE gkv.chat_id = $1::uuid
+		     AND gkv.updated_by IS NOT NULL
+		     AND gkv.updated_by <> $2::uuid
+		) holders
+	`, chatID, memberID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	payload := map[string]any{
+		"chat_id": chatID,
+		"user_id": memberID,
+	}
+	for rows.Next() {
+		var holderID string
+		if err := rows.Scan(&holderID); err != nil {
+			continue
+		}
+		h.sendTo(holderID, "group.key_needed", payload)
+	}
+}
+
+// flushGroupKeyRequests — kalit egasi ulanganda kutilayotgan so'rovlarni yuboradi.
+func (h *Hub) flushGroupKeyRequests(ctx context.Context, c *Client) {
+	rows, err := h.db.Query(ctx, `
+		SELECT r.chat_id::text, r.user_id::text
+		  FROM group_key_requests r
+		 WHERE (
+		   EXISTS (
+		     SELECT 1 FROM chat_members cm
+		      WHERE cm.chat_id = r.chat_id
+		        AND cm.user_id = $1::uuid
+		        AND cm.role IN ('owner', 'admin')
+		   )
+		   OR EXISTS (
+		     SELECT 1 FROM group_key_envelopes gke
+		      WHERE gke.chat_id = r.chat_id
+		        AND gke.user_id = $1::uuid
+		   )
+		   OR EXISTS (
+		     SELECT 1 FROM group_key_vault gkv
+		      WHERE gkv.chat_id = r.chat_id
+		        AND gkv.updated_by = $1::uuid
+		   )
+		 )
+		   AND r.user_id <> $1::uuid
+		 ORDER BY r.requested_at ASC
+		 LIMIT 100
+	`, c.UserID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var chatID, memberID string
+		if err := rows.Scan(&chatID, &memberID); err != nil {
+			continue
+		}
+		if h.sendTo(c.UserID, "group.key_needed", map[string]any{
+			"chat_id": chatID,
+			"user_id": memberID,
+		}) {
+			count++
+		}
+	}
+	if count > 0 {
+		log.Printf("[WS] 🔑 flushGroupKeyRequests: %d ta so'rov yuborildi: to=%s", count, c.UserID)
+	}
+}
+
+// NotifyGroupKeyReady — a'zoga guruh kaliti tayyor ekanini bildiradi.
+func (h *Hub) NotifyGroupKeyReady(userID, chatID string) {
+	h.sendTo(userID, "group.key_ready", map[string]any{"chat_id": chatID})
 }
 
 // sendTo — berilgan foydalanuvchiga JSON paket yuborishga uriniladi.

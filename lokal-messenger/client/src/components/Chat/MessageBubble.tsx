@@ -20,6 +20,7 @@ import {
   type MediaPayload,
 } from "@/crypto/fileCrypto";
 import { loadDecryptedMedia } from "@/utils/mediaLoader";
+import { groupSenderBubbleStyle } from "@/utils/groupSenderColor";
 import s from "./MessageBubble.module.css";
 
 // ── Yordamchi ─────────────────────────────────────────────────────────────
@@ -332,9 +333,11 @@ export function MediaContent({
 // ── MessageBubble (asosiy komponent) ──────────────────────────────────────
 
 interface Props {
-  message:      Message;
-  isOwn:        boolean;
-  onImageOpen?: (messageId: string) => void;
+  message:         Message;
+  isOwn:           boolean;
+  senderName?:     string;
+  senderColorKey?: string;
+  onImageOpen?:    (messageId: string) => void;
 }
 
 function visualMsgType(msg: Message): "image" | "video" | "file" | null {
@@ -344,7 +347,7 @@ function visualMsgType(msg: Message): "image" | "video" | "file" | null {
   return null;
 }
 
-export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
+export default function MessageBubble({ message, isOwn, senderName, senderColorKey, onImageOpen }: Props) {
   const pt = message.plaintext ?? "";
 
   const isSendError    = pt.startsWith("⚠ Yuborilmadi");
@@ -352,6 +355,10 @@ export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
   const isMissing      = pt === MISSING_PLAINTEXT_LABEL;
   const isPending      = pt === PENDING_DECRYPT_LABEL;
   const isUploading    = pt.startsWith("⏳");
+
+  const peerStyle = !isOwn && senderColorKey && !isSendError && !isDecryptError && !isMissing
+    ? groupSenderBubbleStyle(senderColorKey)
+    : null;
 
   // Media xabar: image / video / file + MediaPayload JSON
   const visualType = visualMsgType(message);
@@ -370,7 +377,18 @@ export default function MessageBubble({ message, isOwn, onImageOpen }: Props) {
 
   return (
     <div className={`${s.wrap} ${isOwn ? s.own : s.incoming}`}>
-      <div className={bubbleClass}>
+      <div
+        className={bubbleClass}
+        style={peerStyle ? {
+          background:  peerStyle.background,
+          borderColor: peerStyle.borderColor,
+        } : undefined}
+      >
+        {senderName && !isOwn && (
+          <div className={s.senderName} style={peerStyle ? { color: peerStyle.nameColor } : undefined}>
+            {senderName}
+          </div>
+        )}
 
         {/* ── Xato holatlari ────────────────────────────────────────────── */}
         {(isSendError || isDecryptError) ? (

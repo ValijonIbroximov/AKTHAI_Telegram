@@ -93,11 +93,13 @@ func (h *Handlers) Me(c *fiber.Ctx) error {
 	role, _ := c.Locals("role").(string)
 
 	var hideLastSeen bool
-	var canCreateChannel bool
+	var canCreateChannel, canCreateGroup bool
 	if err := h.deps.DB.QueryRow(c.Context(),
-		`SELECT COALESCE(hide_last_seen, FALSE), COALESCE(can_create_channel, TRUE)
+		`SELECT COALESCE(hide_last_seen, FALSE),
+		        COALESCE(can_create_channel, TRUE),
+		        COALESCE(can_create_group, TRUE)
 		   FROM users WHERE id = $1::uuid`, uid,
-	).Scan(&hideLastSeen, &canCreateChannel); err != nil {
+	).Scan(&hideLastSeen, &canCreateChannel, &canCreateGroup); err != nil {
 		return internalError("[ME] users query", err)
 	}
 
@@ -106,6 +108,7 @@ func (h *Handlers) Me(c *fiber.Ctx) error {
 		"role":               role,
 		"hide_last_seen":     hideLastSeen,
 		"can_create_channel": canCreateChannel,
+		"can_create_group":   canCreateGroup,
 	})
 }
 

@@ -4,6 +4,8 @@ import { fcToB64, fcFromB64 } from "@/crypto/fileCrypto";
 
 /** Server va mijoz o'rtasidagi kanal xabar turi */
 export const CHANNEL_MSG_TYPE = 10;
+/** Guruh xabarlari — kanal kabi umumiy AES kalit */
+export const GROUP_MSG_TYPE = 11;
 
 const STORAGE_PREFIX = "lokal-channel-keys:";
 
@@ -102,4 +104,22 @@ export async function decryptChannelPayload(
 
 export function isChannelMsgType(n: number): boolean {
   return n === CHANNEL_MSG_TYPE;
+}
+
+export function isGroupMsgType(n: number): boolean {
+  return n === GROUP_MSG_TYPE;
+}
+
+export function isBroadcastMsgType(n: number): boolean {
+  return isChannelMsgType(n) || isGroupMsgType(n);
+}
+
+export function exportChatKeyB64(userId: string, chatId: string): string | null {
+  return readKeyMap(userId)[chatId] ?? null;
+}
+
+export function importChatKeyB64(userId: string, chatId: string, keyB64: string): void {
+  const map = readKeyMap(userId);
+  map[chatId] = keyB64;
+  writeKeyMap(userId, map);
 }

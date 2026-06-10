@@ -98,6 +98,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		       COALESCE(display_short, ''),
 		       is_active,
 		       COALESCE(can_create_channel, TRUE),
+		       COALESCE(can_create_group, TRUE),
 		       (avatar_path IS NOT NULL AND avatar_path <> '')
 		FROM users
 		ORDER BY created_at ASC
@@ -122,6 +123,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 		DisplayShort     string `json:"display_short"`
 		IsActive         bool   `json:"is_active"`
 		CanCreateChannel bool   `json:"can_create_channel"`
+		CanCreateGroup   bool   `json:"can_create_group"`
 		HasAvatar        bool   `json:"has_avatar"`
 	}
 
@@ -132,7 +134,7 @@ func (h *Handlers) AdminListUsers(c *fiber.Ctx) error {
 			&u.ID, &u.Username, &u.DisplayName, &u.Role,
 			&u.RankTitle, &u.UnitCode,
 			&u.OkrugName, &u.OkrugCode, &u.UnitName, &u.DivisionName, &u.DivisionCode, &u.DisplayShort,
-			&u.IsActive, &u.CanCreateChannel, &u.HasAvatar,
+			&u.IsActive, &u.CanCreateChannel, &u.CanCreateGroup, &u.HasAvatar,
 		); err != nil {
 			return err
 		}
@@ -160,6 +162,7 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 		DivisionCode     string `json:"division_code"`
 		DisplayShort     string `json:"display_short"`
 		CanCreateChannel *bool  `json:"can_create_channel"`
+		CanCreateGroup   *bool  `json:"can_create_group"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "so'rov noto'g'ri")
@@ -179,13 +182,14 @@ func (h *Handlers) AdminUpdateUser(c *fiber.Ctx) error {
 			division_name      = NULLIF($9, ''),
 			division_code      = NULLIF($10,''),
 			display_short      = NULLIF($11,''),
-			can_create_channel = COALESCE($12, can_create_channel)
+			can_create_channel = COALESCE($12, can_create_channel),
+			can_create_group   = COALESCE($13, can_create_group)
 		WHERE id = $1::uuid`,
 		targetID, req.DisplayName, req.Role,
 		req.RankTitle, req.UnitCode,
 		req.OkrugName, req.OkrugCode, req.UnitName,
 		req.DivisionName, req.DivisionCode, req.DisplayShort,
-		req.CanCreateChannel,
+		req.CanCreateChannel, req.CanCreateGroup,
 	)
 	if err != nil {
 		return internalError("AdminUpdateUser", err)

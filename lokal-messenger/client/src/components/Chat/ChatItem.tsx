@@ -35,7 +35,10 @@ function fmtTime(iso: string): string {
 interface Props { chat: Chat; active: boolean; onSelect(): void; }
 
 export default function ChatItem({ chat, active, onSelect }: Props) {
-  const preview  = chat.last_message?.preview ?? "";
+  const preview  = chat.last_message?.preview
+    ?? (chat.type === "group" && chat.member_count
+      ? `${chat.member_count} a'zo`
+      : "");
   const time     = chat.last_message ? fmtTime(chat.last_message.created_at) : "";
   const [c1, c2] = gradientFor(chat.title);
 

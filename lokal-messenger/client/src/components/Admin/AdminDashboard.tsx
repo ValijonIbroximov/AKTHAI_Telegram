@@ -68,6 +68,7 @@ interface UserForm {
   unit_name: string; division_name: string; division_code: string;
   display_short: string;
   can_create_channel: boolean;
+  can_create_group:   boolean;
 }
 const EMPTY_FORM: UserForm = {
   username: "", display_name: "", role: "user", password: "",
@@ -75,6 +76,7 @@ const EMPTY_FORM: UserForm = {
   okrug_name: "", okrug_code: "",
   unit_name: "", division_name: "", division_code: "", display_short: "",
   can_create_channel: true,
+  can_create_group:   true,
 };
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -187,17 +189,30 @@ function UserModal({
                 <input className={s.input} value={form.display_short} onChange={f("display_short")} placeholder="k-nt Ibroximov V.A."/>
               </div>
               {!isNew && (
-                <div className={s.field} style={{ gridColumn: "1 / -1" }}>
-                  <label className={s.label}>
-                    <input
-                      type="checkbox"
-                      checked={form.can_create_channel}
-                      onChange={(e) => setForm((p) => ({ ...p, can_create_channel: e.target.checked }))}
-                      disabled={busy || creating}
-                    />
-                    {" "}Kanal yaratishga ruxsat
-                  </label>
-                </div>
+                <>
+                  <div className={s.field} style={{ gridColumn: "1 / -1" }}>
+                    <label className={s.label}>
+                      <input
+                        type="checkbox"
+                        checked={form.can_create_channel}
+                        onChange={(e) => setForm((p) => ({ ...p, can_create_channel: e.target.checked }))}
+                        disabled={busy || creating}
+                      />
+                      {" "}Kanal yaratishga ruxsat
+                    </label>
+                  </div>
+                  <div className={s.field} style={{ gridColumn: "1 / -1" }}>
+                    <label className={s.label}>
+                      <input
+                        type="checkbox"
+                        checked={form.can_create_group}
+                        onChange={(e) => setForm((p) => ({ ...p, can_create_group: e.target.checked }))}
+                        disabled={busy || creating}
+                      />
+                      {" "}Guruh yaratishga ruxsat
+                    </label>
+                  </div>
+                </>
               )}
             </div>
           </fieldset>
@@ -445,6 +460,7 @@ function UsersSection({ token }: { token: string }) {
     division_name: u.division_name ?? "", division_code: u.division_code ?? "",
     display_short: u.display_short ?? "",
     can_create_channel: u.can_create_channel !== false,
+    can_create_group:   u.can_create_group !== false,
   });
 
   return (

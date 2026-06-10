@@ -1,5 +1,5 @@
 // Server bilan HTTP/REST muloqot qiluvchi qatlam.
-import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage, UserProfile, ProfileEditPolicy } from "@/types";
+import type { LoginResponse, User, Chat, Message, KeyBundle, RawChat, RawMessage, UserProfile, ProfileEditPolicy, GroupMember, GroupInviteLink } from "@/types";
 import { getApiBaseUrl } from "@/config/devServer";
 
 export { getApiBaseUrl };
@@ -80,6 +80,7 @@ interface MeResponse {
   role:               string;
   hide_last_seen:     boolean;
   can_create_channel?: boolean;
+  can_create_group?:   boolean;
 }
 
 export const userApi = {
@@ -245,10 +246,11 @@ export const adminApi = {
 // msg_type raqamlarni string ga o'girish:
 //   1 = text (SignalMessage)
 //   2 = file
-//   3 = text ham (PreKeySignalMessage — ciphertext ichida kalit almashinuvi yashiringan)
+//   3 = text ham (PreKeySignalMessage)
+//  10 = kanal, 11 = guruh (AES-GCM broadcast)
 function msgTypeNum(n: number): Message["msg_type"] {
   if (n === 2) return "file";
-  return "text"; // 1 va 3 ikkisi ham text — deshifrlash adapter ichida avtomatik
+  return "text";
 }
 
 function normalizeCreatedAt(v: unknown): string {
@@ -286,6 +288,8 @@ export const chatApi = {
         : null,
       unread_count: c.unread ?? 0,
       updated_at:   c.last_time ?? new Date().toISOString(),
+      member_count: c.member_count ?? null,
+      my_role:      c.my_role ?? null,
     }));
   },
 
@@ -306,6 +310,86 @@ export const chatApi = {
       title,
       description: description ?? "",
     }),
+
+  createGroup: async (
+    token:       string,
+    title:       string,
+    memberIds:   string[],
+    keyEnvelopes: { user_id: string; ciphertext: string }[],
+  ): Promise<{ id: string; existing: boolean }> =>
+    request<{ id: string; existing: boolean }>("POST", "/chats", token, {
+      type:          "group",
+      title,
+      member_ids:    memberIds,
+      key_envelopes: keyEnvelopes,
+    }),
+
+  listGroupMembers: (token: string, chatId: string) =>
+    request<GroupMember[]>("GET", `/chats/${chatId}/members`, token),
+
+  addGroupMember: (
+    token: string,
+    chatId: string,
+    userId: string,
+    keyEnvelopes: { user_id: string; ciphertext: string }[],
+  ) =>
+    request<void>("POST", `/chats/${chatId}/members`, token, {
+      user_id: userId,
+      key_envelopes: keyEnvelopes,
+    }),
+
+  removeGroupMember: (token: string, chatId: string, userId: string) =>
+    request<void>("DELETE", `/chats/${chatId}/members/${userId}`, token),
+
+  updateGroupMemberRole: (
+    token: string,
+    chatId: string,
+    userId: string,
+    role: "admin" | "member",
+  ) =>
+    request<{ role: string }>("PATCH", `/chats/${chatId}/members/${userId}`, token, { role }),
+
+  getGroupKeyEnvelope: (token: string, chatId: string) =>
+    request<{ ciphertext: string; from_user_id: string }>("GET", `/chats/${chatId}/group-key`, token),
+
+  getGroupKeyVault: (token: string, chatId: string) =>
+    request<{ key_material: string }>("GET", `/chats/${chatId}/group-key/vault`, token),
+
+  putGroupKeyVault: (token: string, chatId: string, keyMaterial: string) =>
+    request<void>("PUT", `/chats/${chatId}/group-key/vault`, token, { key_material: keyMaterial }),
+
+  requestGroupKey: (token: string, chatId: string) =>
+    request<void>("POST", `/chats/${chatId}/group-key/request`, token),
+
+  putGroupKeyEnvelopes: (
+    token: string,
+    chatId: string,
+    envelopes: { user_id: string; ciphertext: string }[],
+  ) =>
+    request<void>("PUT", `/chats/${chatId}/group-key`, token, { envelopes }),
+
+  createGroupInvite: (
+    token: string,
+    chatId: string,
+    opts?: { expires_hours?: number; max_uses?: number },
+  ) =>
+    request<{ token: string; chat_id: string }>("POST", `/chats/${chatId}/invite`, token, opts ?? {}),
+
+  listGroupInvites: (token: string, chatId: string) =>
+    request<GroupInviteLink[]>("GET", `/chats/${chatId}/invite`, token),
+
+  revokeGroupInvite: (token: string, chatId: string, inviteToken: string) =>
+    request<void>("DELETE", `/chats/${chatId}/invite/${inviteToken}`, token),
+
+  previewGroupInvite: (token: string, inviteToken: string) =>
+    request<{ chat_id: string; title: string; member_count: number; already_member: boolean }>(
+      "GET", `/invite/${inviteToken}`, token,
+    ),
+
+  joinGroupInvite: (token: string, inviteToken: string) =>
+    request<{ chat_id: string; joined: boolean; existing: boolean }>(
+      "POST", `/invite/${inviteToken}/join`, token,
+    ),
 
   history: async (token: string, chatId: string, limit = 100): Promise<Message[]> => {
     const rows = await chatApi.historyRaw(token, chatId, limit);

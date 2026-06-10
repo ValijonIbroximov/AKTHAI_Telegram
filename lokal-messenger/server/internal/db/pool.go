@@ -46,10 +46,46 @@ func ensureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 		ALTER TABLE users ADD COLUMN IF NOT EXISTS display_short VARCHAR(64);
 		ALTER TABLE users
 		    ADD COLUMN IF NOT EXISTS can_create_channel BOOLEAN NOT NULL DEFAULT TRUE;
+		ALTER TABLE users
+		    ADD COLUMN IF NOT EXISTS can_create_group BOOLEAN NOT NULL DEFAULT TRUE;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path TEXT;
 
 		ALTER TABLE chats ADD COLUMN IF NOT EXISTS description TEXT;
 		ALTER TABLE chats DROP CONSTRAINT IF EXISTS chats_type_check;
 		ALTER TABLE chats ADD CONSTRAINT chats_type_check
-		    CHECK (type IN ('private', 'group', 'channel'));`)
+		    CHECK (type IN ('private', 'group', 'channel'));
+
+		CREATE TABLE IF NOT EXISTS group_key_envelopes (
+		    chat_id       UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+		    user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		    from_user_id  UUID REFERENCES users(id) ON DELETE SET NULL,
+		    ciphertext    TEXT NOT NULL,
+		    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		    PRIMARY KEY (chat_id, user_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS group_invite_links (
+		    token       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+		    chat_id     UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+		    created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+		    expires_at  TIMESTAMPTZ,
+		    max_uses    INTEGER,
+		    use_count   INTEGER NOT NULL DEFAULT 0,
+		    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS group_key_vault (
+		    chat_id      UUID PRIMARY KEY REFERENCES chats(id) ON DELETE CASCADE,
+		    key_material TEXT NOT NULL,
+		    updated_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+		    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS group_key_requests (
+		    chat_id      UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+		    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		    PRIMARY KEY (chat_id, user_id)
+		);`)
 	return err
 }

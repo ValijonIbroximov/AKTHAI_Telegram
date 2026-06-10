@@ -122,6 +122,8 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
             peer.display_name      AS peer_name,
             peer.last_seen_at      AS peer_last_seen,
             peer.hide_last_seen    AS peer_hide_last_seen,
+            (SELECT COUNT(*)::int FROM chat_members cm3 WHERE cm3.chat_id = ch.id) AS member_count,
+            cm.role AS my_role,
             (SELECT MAX(created_at) FROM messages m WHERE m.chat_id = ch.id) AS last_time,
             (SELECT COUNT(*) FROM messages m
               WHERE m.chat_id = ch.id AND m.recipient_id = $1::uuid AND m.read_at IS NULL) AS unread
@@ -148,9 +150,11 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 		var title, description, peerID, peerName *string
 		var peerLastSeen *time.Time
 		var peerHideLastSeen *bool
+		var memberCount int
+		var myRole string
 		var lastTime any
 		var unread int
-		if err := rows.Scan(&id, &ctype, &title, &description, &peerID, &peerName, &peerLastSeen, &peerHideLastSeen, &lastTime, &unread); err != nil {
+		if err := rows.Scan(&id, &ctype, &title, &description, &peerID, &peerName, &peerLastSeen, &peerHideLastSeen, &memberCount, &myRole, &lastTime, &unread); err != nil {
 			log.Printf("[CHAT] ListChats scan xatoligi: %v", err)
 			continue
 		}
@@ -174,6 +178,12 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 		if description != nil && *description != "" {
 			item["description"] = *description
 		}
+		if ctype == "group" || ctype == "channel" {
+			item["member_count"] = memberCount
+		}
+		if ctype == "group" && myRole != "" {
+			item["my_role"] = myRole
+		}
 		if peerID != nil && *peerID != "" {
 			item["peer_online"] = h.deps.Hub.IsOnline(*peerID)
 			if peerHideLastSeen != nil && *peerHideLastSeen {
@@ -191,10 +201,12 @@ func (h *Handlers) ListChats(c *fiber.Ctx) error {
 }
 
 type createChatRequest struct {
-	Type        string `json:"type"`         // 'private', 'group' yoki 'channel'
-	PeerUserID  string `json:"peer_user_id"` // shaxsiy suhbat uchun
-	Title       string `json:"title"`        // guruh/kanal uchun
-	Description string `json:"description"`  // kanal tavsifi (ixtiyoriy)
+	Type         string             `json:"type"` // 'private', 'group' yoki 'channel'
+	PeerUserID   string             `json:"peer_user_id"`
+	Title        string             `json:"title"`
+	Description  string             `json:"description"`
+	MemberIDs    []string           `json:"member_ids"`
+	KeyEnvelopes []keyEnvelopeInput `json:"key_envelopes"`
 }
 
 // CreateChat — yangi suhbat yaratiladi. Shaxsiy suhbat allaqachon mavjud bo'lsa,
@@ -222,6 +234,21 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 		}
 		if !canCreate {
 			return fiber.NewError(fiber.StatusForbidden, "kanal yaratish huquqingiz cheklangan")
+		}
+	}
+
+	if req.Type == "group" {
+		if strings.TrimSpace(req.Title) == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "guruh nomi talab qilinadi")
+		}
+		var canCreate bool
+		if err := h.deps.DB.QueryRow(c.Context(),
+			`SELECT COALESCE(can_create_group, TRUE) FROM users WHERE id = $1::uuid`, selfID,
+		).Scan(&canCreate); err != nil {
+			return internalError("CreateChat can_create_group", err)
+		}
+		if !canCreate {
+			return fiber.NewError(fiber.StatusForbidden, "guruh yaratish huquqingiz cheklangan")
 		}
 	}
 
@@ -281,9 +308,39 @@ func (h *Handlers) CreateChat(c *fiber.Ctx) error {
 		}
 	}
 
+	// Guruh a'zolari
+	if req.Type == "group" {
+		for _, mid := range req.MemberIDs {
+			if mid == "" || mid == selfID {
+				continue
+			}
+			var active bool
+			if err := tx.QueryRow(c.Context(),
+				`SELECT is_active FROM users WHERE id = $1::uuid`, mid,
+			).Scan(&active); err != nil || !active {
+				continue
+			}
+			_, err = tx.Exec(c.Context(), `
+				INSERT INTO chat_members (chat_id, user_id, role)
+				VALUES ($1::uuid, $2::uuid, 'member')
+				ON CONFLICT DO NOTHING
+			`, chatID, mid)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	if err := tx.Commit(c.Context()); err != nil {
 		return err
 	}
+
+	if req.Type == "group" && len(req.KeyEnvelopes) > 0 {
+		if err := storeKeyEnvelopes(c, h, chatID, selfID, req.KeyEnvelopes); err != nil {
+			return internalError("CreateChat key_envelopes", err)
+		}
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": chatID, "existing": false})
 }
 
@@ -452,7 +509,7 @@ func (h *Handlers) ChatHistory(c *fiber.Ctx) error {
               FROM messages m
              WHERE m.chat_id = $1::uuid
                AND (
-                 EXISTS (SELECT 1 FROM chats c WHERE c.id = m.chat_id AND c.type = 'channel')
+                 EXISTS (SELECT 1 FROM chats c WHERE c.id = m.chat_id AND c.type IN ('channel', 'group'))
                  OR m.sender_id = $2::uuid OR m.recipient_id = $2::uuid
                )
              ORDER BY m.created_at DESC

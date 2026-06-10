@@ -357,3 +357,11 @@
 }
 .mediaDocBtn:hover:not(:disabled) { opacity: 0.85; }
 .mediaDocBtn:disabled { opacity: 0.45; cursor: default; }
+
+.senderName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+  line-height: 1.2;
+}

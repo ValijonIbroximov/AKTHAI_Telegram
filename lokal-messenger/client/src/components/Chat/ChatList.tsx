@@ -24,7 +24,7 @@ function avatarColor(name: string): string {
 
 /** Ro'yxatda ko'rsatiladigan suhbatlar (kanallar xabarsiz ham chiqadi) */
 function chatVisibleInList(chat: Chat): boolean {
-  if (chat.type === "channel") return true;
+  if (chat.type === "channel" || chat.type === "group") return true;
   return chat.last_message != null;
 }
 

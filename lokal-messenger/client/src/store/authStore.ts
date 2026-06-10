@@ -76,6 +76,7 @@ interface AuthState {
   error:             string | null;
   uiMode:            AuthUIMode;
   canCreateChannel:  boolean;
+  canCreateGroup:    boolean;
   /** switch_unlock rejimida qaysi akkauntga o'tilmoqchi */
   unlockTargetId:    string | null;
 
@@ -120,6 +121,7 @@ async function activateSession(
       role:               account.role,
       mustChangePassword: account.mustChangePassword,
       canCreateChannel:   me.can_create_channel !== false,
+      canCreateGroup:     me.can_create_group !== false,
       uiMode:             "login",
       unlockTargetId:     null,
       error:              null,
@@ -223,6 +225,7 @@ export const useAuthStore = create<AuthState>()(
       uiMode:             "login",
       unlockTargetId:     null,
       canCreateChannel:   true,
+      canCreateGroup:     true,
 
       login: async (username, password) => {
         set({ loading: true, error: null });

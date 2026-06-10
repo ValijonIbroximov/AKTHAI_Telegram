@@ -25,11 +25,19 @@ import { chatApi, keysApi, userApi, mediaApi } from "@/api/http";
 import { encryptFile, parseMediaPayload, fcToB64, mediaKindFromMime, type MediaPayload } from "@/crypto/fileCrypto";
 import {
   CHANNEL_MSG_TYPE,
+  GROUP_MSG_TYPE,
   encryptChannelPayload,
   decryptChannelPayload,
   initChannelKey,
-  isChannelMsgType,
+  getChannelKey,
+  exportChatKeyB64,
+  importChatKeyB64,
+  isBroadcastMsgType,
 } from "@/crypto/channelCrypto";
+import {
+  buildGroupKeyEnvelopes,
+  installGroupKeyFromEnvelope,
+} from "@/crypto/groupKeyShare";
 import { albumPreviewText } from "@/utils/messageAlbum";
 import { wsClient } from "@/api/ws";
 import {
@@ -55,6 +63,7 @@ import {
 import type {
   Chat, Message, User,
   WsEvent, WsMsgRecv, WsMsgAck, WsMsgRead, WsSessionRekeyRequest,
+  WsGroupKeyNeeded, WsGroupKeyReady,
 } from "@/types";
 
 interface ChatState {
@@ -74,6 +83,7 @@ interface ChatState {
   closeChat:        () => void;
   createChat:       (peer: User, token: string) => Promise<void>;
   createChannel:    (title: string, description: string, token: string) => Promise<void>;
+  createGroup:      (title: string, memberIds: string[], token: string) => Promise<void>;
   sendMessage:      (chatId: string, recipientId: string, plaintext: string, token: string) => Promise<void>;
   sendFileMessage:  (
     chatId: string,
@@ -202,8 +212,121 @@ async function sendSessionSyncPreKey(
   console.log(`[E2EE] 🔑 PreKey sinxron xabari yuborildi → ${peerId}`);
 }
 
-function isChannelChat(chatId: string): boolean {
-  return useChatStore.getState().chats.find((c) => c.id === chatId)?.type === "channel";
+function isGroupChat(chatId: string): boolean {
+  return useChatStore.getState().chats.find((c) => c.id === chatId)?.type === "group";
+}
+
+function isBroadcastChat(chatId: string): boolean {
+  const t = useChatStore.getState().chats.find((c) => c.id === chatId)?.type;
+  return t === "channel" || t === "group";
+}
+
+async function tryInstallGroupKeyFromVault(
+  authUserId: string,
+  chatId: string,
+  token: string,
+): Promise<boolean> {
+  try {
+    const vault = await chatApi.getGroupKeyVault(token, chatId);
+    if (!vault.key_material) return false;
+    importChatKeyB64(authUserId, chatId, vault.key_material);
+    return getChannelKey(authUserId, chatId) !== null;
+  } catch {
+    return false;
+  }
+}
+
+async function uploadGroupKeyVault(chatId: string, token: string): Promise<void> {
+  const authUserId = useAuthStore.getState().userId;
+  if (!authUserId || !isGroupChat(chatId)) return;
+  const keyB64 = exportChatKeyB64(authUserId, chatId);
+  if (!keyB64) return;
+  try {
+    await chatApi.putGroupKeyVault(token, chatId, keyB64);
+  } catch (e) {
+    console.warn("[E2EE] vault upload:", e);
+  }
+}
+
+async function tryInstallGroupKeyFromServer(
+  authUserId: string,
+  chatId: string,
+  token: string,
+): Promise<boolean> {
+  try {
+    const env = await chatApi.getGroupKeyEnvelope(token, chatId);
+    if (!env.from_user_id) return false;
+    return installGroupKeyFromEnvelope(
+      authUserId, chatId, env.from_user_id, env.ciphertext,
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function ensureGroupKey(chatId: string, token: string): Promise<boolean> {
+  const authUserId = useAuthStore.getState().userId;
+  if (!authUserId || !isGroupChat(chatId)) return true;
+  if (getChannelKey(authUserId, chatId)) return true;
+
+  if (await tryInstallGroupKeyFromVault(authUserId, chatId, token)) {
+    return true;
+  }
+  if (await tryInstallGroupKeyFromServer(authUserId, chatId, token)) {
+    return true;
+  }
+
+  try {
+    await chatApi.requestGroupKey(token, chatId);
+  } catch {
+    /* so'rov yuborilmadi */
+  }
+
+  if (await tryInstallGroupKeyFromVault(authUserId, chatId, token)) {
+    return true;
+  }
+  if (await tryInstallGroupKeyFromServer(authUserId, chatId, token)) {
+    return true;
+  }
+
+  return getChannelKey(authUserId, chatId) !== null;
+}
+
+/** Kalit mavjud a'zo: vault + konvertlarni yangilaydi */
+async function syncGroupKeysToMissingMembers(chatId: string, token: string): Promise<void> {
+  const authUserId = useAuthStore.getState().userId;
+  if (!authUserId || !isGroupChat(chatId)) return;
+  if (!getChannelKey(authUserId, chatId)) return;
+
+  await uploadGroupKeyVault(chatId, token);
+
+  try {
+    const members = await chatApi.listGroupMembers(token, chatId);
+    const missing = members
+      .filter((m) => m.user_id !== authUserId && !m.has_key_envelope)
+      .map((m) => m.user_id);
+    if (missing.length === 0) return;
+
+    const envelopes = await buildGroupKeyEnvelopes(authUserId, chatId, missing, token);
+    if (envelopes.length > 0) {
+      await chatApi.putGroupKeyEnvelopes(token, chatId, envelopes);
+      console.log(`[E2EE] Guruh kaliti ${envelopes.length} ta a'zoga yuborildi`);
+    }
+  } catch (e) {
+    console.warn("[E2EE] syncGroupKeys:", e);
+  }
+}
+
+async function shareGroupKeyWith(chatId: string, targetUserId: string, token: string): Promise<void> {
+  await syncGroupKeysToMissingMembers(chatId, token);
+  if (!getChannelKey(useAuthStore.getState().userId ?? "", chatId)) return;
+  const authUserId = useAuthStore.getState().userId;
+  if (!authUserId || targetUserId === authUserId) return;
+  if (!getChannelKey(authUserId, chatId)) return;
+  const envelopes = await buildGroupKeyEnvelopes(authUserId, chatId, [targetUserId], token);
+  if (envelopes.length > 0) {
+    await chatApi.putGroupKeyEnvelopes(token, chatId, envelopes);
+  }
 }
 
 /** Kanal yoki Signal — xabar shifrlash */
@@ -214,10 +337,19 @@ async function prepareOutgoingPayload(
   token:       string,
 ): Promise<{ ciphertext: string; msgTypeNum: number; recipientId: string }> {
   const authUserId = useAuthStore.getState().userId;
-  if (isChannelChat(chatId) && authUserId) {
+  if (isBroadcastChat(chatId) && authUserId) {
+    if (isGroupChat(chatId)) {
+      const hasKey = await ensureGroupKey(chatId, token);
+      if (!hasKey) {
+        throw new Error(
+          "Guruh shifrlash kaliti topilmadi. Guruh egasi bir marta guruhni ochishi kerak (kalit serverga saqlanadi).",
+        );
+      }
+    }
+    const msgTypeNum = isGroupChat(chatId) ? GROUP_MSG_TYPE : CHANNEL_MSG_TYPE;
     return {
       ciphertext:  await encryptChannelPayload(authUserId, chatId, plaintext),
-      msgTypeNum:  CHANNEL_MSG_TYPE,
+      msgTypeNum,
       recipientId: authUserId,
     };
   }
@@ -341,8 +473,11 @@ async function decryptPlaintext(
   if (!ciphertext?.trim()) return "";
 
   const authUserId = useAuthStore.getState().userId;
-  if (isChannelChat(chatId) || (msgTypeNum !== undefined && isChannelMsgType(msgTypeNum))) {
-    if (!authUserId) throw new Error("Kanal xabarini ochish uchun kirish kerak");
+  if (
+    isBroadcastChat(chatId) ||
+    (msgTypeNum !== undefined && isBroadcastMsgType(msgTypeNum))
+  ) {
+    if (!authUserId) throw new Error("Guruh/kanal xabarini ochish uchun kirish kerak");
     return decryptChannelPayload(authUserId, chatId, ciphertext);
   }
 
@@ -384,7 +519,7 @@ async function decryptHistoryMessage(
   authUserId: string | null,
   rawMsgType?: number,
 ): Promise<Message> {
-  const channel = isChannelChat(chatId);
+  const channel = isBroadcastChat(chatId);
   if (!msg.ciphertext?.trim()) return msg;
 
   const hydrated = hydrateFromLocal(local, msg);
@@ -581,6 +716,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
       set({ chats: list ?? [], presenceMap, lastSeenMap, lastSeenHiddenMap, loading: false });
 
+      for (const c of list ?? []) {
+        if (c.type === "group") {
+          void syncGroupKeysToMissingMembers(c.id, token);
+        }
+      }
+
       const userId = useAuthStore.getState().userId;
       const saved  = userId ? loadSavedActiveChatId(userId) : null;
       if (saved && !get().activeChatId && (list ?? []).some((c) => c.id === saved)) {
@@ -601,6 +742,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const chat = get().chats.find((c) => c.id === chatId);
     const peerId = chat?.peer_user_id ?? null;
+
+    if (chat?.type === "group") {
+      await ensureGroupKey(chatId, token);
+      void syncGroupKeysToMissingMembers(chatId, token);
+    }
 
     if (peerId) {
       const sessionExists = await hasSession(peerId).catch(() => false);
@@ -673,7 +819,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       // Sherikdan ochilmagan xabarlar — avtomatik PreKey so'rovi (qarama-qarshi rekey tsiklini oldini olish bilan)
-      if (peerId && !isChannelChat(chatId)) {
+      if (peerId && !isBroadcastChat(chatId)) {
         const needsRekey = merged.some(
           (m) =>
             m.sender_id === peerId &&
@@ -755,6 +901,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await get().selectChat(chatId, token);
     } catch (e) {
       console.error("[Chat] createChannel xatoligi:", e);
+      throw e;
+    }
+  },
+
+  createGroup: async (title, memberIds, token) => {
+    const authUserId = useAuthStore.getState().userId;
+    if (!authUserId) return;
+
+    try {
+      const { id: chatId } = await chatApi.createGroup(token, title, memberIds, []);
+      initChannelKey(authUserId, chatId);
+      await uploadGroupKeyVault(chatId, token);
+
+      const envelopes = await buildGroupKeyEnvelopes(
+        authUserId, chatId, memberIds, token,
+      );
+      if (envelopes.length > 0) {
+        await chatApi.putGroupKeyEnvelopes(token, chatId, envelopes);
+      }
+
+      const now = new Date().toISOString();
+      const newChat: Chat = {
+        id:           chatId,
+        type:         "group",
+        title,
+        peer_user_id: null,
+        member_count: memberIds.length + 1,
+        last_message: null,
+        unread_count: 0,
+        updated_at:   now,
+        my_role:      "owner",
+      };
+
+      set((s) => ({
+        chats: [newChat, ...s.chats.filter((c) => c.id !== chatId)],
+      }));
+      await get().selectChat(chatId, token);
+    } catch (e) {
+      console.error("[Chat] createGroup xatoligi:", e);
       throw e;
     }
   },
@@ -1016,19 +1201,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           //   2. Ichki xabarni deshifrlaydi
           // Oddiy xabar (Type 1): mavjud sessiya bilan deshifrlaydi.
           let plaintext: string;
-          const channelMsg = isChannelChat(m.chat_id) || (m.msg_type != null && isChannelMsgType(m.msg_type));
+          const broadcastMsg =
+            isBroadcastChat(m.chat_id) ||
+            (m.msg_type != null && isBroadcastMsgType(m.msg_type));
           try {
-            if (channelMsg) {
+            if (broadcastMsg) {
               const authUserId = useAuthStore.getState().userId;
               if (!authUserId) throw new Error("auth");
               plaintext = await decryptChannelPayload(authUserId, m.chat_id, m.ciphertext);
-              console.log(`[WS] ✅ Kanal deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
+              console.log(`[WS] ✅ Broadcast deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
             } else {
               plaintext = await decryptMessage(m.chat_id, m.sender_id, m.ciphertext);
               console.log(`[WS] ✅ Deshifrlandi: id=${m.msg_id} len=${plaintext.length}`);
             }
           } catch (e) {
-            const err = channelMsg
+            const err = broadcastMsg
               ? { code: "AES_GCM_FAILED" as const }
               : classifyDecryptError(e);
             console.warn(`[WS] ❌ Deshifrlash xatosi: id=${m.msg_id} code=${err.code}`);
@@ -1041,7 +1228,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
             // Type-1 yuboruvchi eski sessiyada — PreKey talab qilamiz
             if (
-              !channelMsg &&
+              !broadcastMsg &&
               !isPreKeyCiphertext(m.ciphertext) &&
               (err.code === "SESSION_NOT_FOUND" || err.code === "AES_GCM_FAILED")
             ) {
@@ -1256,6 +1443,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 : c
             ),
           };
+        });
+        break;
+      }
+
+      case "group.key_needed": {
+        const p = event.payload as WsGroupKeyNeeded;
+        const token = useAuthStore.getState().token;
+        if (!token || !p.chat_id || !p.user_id) break;
+        void shareGroupKeyWith(p.chat_id, p.user_id, token).catch((e) =>
+          console.warn("[E2EE] group.key_needed kalit ulashish:", e),
+        );
+        break;
+      }
+
+      case "group.key_ready": {
+        const p = event.payload as WsGroupKeyReady;
+        const token = useAuthStore.getState().token;
+        if (!token || !p.chat_id) break;
+        void ensureGroupKey(p.chat_id, token).then((ok) => {
+          if (ok) {
+            void redDecryptChatMessages(p.chat_id, set, get);
+          }
         });
         break;
       }

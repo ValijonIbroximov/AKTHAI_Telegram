@@ -17,6 +17,9 @@ interface Props {
   onAdmin?:   () => void;
   onCreateChannel?: () => void;
   canCreateChannel?: boolean;
+  onCreateGroup?: () => void;
+  canCreateGroup?: boolean;
+  onJoinGroup?: () => void;
 }
 
 const AVATAR_COLORS = [
@@ -35,7 +38,7 @@ interface NavItem {
   danger?: boolean;
 }
 
-export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreateChannel, canCreateChannel = true }: Props) {
+export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreateChannel, canCreateChannel = true, onCreateGroup, canCreateGroup = true, onJoinGroup }: Props) {
   const {
     username, role, userId, activeAccountId, accounts, token,
     logoutAccount, beginAddAccount, beginSwitchAccount, validateAccounts,
@@ -78,6 +81,8 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreat
   const handleSettings = useCallback(() => { onClose(); onSettings(); }, [onClose, onSettings]);
   const handleAdmin    = useCallback(() => { onClose(); onAdmin?.(); }, [onClose, onAdmin]);
   const handleCreateChannel = useCallback(() => { onClose(); onCreateChannel?.(); }, [onClose, onCreateChannel]);
+  const handleCreateGroup   = useCallback(() => { onClose(); onCreateGroup?.(); }, [onClose, onCreateGroup]);
+  const handleJoinGroup     = useCallback(() => { onClose(); onJoinGroup?.(); }, [onClose, onJoinGroup]);
   const handleLogoutClick = useCallback(() => setLogoutOpen(true), []);
   const handleLogoutCancel = useCallback(() => setLogoutOpen(false), []);
   const handleLogoutConfirm = useCallback(async () => {
@@ -101,9 +106,9 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreat
   const displayLabel  = activeAccount?.displayName ?? username ?? "Foydalanuvchi";
 
   const NAV_ITEMS: NavItem[] = [
-    {
+    ...(canCreateGroup ? [{
       label: "Yangi Guruh",
-      onClick: onClose,
+      onClick: handleCreateGroup,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeLinecap="round"/>
@@ -111,7 +116,7 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreat
           <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" strokeLinecap="round"/>
         </svg>
       ),
-    },
+    }] : []),
     ...(canCreateChannel ? [{
       label: "Yangi Kanal",
       onClick: handleCreateChannel,
@@ -122,6 +127,16 @@ export default function SideDrawer({ open, onClose, onSettings, onAdmin, onCreat
         </svg>
       ),
     }] : []),
+    {
+      label: "Guruh taklifi",
+      onClick: handleJoinGroup,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" strokeLinecap="round"/>
+          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" strokeLinecap="round"/>
+        </svg>
+      ),
+    },
     {
       label: "Kontaktlar",
       onClick: onClose,

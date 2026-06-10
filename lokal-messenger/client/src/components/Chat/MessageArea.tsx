@@ -13,7 +13,9 @@ import MessageBubble     from "./MessageBubble";
 import MediaAlbumBubble  from "./MediaAlbumBubble";
 import ImageViewer, { type ViewerMedia } from "./ImageViewer";
 import InputBar          from "./InputBar";
+import GroupSettingsModal from "./GroupSettingsModal";
 import { segmentMessages } from "@/utils/messageAlbum";
+import { chatApi } from "@/api/http";
 import s                 from "./MessageArea.module.css";
 
 const BOTTOM_THRESHOLD = 80;
@@ -32,7 +34,7 @@ function toViewerMedia(m: Message): ViewerMedia | null {
 
 export default function MessageArea() {
   const { userId, token, role } = useAuthStore();
-  const { activeChatId, chats, messages, presenceMap, lastSeenMap, lastSeenHiddenMap, resetSessionWithPeer, closeChat } = useChatStore();
+  const { activeChatId, chats, messages, presenceMap, lastSeenMap, lastSeenHiddenMap, resetSessionWithPeer, closeChat, loadChats } = useChatStore();
   const messagesRef  = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const pinnedToBottomRef = useRef(true);
@@ -46,12 +48,17 @@ export default function MessageArea() {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [peekUntil, setPeekUntil] = useState<number | null>(null);
   const [peekLastSeen, setPeekLastSeen] = useState<string | null>(null);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
+  const [groupMembersView, setGroupMembersView]   = useState<"list" | "add" | "invite">("list");
+  const [groupSenderNames, setGroupSenderNames] = useState<Record<string, string>>({});
   const [, tick] = useState(0);
 
   const isAdmin = role === "admin";
 
   const activeChat = chats.find(c => c.id === activeChatId);
   const isChannel  = activeChat?.type === "channel";
+  const isGroup    = activeChat?.type === "group";
+  const isBroadcast = isChannel || isGroup;
   const msgs       = activeChatId ? (messages[activeChatId] ?? []) : [];
   const peerId     = activeChat?.peer_user_id ?? null;
   const isOnline   = peerId ? (presenceMap[peerId] ?? false) : false;
@@ -65,12 +72,33 @@ export default function MessageArea() {
   const showHiddenStatus = lastSeenHidden && !isPeeking;
   const statusText = isChannel
     ? (activeChat?.description?.trim() || "Kanal")
+    : isGroup
+      ? `${activeChat?.member_count ?? 0} a'zo`
     : formatPeerStatus(
         isOnline,
         peekLastSeen ?? lastSeen,
         showHiddenStatus,
       );
-  const canPeekHidden = !isChannel && isAdmin && lastSeenHidden && !isOnline && !!peerId;
+  const canPeekHidden = !isBroadcast && isAdmin && lastSeenHidden && !isOnline && !!peerId;
+  const groupCanManage = isGroup && (activeChat?.my_role === "owner" || activeChat?.my_role === "admin");
+
+  const openGroupSettings = useCallback((view: "list" | "add" | "invite" = "list") => {
+    setGroupMembersView(view);
+    setGroupSettingsOpen(true);
+    setHeaderMenuOpen(false);
+  }, []);
+
+  const refreshGroupMembers = useCallback(() => {
+    if (!token || !activeChatId || !isGroup) return;
+    void chatApi.listGroupMembers(token, activeChatId).then((list) => {
+      const map: Record<string, string> = {};
+      for (const m of list ?? []) {
+        map[m.user_id] = m.display_name || m.username;
+      }
+      setGroupSenderNames(map);
+    }).catch(() => {});
+    void loadChats(token);
+  }, [token, activeChatId, isGroup, loadChats]);
 
   const chatVisualMedia = useMemo((): ViewerMedia[] => {
     const out: ViewerMedia[] = [];
@@ -107,7 +135,7 @@ export default function MessageArea() {
     return chatVisualMedia;
   }, [viewerMessageId, messageSegments, chatVisualMedia]);
 
-  const hasSessionIssue = !isChannel && msgs.some(
+  const hasSessionIssue = !isBroadcast && msgs.some(
     (m) => m.plaintext === PENDING_DECRYPT_LABEL || m.plaintext === DECRYPT_ERROR_LABEL
   );
 
@@ -243,7 +271,23 @@ export default function MessageArea() {
     setViewerMessageId(null);
     setPeekUntil(null);
     setPeekLastSeen(null);
+    setGroupSettingsOpen(false);
+    setGroupSenderNames({});
   }, [activeChatId]);
+
+  useEffect(() => {
+    if (!isGroup || !activeChatId || !token) return;
+    let cancelled = false;
+    void chatApi.listGroupMembers(token, activeChatId).then((list) => {
+      if (cancelled) return;
+      const map: Record<string, string> = {};
+      for (const m of list ?? []) {
+        map[m.user_id] = m.display_name || m.username;
+      }
+      setGroupSenderNames(map);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isGroup, activeChatId, token]);
 
   useEffect(() => {
     if (!peekUntil) return;
@@ -370,9 +414,22 @@ export default function MessageArea() {
             <path d="M19 12H5M12 5l-7 7 7 7" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
-        <Avatar name={activeChat.title} size={36} online={isOnline} />
+        <Avatar name={activeChat.title} size={36} online={!isBroadcast && isOnline} />
 
-        <div className={s.headerInfo}>
+        <div
+          className={s.headerInfo}
+          onClick={isGroup ? () => openGroupSettings("list") : undefined}
+          onKeyDown={isGroup ? (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              openGroupSettings("list");
+            }
+          } : undefined}
+          role={isGroup ? "button" : undefined}
+          tabIndex={isGroup ? 0 : undefined}
+          title={isGroup ? "Guruh a'zolari" : undefined}
+          style={isGroup ? { cursor: "pointer" } : undefined}
+        >
           <span className={s.headerName}>{activeChat.title}</span>
           <span
             className={`${s.headerStatus} ${isOnline ? s.online : ""} ${canPeekHidden && !isPeeking ? s.peekable : ""}`}
@@ -393,6 +450,46 @@ export default function MessageArea() {
 
         {/* O'ng tomondagi tugmalar */}
         <div className={s.headerActions}>
+          {isGroup && groupCanManage && (
+            <button
+              className={s.actionBtn}
+              aria-label="A'zo qo'shish"
+              title="A'zo qo'shish"
+              onClick={() => openGroupSettings("add")}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeLinecap="round"/>
+                <circle cx="8.5" cy="7" r="4"/>
+                <path d="M20 8v6M23 11h-6" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
+          {isGroup && groupCanManage && (
+            <button
+              className={s.actionBtn}
+              aria-label="Taklif havolasi"
+              title="Taklif havolasi ulashish"
+              onClick={() => openGroupSettings("invite")}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" strokeLinecap="round"/>
+                <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
+          {isGroup && (
+            <button
+              className={s.actionBtn}
+              aria-label="Guruh sozlamalari"
+              title="Guruh a'zolari va sozlamalar"
+              onClick={() => openGroupSettings("list")}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" strokeLinecap="round"/>
+              </svg>
+            </button>
+          )}
           <button className={s.actionBtn} aria-label="Qidirish" title="Suhbatda qidirish">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="11" cy="11" r="7"/>
@@ -422,6 +519,38 @@ export default function MessageArea() {
 
             {headerMenuOpen && (
               <div className={s.dropMenu}>
+                {isGroup ? (
+                  <>
+                    <button className={s.dropItem} onClick={() => openGroupSettings("list")}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeLinecap="round"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" strokeLinecap="round"/>
+                      </svg>
+                      A'zolar ro'yxati
+                    </button>
+                    {groupCanManage && (
+                      <>
+                        <button className={s.dropItem} onClick={() => openGroupSettings("add")}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" strokeLinecap="round"/>
+                            <circle cx="8.5" cy="7" r="4"/>
+                            <path d="M20 8v6M23 11h-6" strokeLinecap="round"/>
+                          </svg>
+                          A'zo qo'shish
+                        </button>
+                        <button className={s.dropItem} onClick={() => openGroupSettings("invite")}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" strokeLinecap="round"/>
+                            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" strokeLinecap="round"/>
+                          </svg>
+                          Taklif havolasi ulashish
+                        </button>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
                 <button className={s.dropItem} onClick={closeMenu}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                     <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" strokeLinecap="round" strokeLinejoin="round"/>
@@ -451,6 +580,8 @@ export default function MessageArea() {
                   </svg>
                   Chatni o'chirish
                 </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -484,27 +615,38 @@ export default function MessageArea() {
             {msgs.length === 0 ? (
               <div className={s.noMsgs}>
                 <div className={s.noMsgsBox}>
-                  {isChannel ? "Kanalga birinchi xabarni yuboring" : "Suhbat boshlash uchun xabar yuboring"}
+                  {isChannel ? "Kanalga birinchi xabarni yuboring" : isGroup ? "Guruhga birinchi xabarni yuboring" : "Suhbat boshlash uchun xabar yuboring"}
                 </div>
               </div>
             ) : (
-              messageSegments.map((seg) =>
-                seg.kind === "album" ? (
+              messageSegments.map((seg) => {
+                const senderId = seg.kind === "album"
+                  ? seg.messages[0]!.sender_id
+                  : seg.message.sender_id;
+                const isOwnMsg = senderId === userId || senderId === "me";
+                const showPeer = isGroup && !isOwnMsg;
+                const peerName = showPeer ? groupSenderNames[senderId] : undefined;
+
+                return seg.kind === "album" ? (
                   <MediaAlbumBubble
                     key={seg.messages[0]!.id}
                     messages={seg.messages}
-                    isOwn={seg.messages[0]!.sender_id === userId || seg.messages[0]!.sender_id === "me"}
+                    isOwn={isOwnMsg}
+                    senderName={peerName}
+                    senderColorKey={showPeer ? senderId : undefined}
                     onImageOpen={setViewerMessageId}
                   />
                 ) : (
                   <MessageBubble
                     key={seg.message.id}
                     message={seg.message}
-                    isOwn={seg.message.sender_id === userId || seg.message.sender_id === "me"}
+                    isOwn={isOwnMsg}
+                    senderName={peerName}
+                    senderColorKey={showPeer ? senderId : undefined}
                     onImageOpen={setViewerMessageId}
                   />
-                )
-              )
+                );
+              })
             )}
             <div ref={bottomAnchorRef} className={s.bottomAnchor} aria-hidden="true" />
           </div>
@@ -528,9 +670,22 @@ export default function MessageArea() {
       {/* Kiritish paneli */}
       <InputBar
         chatId={activeChatId ?? ""}
-        recipientId={isChannel ? (userId ?? "") : (activeChat.peer_user_id ?? activeChat.id)}
+        recipientId={isBroadcast ? (userId ?? "") : (activeChat.peer_user_id ?? activeChat.id)}
         token={token ?? ""}
       />
+
+      {isGroup && token && activeChatId && (
+        <GroupSettingsModal
+          open={groupSettingsOpen}
+          onClose={() => setGroupSettingsOpen(false)}
+          chatId={activeChatId}
+          title={activeChat.title}
+          token={token}
+          memberCount={activeChat.member_count}
+          initialMembersView={groupMembersView}
+          onMembersChanged={refreshGroupMembers}
+        />
+      )}
 
       {viewerMessageId && token && viewerMedia.length > 0 && (
         <ImageViewer

@@ -18,6 +18,7 @@ export interface User {
   is_active?:   boolean;
   has_avatar?:  boolean;
   can_create_channel?: boolean;
+  can_create_group?:   boolean;
   last_seen_at?: string | null;
 }
 
@@ -65,10 +66,32 @@ export interface Chat {
   peer_online?:            boolean;
   peer_last_seen_at?:      string | null;
   peer_last_seen_hidden?:  boolean;
-  /** Guruh/kanal uchun a'zolar soni (kelajak) */
+  /** Guruh/kanal uchun a'zolar soni */
   member_count?:  number | null;
-  /** Guruh/kanal tavsifi (kelajak) */
+  /** Guruh/kanal tavsifi */
   description?:   string | null;
+  /** Joriy foydalanuvchining guruhdagi roli */
+  my_role?:       GroupMemberRole | null;
+}
+
+export type GroupMemberRole = "owner" | "admin" | "member";
+
+export interface GroupMember {
+  user_id:           string;
+  display_name:      string;
+  username:          string;
+  role:              GroupMemberRole;
+  joined_at:         string;
+  has_avatar:        boolean;
+  has_key_envelope?: boolean;
+}
+
+export interface GroupInviteLink {
+  token:       string;
+  use_count?:  number;
+  max_uses?:   number;
+  expires_at?: string;
+  created_at:  string;
 }
 
 export interface LastMessage {
@@ -117,7 +140,18 @@ export type WsEvent =
   | { type: "msg.read";  payload: WsMsgRead }
   | { type: "presence";  payload: WsPresence }
   | { type: "session.rekey_request"; payload: WsSessionRekeyRequest }
+  | { type: "group.key_needed"; payload: WsGroupKeyNeeded }
+  | { type: "group.key_ready";  payload: WsGroupKeyReady }
   | { type: "auth.force_logout"; payload: { reason?: string; user_id?: string } };
+
+export interface WsGroupKeyNeeded {
+  chat_id: string;
+  user_id: string;
+}
+
+export interface WsGroupKeyReady {
+  chat_id: string;
+}
 
 export interface WsSessionRekeyRequest {
   from_user_id: string;
@@ -206,6 +240,8 @@ export interface RawChat {
   peer_online?:            boolean;
   peer_last_seen_at?:      string | null;
   peer_last_seen_hidden?:  boolean;
+  member_count?:           number;
+  my_role?:                GroupMemberRole | null;
 }
 
 // Server ChatHistory xom javob turi

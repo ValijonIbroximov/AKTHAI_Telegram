@@ -1,0 +1,554 @@
+/* Guruh a'zolari paneli */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 200px;
+}
+
+/* Statistika */
+.statsBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.statChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-surface, var(--bg-hover));
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.statChip strong {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+/* Boshqaruv tugmalari */
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.toolbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-surface, var(--bg-hover));
+  color: var(--text-1);
+  transition: background 0.12s, border-color 0.12s;
+}
+.toolbarBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--accent, var(--cyan));
+}
+.toolbarBtnPrimary {
+  background: var(--accent, var(--cyan));
+  border-color: transparent;
+  color: #fff;
+}
+.toolbarBtnPrimary:hover:not(:disabled) { opacity: 0.92; }
+.toolbarBtn:disabled { opacity: 0.5; cursor: default; }
+
+/* Sub-view sarlavhasi */
+.subHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.backBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.backBtn:hover { background: var(--bg-hover); color: var(--text-1); }
+
+.subTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0;
+}
+
+/* Qidiruv + filter */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.searchWrap {
+  position: relative;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 9px 36px 9px 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-surface));
+  font-size: 14px;
+  color: var(--text-1);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent, var(--cyan));
+}
+
+.searchIcon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.searchClear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-full);
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.searchClear:hover { background: var(--bg-hover); color: var(--text-1); }
+
+.filterRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filterChip {
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  transition: all 0.12s;
+}
+.filterChip:hover { color: var(--text-2); background: var(--bg-hover); }
+.filterChipActive {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.35);
+  color: var(--accent, var(--cyan));
+}
+
+.sortSelect {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-surface));
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.resultCount {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+/* Guruh bo'limlari */
+.groupSection {
+  margin-bottom: 16px;
+}
+
+.groupSectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.groupSectionCount {
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: var(--r-md);
+  transition: background 0.1s;
+  position: relative;
+}
+.memberRow:hover { background: var(--bg-hover); }
+.memberRowSelected { background: var(--bg-hover); }
+
+.memberBody { flex: 1; min-width: 0; }
+
+.memberName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memberSub {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.roleBadge {
+  display: inline-flex;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.roleOwner {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.roleAdmin {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent, #3b82f6);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.roleMember {
+  background: var(--bg-hover);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+/* ⋮ menyu */
+.menuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menuBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+.menuBtn:hover,
+.menuBtnActive {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.dropMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  overflow: hidden;
+  padding: 4px 0;
+}
+
+.dropItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text-1);
+  transition: background 0.1s;
+}
+.dropItem:hover:not(:disabled) { background: var(--bg-hover); }
+.dropItem:disabled { opacity: 0.45; cursor: default; }
+.dropItemDanger { color: #ef4444; }
+.dropItemDanger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.08); }
+
+.dropDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Qo'shish natijalari */
+.addResults {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.addResultItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.addResultItem:last-child { border-bottom: none; }
+.addResultItem:hover { background: var(--bg-hover); }
+
+.addResultBody { flex: 1; min-width: 0; }
+.addResultName { font-weight: 500; font-size: 14px; color: var(--text-1); }
+.addResultUser { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+.addBtn {
+  padding: 6px 14px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent, var(--cyan));
+  color: #fff;
+  flex-shrink: 0;
+}
+.addBtn:hover:not(:disabled) { opacity: 0.9; }
+.addBtn:disabled { opacity: 0.5; }
+
+.searching {
+  padding: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* Taklif bo'limi */
+.inviteForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-surface));
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.createInviteBtn {
+  grid-column: 1 / -1;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--accent, var(--cyan));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.createInviteBtn:hover:not(:disabled) { opacity: 0.9; }
+.createInviteBtn:disabled { opacity: 0.5; }
+
+.inviteList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inviteCard {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  background: var(--bg-surface, var(--bg-hover));
+}
+
+.inviteCardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inviteToken {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-2);
+  word-break: break-all;
+}
+
+.statusActive {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  flex-shrink: 0;
+}
+
+.statusExpired {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.inviteMeta {
+  font-size: 11px;
+  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.inviteActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.textBtn {
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  background: transparent;
+}
+.textBtn:hover:not(:disabled) { background: var(--bg-hover); }
+.textBtnPrimary {
+  color: var(--accent, var(--cyan));
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.textBtnDanger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.newInviteBox {
+  margin-bottom: 16px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--accent, var(--cyan));
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.newInviteLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, var(--cyan));
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 16px 0 10px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.loading {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.message {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+
+.messageError {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+}
+
+.messageSuccess {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  color: #16a34a;
+}

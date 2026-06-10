@@ -2,6 +2,7 @@ import type { Message } from "@/types";
 import { DECRYPT_ERROR_LABEL } from "@/crypto/adapter";
 import { parseMediaPayload } from "@/crypto/fileCrypto";
 import { MediaContent } from "./MessageBubble";
+import { groupSenderBubbleStyle } from "@/utils/groupSenderColor";
 import s from "./MediaAlbumBubble.module.css";
 import mb from "./MessageBubble.module.css";
 
@@ -108,13 +109,18 @@ function renderFileList(messages: Message[]) {
 }
 
 interface Props {
-  messages:     Message[];
-  isOwn:        boolean;
-  onImageOpen?: (messageId: string) => void;
+  messages:        Message[];
+  isOwn:           boolean;
+  senderName?:     string;
+  senderColorKey?: string;
+  onImageOpen?:    (messageId: string) => void;
 }
 
-export default function MediaAlbumBubble({ messages, isOwn, onImageOpen }: Props) {
+export default function MediaAlbumBubble({ messages, isOwn, senderName, senderColorKey, onImageOpen }: Props) {
   const last = messages[messages.length - 1]!;
+  const peerStyle = !isOwn && senderColorKey
+    ? groupSenderBubbleStyle(senderColorKey)
+    : null;
   const caption = messages
     .map((m) => parseMediaPayload(m.plaintext)?.caption?.trim())
     .find(Boolean) ?? "";
@@ -124,7 +130,21 @@ export default function MediaAlbumBubble({ messages, isOwn, onImageOpen }: Props
 
   return (
     <div className={`${mb.wrap} ${isOwn ? mb.own : mb.incoming}`}>
-      <div className={`${mb.bubble} ${isOwn ? mb.bubbleOwn : mb.bubbleIn} ${mb.bubbleMedia}`}>
+      <div
+        className={`${mb.bubble} ${isOwn ? mb.bubbleOwn : mb.bubbleIn} ${mb.bubbleMedia}`}
+        style={peerStyle ? {
+          background:  peerStyle.background,
+          borderColor: peerStyle.borderColor,
+        } : undefined}
+      >
+        {senderName && !isOwn && (
+          <div
+            className={mb.senderName}
+            style={peerStyle ? { color: peerStyle.nameColor } : undefined}
+          >
+            {senderName}
+          </div>
+        )}
         {visualMsgs.length > 0 && renderVisualCells(visualMsgs, onImageOpen)}
         {fileMsgs.length > 0 && renderFileList(fileMsgs)}
 

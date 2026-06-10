@@ -8,6 +8,8 @@ import FirstLoginPasswordPrompt from "@/components/Auth/FirstLoginPasswordPrompt
 import ChatList          from "@/components/Chat/ChatList";
 import MessageArea       from "@/components/Chat/MessageArea";
 import CreateChannelModal from "@/components/Chat/CreateChannelModal";
+import CreateGroupModal   from "@/components/Chat/CreateGroupModal";
+import JoinGroupModal     from "@/components/Chat/JoinGroupModal";
 import SideDrawer        from "@/components/Layout/SideDrawer";
 import ChatFolders, { type FolderId } from "@/components/Layout/ChatFolders";
 import TitleBar          from "@/components/Layout/TitleBar";
@@ -60,10 +62,14 @@ function ChatApp() {
   const userId   = useAuthStore((s) => s.userId);
   const uiMode   = useAuthStore((s) => s.uiMode);
   const canCreateChannel = useAuthStore((s) => s.canCreateChannel);
+  const canCreateGroup   = useAuthStore((s) => s.canCreateGroup);
   const createChannel = useChatStore((s) => s.createChannel);
+  const createGroup   = useChatStore((s) => s.createGroup);
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen]     = useState(false);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [groupModalOpen, setGroupModalOpen]     = useState(false);
+  const [joinGroupOpen, setJoinGroupOpen]       = useState(false);
   const [mainView, setMainView]         = useState<MainView>("chat");
   const [activeFolder, setActiveFolder] = useState<FolderId>("all");
 
@@ -109,11 +115,25 @@ function ChatApp() {
     setChannelModalOpen(true);
   }, []);
 
+  const openCreateGroup = useCallback(() => {
+    setGroupModalOpen(true);
+  }, []);
+
+  const openJoinGroup = useCallback(() => {
+    setJoinGroupOpen(true);
+  }, []);
+
   const handleCreateChannel = useCallback(async (title: string, description: string) => {
     if (!token) throw new Error("Tizimga kiring");
     await createChannel(title, description, token);
     setActiveFolder("channels");
   }, [token, createChannel]);
+
+  const handleCreateGroup = useCallback(async (title: string, memberIds: string[]) => {
+    if (!token) throw new Error("Tizimga kiring");
+    await createGroup(title, memberIds, token);
+    setActiveFolder("groups");
+  }, [token, createGroup]);
 
   const showLogin = !token || uiMode === "add_account";
 
@@ -143,12 +163,30 @@ function ChatApp() {
             onAdmin={openAdmin}
             onCreateChannel={openCreateChannel}
             canCreateChannel={canCreateChannel}
+            onCreateGroup={openCreateGroup}
+            canCreateGroup={canCreateGroup}
+            onJoinGroup={openJoinGroup}
           />
           <CreateChannelModal
             open={channelModalOpen}
             onClose={() => setChannelModalOpen(false)}
             onCreate={handleCreateChannel}
           />
+          {token && (
+            <JoinGroupModal
+              open={joinGroupOpen}
+              onClose={() => setJoinGroupOpen(false)}
+              token={token}
+            />
+          )}
+          {token && (
+            <CreateGroupModal
+              open={groupModalOpen}
+              onClose={() => setGroupModalOpen(false)}
+              onCreate={handleCreateGroup}
+              token={token}
+            />
+          )}
           <ChatList onMenuOpen={() => setDrawerOpen(true)} activeFolder={activeFolder} />
           {mainView === "settings" ? (
             <SettingsPage onBack={closeSettings} />

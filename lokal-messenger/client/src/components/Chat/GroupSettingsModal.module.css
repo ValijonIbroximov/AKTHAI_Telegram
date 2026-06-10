@@ -1,0 +1,673 @@
+/* Guruh sozlamalari — to'liq panel */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: gsFadeIn 0.15s ease;
+}
+
+@keyframes gsFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(92vh, 720px);
+  background: var(--panel-bg-real, var(--bg-panel));
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  animation: gsSlideUp 0.18s ease;
+}
+
+@keyframes gsSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Profil sarlavhasi ── */
+.profileHeader {
+  position: relative;
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-hover) 0%, transparent 100%);
+}
+
+.closeBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+.closeBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.profileRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.groupAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.profileInfo { flex: 1; min-width: 0; }
+
+.groupTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupMeta {
+  font-size: 13px;
+  color: var(--text-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.roleBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.roleOwner {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.roleAdmin {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent, #3b82f6);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.roleMember {
+  background: var(--bg-hover);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+/* ── Tab navigatsiya ── */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text-2); }
+.tabActive {
+  color: var(--accent, var(--cyan));
+  border-bottom-color: var(--accent, var(--cyan));
+  font-weight: 600;
+}
+
+/* ── Kontent ── */
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin: 0 0 10px;
+}
+
+.sectionTitleSpaced { margin-top: 20px; }
+
+.card {
+  background: var(--bg-surface, var(--bg-hover));
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+}
+
+.cardRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+}
+.cardRow + .cardRow {
+  border-top: 1px solid var(--border);
+}
+
+.cardLabel {
+  font-size: 13px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.cardValue {
+  font-size: 13px;
+  color: var(--text-1);
+  text-align: right;
+  word-break: break-all;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.permList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.permItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
+.permIcon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--accent, var(--cyan));
+  margin-top: 1px;
+}
+
+/* ── Qidiruv va input ── */
+.searchWrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 9px 12px 9px 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-surface));
+  font-size: 14px;
+  color: var(--text-1);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent, var(--cyan));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.addResults {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.addResultItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  transition: background 0.1s;
+}
+.addResultItem:hover { background: var(--bg-hover); }
+
+.addResultName { font-weight: 500; color: var(--text-1); }
+.addResultUser { font-size: 12px; color: var(--text-3); }
+
+/* ── A'zolar ro'yxati ── */
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  border-radius: var(--r-md);
+  transition: background 0.1s;
+}
+.memberRow:hover { background: var(--bg-hover); }
+
+.memberBody { flex: 1; min-width: 0; }
+
+.memberName {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memberSub {
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.memberActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+  transition: background 0.1s, color 0.1s;
+}
+.iconBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-1);
+}
+.iconBtnDanger:hover:not(:disabled) { color: #ef4444; }
+
+.textBtn {
+  padding: 5px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  background: transparent;
+  white-space: nowrap;
+}
+.textBtn:hover:not(:disabled) { background: var(--bg-hover); }
+.textBtnPrimary {
+  color: var(--accent, var(--cyan));
+  border-color: rgba(59, 130, 246, 0.35);
+}
+.textBtnDanger {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+.loading {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
+/* ── Taklif havolalari ── */
+.inviteForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-input, var(--bg-surface));
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.createInviteBtn {
+  grid-column: 1 / -1;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--accent, var(--cyan));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 0.12s;
+}
+.createInviteBtn:hover:not(:disabled) { opacity: 0.9; }
+.createInviteBtn:disabled { opacity: 0.5; cursor: default; }
+
+.inviteList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inviteCard {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  background: var(--bg-surface, var(--bg-hover));
+}
+
+.inviteCardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.inviteToken {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--text-2);
+  word-break: break-all;
+}
+
+.statusActive {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.statusExpired {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+.inviteMeta {
+  font-size: 12px;
+  color: var(--text-3);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.inviteActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.newInviteBox {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--accent, var(--cyan));
+  background: rgba(59, 130, 246, 0.06);
+}
+
+.newInviteLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent, var(--cyan));
+  margin-bottom: 8px;
+}
+
+/* ── Xavfsizlik ── */
+.e2eeCard {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  background: rgba(34, 197, 94, 0.06);
+  margin-bottom: 16px;
+}
+
+.e2eeIcon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-full);
+  background: rgba(34, 197, 94, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #16a34a;
+}
+
+.e2eeTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 4px;
+}
+
+.e2eeDesc {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.actionBlock {
+  margin-top: 16px;
+}
+
+.actionBlockTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 6px;
+}
+
+.actionBlockDesc {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.primaryBtn {
+  padding: 9px 16px;
+  border-radius: var(--r-md);
+  background: var(--accent, var(--cyan));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.primaryBtn:hover:not(:disabled) { opacity: 0.9; }
+.primaryBtn:disabled { opacity: 0.5; }
+
+.successMsg {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #16a34a;
+}
+
+/* ── Footer ── */
+.footer {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.footerBtn {
+  padding: 8px 20px;
+  border-radius: var(--r-md);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.footerBtn:hover:not(:disabled) { background: var(--bg-hover); }
+
+.error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+  font-size: 13px;
+}
+
+/* ── Tasdiqlash modali ── */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.confirmBox {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+}
+
+.confirmTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 8px;
+}
+
+.confirmText {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.confirmCancel {
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.confirmCancel:hover { background: var(--bg-hover); }
+
+.confirmDanger {
+  padding: 8px 16px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 600;
+  background: #ef4444;
+  color: #fff;
+}
+.confirmDanger:hover:not(:disabled) { opacity: 0.9; }
